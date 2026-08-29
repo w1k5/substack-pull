@@ -1,0 +1,4 @@
+.substack-pull.json
+/substack/
+__pycache__/
+*.py[cod]
