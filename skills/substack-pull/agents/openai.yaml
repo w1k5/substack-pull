@@ -1,0 +1,4 @@
+interface:
+  display_name: "Substack Pull"
+  short_description: "Back up Substack posts to a local folder"
+  default_prompt: "Use $substack-pull to sync my publication into a local backup."

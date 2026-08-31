@@ -16,6 +16,25 @@ default `substack/` backup directory is ignored by Git.
 
 No Python packages or additional browser are required.
 
+## Install as a Codex skill
+
+In Codex, ask the built-in skill installer:
+
+```text
+Use $skill-installer to install https://github.com/w1k5/substack-pull/tree/main/skills/substack-pull
+```
+
+The skill becomes available on the next turn. It contains the complete CLI, so
+the recipient does not need to clone this repository separately. Invoke it with:
+
+```text
+Use $substack-pull to sync my publication into a local backup.
+```
+
+Each person authenticates their own Substack account into their own macOS
+Keychain. Credentials and publication content are never shared through the
+skill or repository.
+
 ## One-time authentication
 
 1. In Safari, sign into Substack.

@@ -1,4 +1,5 @@
 .substack-pull.json
 /substack/
+.DS_Store
 __pycache__/
 *.py[cod]
