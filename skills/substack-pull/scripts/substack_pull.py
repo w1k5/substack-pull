@@ -192,7 +192,8 @@ class KeychainStore:
     def store_interactive(self, account: str) -> None:
         self._require_macos()
         print(
-            "Paste the Safari connect.sid VALUE at the Keychain prompt. "
+            "Paste the Substack session cookie VALUE at the Keychain prompt "
+            "(Safari connect.sid or Chromium substack.sid). "
             "Input is hidden."
         )
         command = [
@@ -297,7 +298,8 @@ class ApiClient:
                 if exc.code in {401, 403}:
                     raise PullError(
                         "Substack rejected the stored session. Re-copy connect.sid from "
-                        "Safari and run './substack-pull auth' again."
+                        "Safari or substack.sid from Chromium DevTools, then run "
+                        "'./substack-pull auth' again."
                     ) from exc
                 if exc.code == 429 or 500 <= exc.code < 600:
                     last_error = exc
@@ -698,7 +700,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    auth = subparsers.add_parser("auth", help="store and verify a Safari session")
+    auth = subparsers.add_parser("auth", help="store and verify a browser session")
     auth.add_argument("--publication", help="publication URL or hostname")
     auth.add_argument(
         "-d",

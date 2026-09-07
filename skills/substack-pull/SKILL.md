@@ -16,8 +16,11 @@ Python 3. Do not assume the skill's installation directory is the user's backup
 directory. Run from the user's chosen workspace or pass absolute `--config` and
 `--directory` paths.
 
-The workflow requires macOS because authentication uses Safari and macOS
-Keychain. It does not require an additional browser or Python package.
+The workflow requires macOS because authentication uses macOS Keychain. The
+session cookie can be copied from Safari or Chromium DevTools. The same manual
+cookie-copy workflow applies to Google Chrome, Chromium, Brave, Microsoft Edge,
+and other Chromium-based browsers that expose `substack.sid`. It does not
+require an additional browser or Python package.
 
 ## Safety invariants
 
@@ -25,8 +28,9 @@ Keychain. It does not require an additional browser or Python package.
   `configure`, and `doctor`.
 - Never add publishing, scheduling, editing, deletion, subscriber, or settings
   requests to the workflow.
-- Never ask the user to paste `connect.sid` into chat, a prompt, a source file,
-  an environment variable, or an agent-controlled command.
+- Never ask the user to paste `connect.sid`, `substack.sid`, or its value into
+  chat, a prompt, a source file, an environment variable, or an agent-controlled
+  command.
 - Never print, inspect, or relay a value returned by macOS Keychain.
 - The user must paste the cookie directly into the interactive Keychain prompt
   in their own terminal. It is expected that no characters appear while they
@@ -47,9 +51,10 @@ Keychain. It does not require an additional browser or Python package.
    ask before changing a tracked `.gitignore`.
 3. Run `doctor` before first-time setup.
 4. If authentication is not configured, give the user the `auth` command to run
-   in their own terminal. Explain how to copy only the `connect.sid` value from
-   Safari Web Inspector under Storage > Cookies. Do not execute the interactive
-   secret-entry step through an agent command.
+   in their own terminal. Explain how to copy only the cookie value: use
+   `connect.sid` from Safari Web Inspector under Storage > Cookies, or
+   `substack.sid` from Chromium DevTools under Application > Storage > Cookies.
+   Do not execute the interactive secret-entry step through an agent command.
 5. Run `sync`, then `status`. Report the absolute backup path and the per-category
    fetched, unchanged, missing-preserved, and failure counts.
 
@@ -79,7 +84,7 @@ detected through `trigger_at`. Published bodies are fetched when new or when an
 editorial marker changes. Use `--refresh-published` only when the user requests
 a reconciliation or a published edit appears to be missing.
 
-On `401` or `403`, explain that the Safari session expired and provide the auth
+On `401` or `403`, explain that the browser session expired and provide the auth
 command again. Do not remove the old Keychain item or local backup. On a
 publication/directory mismatch, choose a separate directory rather than
 overwriting another publication's manifest.

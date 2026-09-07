@@ -49,6 +49,7 @@ class MockState:
             {"id": 32, "title": "Newest", "slug": "newest", "post_date": "2026-03-01"},
         ]
         self.requests: list[str] = []
+        self.cookies: list[str | None] = []
 
 
 class MockHandler(BaseHTTPRequestHandler):
@@ -69,6 +70,7 @@ class MockHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         self.server.state.requests.append(self.path)
+        self.server.state.cookies.append(self.headers.get("Cookie"))
         query = urllib.parse.parse_qs(parsed.query)
 
         lists = {
@@ -196,6 +198,17 @@ class SyncTests(unittest.TestCase):
             page_limit=2,
             now=lambda: "2026-08-29T12:00:00Z",
         )
+
+    def test_session_value_is_sent_under_safari_and_chromium_cookie_names(self):
+        with ServerFixture() as fixture:
+            api = ApiClient(fixture.url, "browser-session", request_delay=0)
+
+            api.get_json("/api/v1/post_management/drafts?offset=0&limit=1")
+
+            self.assertEqual(
+                fixture.state.cookies[-1],
+                "connect.sid=browser-session; substack.sid=browser-session",
+            )
 
     def test_first_sync_paginates_and_writes_all_categories(self):
         with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:

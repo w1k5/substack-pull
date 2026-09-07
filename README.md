@@ -12,9 +12,13 @@ default `substack/` backup directory is ignored by Git.
 
 - macOS
 - Python 3.10+
-- Safari signed into the Substack account that owns or edits the publication
+- Safari or a Chromium-based browser signed into the Substack account that
+  owns or edits the publication
 
-No Python packages or additional browser are required.
+The same manual cookie-copy workflow applies to Google Chrome, Chromium, Brave,
+Microsoft Edge, and other browsers with Chromium DevTools. The CLI does not
+access the browser profile directly; it only uses the cookie value you paste
+into Keychain. No Python packages or browser extension are required.
 
 ## Install as a Codex skill
 
@@ -37,14 +41,20 @@ skill or repository.
 
 ## One-time authentication
 
-1. In Safari, sign into Substack.
-2. Open a Substack page, then open **Developer → Show Web Inspector**. If the
-   Developer menu is hidden, enable developer features under Safari Settings →
-   Advanced.
-3. In Web Inspector, open Storage → Cookies → `substack.com`.
-4. Copy the **Value** of `connect.sid`. Copy only the value, without
-   `connect.sid=`. Treat it like a password.
-5. Run:
+1. Sign into Substack in your browser.
+2. Find the session cookie using that browser's developer tools:
+
+   - **Safari:** Open a Substack page, then choose **Developer → Show Web
+     Inspector**. If the Developer menu is hidden, enable developer features
+     under Safari Settings → Advanced. Open **Storage → Cookies →
+     `substack.com`** and find `connect.sid`.
+   - **Chrome, Chromium, Brave, Edge, or another Chromium-based browser:** Open
+     a Substack page and DevTools, then open **Application → Storage → Cookies**.
+     Select the Substack origin containing `substack.sid` and find that cookie.
+
+3. Copy only the cookie's **Value**, without `connect.sid=` or `substack.sid=`.
+   Treat it like a password.
+4. Run:
 
    ```bash
    ./substack-pull auth --publication https://YOURNAME.substack.com
@@ -120,9 +130,10 @@ default without re-entering authentication:
 
 The older `--output` spelling remains available as an alias.
 
-If Substack returns 401 or 403, copy the current `connect.sid` value from Safari
-and run `auth` again. Substack does not publish or support these endpoints, so a
-future dashboard change may require updating this tool.
+If Substack returns 401 or 403, copy the current session cookie value again
+(`connect.sid` in Safari or `substack.sid` in Chromium DevTools) and run `auth`
+again. Substack does not publish or support these endpoints, so a future
+dashboard change may require updating this tool.
 
 ## Tests
 
