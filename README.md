@@ -32,7 +32,7 @@ The skill becomes available on the next turn. It contains the complete CLI, so
 the recipient does not need to clone this repository separately. Invoke it with:
 
 ```text
-Use $substack-pull to sync my publication into a local backup.
+Use $substack-pull to pull my publication and tell me what changed.
 ```
 
 Each person authenticates their own Substack account into their own macOS
@@ -67,14 +67,18 @@ Use the publication's canonical `*.substack.com` hostname, even if readers use a
 custom domain. The CLI intentionally refuses to send the session credential to
 other domains.
 
-## Sync
+## Pull
 
 ```bash
-./substack-pull sync
-./substack-pull status
+./substack-pull
 ```
 
-The first sync downloads every currently listed item. Later syncs always fetch
+`pull` is the default command, so `./substack-pull pull` is equivalent. The
+older `sync` name remains an alias. Output includes the absolute backup
+directory, category counts, and the title and local paths of every fetched
+post.
+
+The first pull downloads every currently listed item. Later pulls always fetch
 the three remote indexes, but downloads a full body only when:
 
 - the post ID is new;
@@ -87,7 +91,7 @@ items also expose `trigger_at`. Changes to either cause the complete draft and
 its current scheduling metadata to be downloaded again on the next pull.
 
 ```bash
-./substack-pull sync --refresh-published
+./substack-pull pull --refresh-published
 ```
 
 Run that occasionally if you edit published posts and Substack does not expose
@@ -99,6 +103,7 @@ an updated timestamp in its list response.
 substack/
 ├── drafts/
 │   ├── 123.json
+│   ├── 123.md         # readable companion generated from HTML or ProseMirror
 │   └── 123.html       # when Substack returned an HTML body
 ├── scheduled/
 ├── published/
@@ -107,25 +112,41 @@ substack/
 ```
 
 JSON files are the lossless source of truth. HTML companions are convenience
-copies. Items that disappear remotely are marked `missing` in `state.json` and
-are **not deleted locally**.
+copies. Markdown companions make both current ProseMirror drafts and older HTML
+posts easy to read. Items that disappear remotely are marked `missing` in
+`state.json` and are **not deleted locally**.
+
+## Find a post
+
+Search recent local posts by title or ID after pulling:
+
+```bash
+./substack-pull list --query "whole foods roses" --limit 5
+./substack-pull list --category scheduled
+./substack-pull list --category published --limit 10
+```
+
+Results are newest first and include `readable_file` whenever a Markdown copy is
+available. Use `--include-missing` to include preserved items that no longer
+appear in Substack's current index.
 
 ## Other commands and options
 
 ```bash
 ./substack-pull doctor
-./substack-pull sync --request-delay 0.5
-./substack-pull sync --directory /absolute/backup/path
-./substack-pull sync -d /absolute/backup/path
-./substack-pull --config /path/to/config.json sync
+./substack-pull status
+./substack-pull pull --request-delay 0.5
+./substack-pull pull --directory /absolute/backup/path
+./substack-pull pull -d /absolute/backup/path
+./substack-pull --config /path/to/config.json pull
 ```
 
-`--directory` on `sync` overrides the location for one run. To save a new
+`--directory` on `pull` overrides the location for one run. To save a new
 default without re-entering authentication:
 
 ```bash
 ./substack-pull configure --directory /absolute/backup/path
-./substack-pull sync
+./substack-pull
 ```
 
 The older `--output` spelling remains available as an alias.

@@ -18,6 +18,8 @@ from substack_pull import (
     PullError,
     SyncEngine,
     build_parser,
+    collect_local_posts,
+    find_readable,
     load_config,
     normalize_publication,
     require_substack_host,
@@ -163,12 +165,22 @@ class NormalizeTests(unittest.TestCase):
 
     def test_directory_flag_and_legacy_output_alias(self):
         parser = build_parser()
+        preferred = parser.parse_args(["pull", "--directory", "/preferred"])
         current = parser.parse_args(["sync", "--directory", "/new/place"])
         legacy = parser.parse_args(["sync", "--output", "/old/name"])
         short = parser.parse_args(["sync", "-d", "/short"])
+        self.assertEqual(preferred.directory, "/preferred")
         self.assertEqual(current.directory, "/new/place")
         self.assertEqual(legacy.directory, "/old/name")
         self.assertEqual(short.directory, "/short")
+
+    def test_list_command_accepts_search_and_category(self):
+        args = build_parser().parse_args(
+            ["list", "--query", "roses", "--category", "drafts", "--limit", "3"]
+        )
+        self.assertEqual(args.query, "roses")
+        self.assertEqual(args.category, "drafts")
+        self.assertEqual(args.limit, 3)
 
     def test_old_output_config_migrates_to_directory(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -219,9 +231,20 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(summary["categories"]["published"]["fetched"], 3)
             self.assertTrue((Path(temp) / "drafts" / "10.json").is_file())
             self.assertTrue((Path(temp) / "drafts" / "10.html").is_file())
+            self.assertTrue((Path(temp) / "drafts" / "10.md").is_file())
             self.assertTrue((Path(temp) / "scheduled" / "20.json").is_file())
             self.assertTrue((Path(temp) / "published" / "32.json").is_file())
             self.assertTrue((Path(temp) / ".sync" / "state.json").is_file())
+            self.assertEqual(summary["directory"], str(Path(temp).resolve()))
+            self.assertEqual(
+                summary["categories"]["drafts"]["fetched_items"][0]["title"],
+                "Draft one",
+            )
+            self.assertTrue(
+                summary["categories"]["drafts"]["fetched_items"][0][
+                    "readable_file"
+                ].endswith("drafts/10.md")
+            )
 
             published_list_requests = [
                 request
@@ -244,6 +267,27 @@ class SyncTests(unittest.TestCase):
                 request
                 for request in fixture.state.requests
                 if "/drafts/" in request or "/posts/by-id/" in request
+            ]
+            self.assertEqual(body_requests, [])
+
+    def test_unchanged_sync_backfills_readable_file_without_body_request(self):
+        with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
+            engine = self.make_engine(fixture, temp)
+            engine.sync()
+            readable = Path(temp) / "drafts" / "10.md"
+            readable.unlink()
+            fixture.state.requests.clear()
+
+            summary = engine.sync()
+
+            self.assertTrue(readable.is_file())
+            self.assertEqual(
+                summary["categories"]["drafts"]["readable_backfilled"], 1
+            )
+            body_requests = [
+                request
+                for request in fixture.state.requests
+                if request.startswith("/api/v1/drafts/")
             ]
             self.assertEqual(body_requests, [])
 
@@ -312,6 +356,51 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(summary["categories"]["drafts"]["fetched"], 0)
             self.assertEqual(summary["categories"]["scheduled"]["fetched"], 0)
             self.assertEqual(summary["categories"]["published"]["fetched"], 3)
+
+    def test_local_post_listing_returns_recent_readable_files(self):
+        with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
+            self.make_engine(fixture, temp).sync()
+
+            posts = collect_local_posts(Path(temp), category="drafts")
+
+            self.assertEqual(len(posts), 1)
+            self.assertEqual(posts[0]["title"], "Draft one")
+            self.assertTrue(posts[0]["readable_file"].endswith("drafts/10.md"))
+
+
+class ReadableBodyTests(unittest.TestCase):
+    def test_prosemirror_json_string_becomes_markdown(self):
+        document = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "He brought "},
+                        {
+                            "type": "text",
+                            "marks": [{"type": "em"}],
+                            "text": "roses",
+                        },
+                        {"type": "text", "text": "."},
+                    ],
+                },
+                {"type": "horizontal_rule"},
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": "I went home."}],
+                },
+            ],
+        }
+
+        title, markdown = find_readable(
+            {"draft_title": "Whole Foods Roses", "draft_body": json.dumps(document)}
+        )
+
+        self.assertEqual(title, "Whole Foods Roses")
+        self.assertIn("He brought *roses*.", markdown)
+        self.assertIn("---", markdown)
+        self.assertIn("I went home.", markdown)
 
 
 if __name__ == "__main__":

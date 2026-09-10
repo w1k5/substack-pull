@@ -1,90 +1,99 @@
 ---
 name: substack-pull
-description: Synchronize a Substack publication's drafts, scheduled posts, and published posts into a read-only incremental local backup on macOS. Use when the user asks to pull, back up, sync, inspect, or configure local Substack content. Do not use for publishing, editing, deleting, or subscriber management.
+description: Pull, back up, find, and inspect a Substack publication's drafts, scheduled posts, and published posts through a read-only incremental local sync on macOS. Use for requests about the newest or local version of Substack writing. Do not use for publishing, editing, deleting, or subscriber management.
 ---
 
 # Substack Pull
 
-Use the bundled CLI to maintain a lossless local copy of a publication without
-changing anything on Substack. The API is undocumented, so preserve the CLI's
-read-only boundary and report endpoint failures plainly.
+Use the bundled CLI to maintain and inspect a lossless local copy of a Substack
+publication. The API is undocumented; keep every operation read-only and report
+endpoint failures plainly.
 
-## Runtime
+## Default workflow
 
-Resolve `scripts/substack_pull.py` relative to this `SKILL.md` and invoke it with
-Python 3. Do not assume the skill's installation directory is the user's backup
-directory. Run from the user's chosen workspace or pass absolute `--config` and
-`--directory` paths.
-
-The workflow requires macOS because authentication uses macOS Keychain. The
-session cookie can be copied from Safari or Chromium DevTools. The same manual
-cookie-copy workflow applies to Google Chrome, Chromium, Brave, Microsoft Edge,
-and other Chromium-based browsers that expose `substack.sid`. It does not
-require an additional browser or Python package.
-
-## Safety invariants
-
-- Only use the bundled read-only commands: `auth`, `sync`, `status`,
-  `configure`, and `doctor`.
-- Never add publishing, scheduling, editing, deletion, subscriber, or settings
-  requests to the workflow.
-- Never ask the user to paste `connect.sid`, `substack.sid`, or its value into
-  chat, a prompt, a source file, an environment variable, or an agent-controlled
-  command.
-- Never print, inspect, or relay a value returned by macOS Keychain.
-- The user must paste the cookie directly into the interactive Keychain prompt
-  in their own terminal. It is expected that no characters appear while they
-  type or paste.
-- Treat downloaded drafts and scheduled posts as private. Never commit, upload,
-  quote, or summarize their contents unless the user explicitly asks.
-- Never delete local files because an item disappeared remotely. The CLI marks
-  it missing in the manifest and preserves the file.
-
-## Workflow
-
-1. Determine the public `*.substack.com` publication URL and the desired local
-   backup directory. A custom reader domain is not accepted because the session
-   credential must only be sent to Substack hosts.
-2. Resolve stable absolute paths for the config and backup. If the destination
-   is inside a Git worktree, verify it is ignored with `git check-ignore`. If it
-   is not ignored, prefer adding the exact directory to `.git/info/exclude`, or
-   ask before changing a tracked `.gitignore`.
-3. Run `doctor` before first-time setup.
-4. If authentication is not configured, give the user the `auth` command to run
-   in their own terminal. Explain how to copy only the cookie value: use
-   `connect.sid` from Safari Web Inspector under Storage > Cookies, or
-   `substack.sid` from Chromium DevTools under Application > Storage > Cookies.
-   Do not execute the interactive secret-entry step through an agent command.
-5. Run `sync`, then `status`. Report the absolute backup path and the per-category
-   fetched, unchanged, missing-preserved, and failure counts.
-
-Use commands shaped like:
+Resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
+from the user's workspace and pass the workspace's absolute config path. When a
+configured `.substack-pull.json` is present, pull immediately; do not run
+`doctor` or ask setup questions on every use.
 
 ```bash
-python3 /absolute/path/to/skill/scripts/substack_pull.py \
-  --config /absolute/path/to/.substack-pull.json doctor
+python3 /absolute/path/to/scripts/substack_pull.py \
+  --config /absolute/path/to/.substack-pull.json pull
+```
 
-python3 /absolute/path/to/skill/scripts/substack_pull.py \
+`pull` downloads only new or changed bodies and reports:
+
+- the absolute backup directory;
+- counts for every category; and
+- each fetched post's title, timestamp, JSON path, and readable Markdown path.
+
+`sync` remains an alias for `pull`. With the repository wrapper, running
+`./substack-pull` with no subcommand also pulls.
+
+## Finding writing
+
+When the user asks for a post, the newest version, or analysis of current
+writing, pull first. Then search the local index by title or post ID:
+
+```bash
+python3 /absolute/path/to/scripts/substack_pull.py \
+  --config /absolute/path/to/.substack-pull.json \
+  list --query "words from the title" --limit 10
+```
+
+Use `--category drafts`, `scheduled`, or `published` when the user specifies
+one. Results are newest first. Prefer the returned `readable_file`; it is a
+Markdown rendering of either Substack HTML or its ProseMirror document format.
+Open the lossless JSON only when exact structure or metadata matters. If the
+title is unknown, list recent posts without `--query`, then choose the newest
+plausible match or compare candidates.
+
+Downloaded drafts and scheduled posts are private. Read, quote, or summarize
+their contents only when the user asks about them.
+
+## First-time setup
+
+If no usable config exists, run `doctor` once. Determine the canonical public
+`*.substack.com` publication URL and the intended backup directory. A custom
+reader domain is not accepted because credentials are sent only to Substack
+hosts.
+
+Authentication requires macOS Keychain. Give the user an `auth` command to run
+in their own terminal; never execute the interactive secret-entry step for
+them. They must copy only the cookie value and paste it at the hidden Keychain
+prompt:
+
+- Safari: `connect.sid` under Web Inspector → Storage → Cookies.
+- Chrome, Chromium, Brave, or Edge: `substack.sid` under DevTools → Application
+  → Storage → Cookies.
+
+```bash
+python3 /absolute/path/to/scripts/substack_pull.py \
   --config /absolute/path/to/.substack-pull.json \
   auth --publication https://name.substack.com \
   --directory /absolute/path/to/substack-backup
-
-python3 /absolute/path/to/skill/scripts/substack_pull.py \
-  --config /absolute/path/to/.substack-pull.json sync
 ```
 
-The auth command stores the session in Keychain under the publication hostname.
-The config contains only the publication URL and directory.
+Never ask the user to paste the cookie into chat, a prompt, a file, an
+environment variable, or an agent-controlled command. Never print or inspect a
+value retrieved from Keychain.
 
-## Incremental behavior
+If the backup is inside a Git worktree, verify its exact directory is ignored.
+Prefer `.git/info/exclude` for a new local exclusion; ask before changing a
+tracked `.gitignore`.
 
-Every sync refreshes all three remote indexes. Draft and scheduled bodies are
-downloaded again when `draft_updated_at` changes; scheduling changes are also
-detected through `trigger_at`. Published bodies are fetched when new or when an
-editorial marker changes. Use `--refresh-published` only when the user requests
-a reconciliation or a published edit appears to be missing.
+## Safety and recovery
 
-On `401` or `403`, explain that the browser session expired and provide the auth
-command again. Do not remove the old Keychain item or local backup. On a
-publication/directory mismatch, choose a separate directory rather than
-overwriting another publication's manifest.
+- Use only the bundled read-only commands: `auth`, `pull`, `sync`, `list`,
+  `status`, `configure`, and `doctor`.
+- Never add publishing, scheduling, editing, deletion, subscriber, or settings
+  requests.
+- Never delete local files when an item disappears remotely. The manifest marks
+  it missing and preserves the backup.
+- On `401` or `403`, explain that the browser session expired and provide the
+  `auth` command again. Preserve the old Keychain item and local files.
+- On a publication/directory mismatch, choose a separate directory instead of
+  overwriting another publication's manifest.
+- Use `pull --refresh-published` only when the user requests reconciliation or
+  a published edit appears absent; normal pulls already detect new drafts,
+  scheduling changes, and exposed editorial changes.

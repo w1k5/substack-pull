@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -372,6 +374,198 @@ def item_id(item: dict[str, Any]) -> str:
     return str(value)
 
 
+def item_title(item: dict[str, Any]) -> str:
+    return str(
+        item.get("draft_title")
+        or item.get("title")
+        or item.get("slug")
+        or "Untitled"
+    )
+
+
+def item_subtitle(item: dict[str, Any]) -> str | None:
+    value = item.get("draft_subtitle") or item.get("subtitle")
+    return str(value) if value else None
+
+
+def item_updated_at(item: dict[str, Any]) -> str | None:
+    for key in (
+        "draft_updated_at",
+        "updated_at",
+        "trigger_at",
+        "published_at",
+        "publish_date",
+        "post_date",
+        "draft_created_at",
+    ):
+        value = item.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _marked_text(node: dict[str, Any]) -> str:
+    text = str(node.get("text", ""))
+    for mark in node.get("marks", []):
+        if not isinstance(mark, dict):
+            continue
+        mark_type = mark.get("type")
+        if mark_type == "link":
+            href = mark.get("attrs", {}).get("href")
+            if href:
+                text = f"[{text}]({href})"
+        elif mark_type in {"strong", "bold"}:
+            text = f"**{text}**"
+        elif mark_type in {"em", "italic"}:
+            text = f"*{text}*"
+        elif mark_type == "code":
+            text = f"`{text}`"
+    return text
+
+
+def render_prosemirror(node: Any) -> str:
+    """Render a Substack ProseMirror document as readable Markdown."""
+    if not isinstance(node, dict):
+        return ""
+    node_type = node.get("type")
+    if node_type == "text":
+        return _marked_text(node)
+    if node_type == "hardBreak":
+        return "\n"
+    if node_type == "horizontal_rule":
+        return "\n\n---\n\n"
+    if node_type in {"image", "image2"}:
+        attrs = node.get("attrs", {})
+        src = attrs.get("src")
+        if not src:
+            return ""
+        return f"![{attrs.get('alt') or ''}]({src})"
+
+    children = "".join(render_prosemirror(child) for child in node.get("content", []))
+    if node_type == "paragraph":
+        return children.rstrip() + "\n\n"
+    if node_type == "heading":
+        level = int(node.get("attrs", {}).get("level") or 2)
+        return f"{'#' * max(1, min(level, 6))} {children.strip()}\n\n"
+    if node_type == "blockquote":
+        body = children.strip()
+        return "\n".join(f"> {line}" for line in body.splitlines()) + "\n\n"
+    if node_type in {"bulletList", "orderedList"}:
+        rendered: list[str] = []
+        start = int(node.get("attrs", {}).get("start") or 1)
+        for index, child in enumerate(node.get("content", [])):
+            body = render_prosemirror(child).strip()
+            prefix = f"{start + index}. " if node_type == "orderedList" else "- "
+            lines = body.splitlines() or [""]
+            rendered.append(prefix + lines[0])
+            rendered.extend("  " + line for line in lines[1:])
+        return "\n".join(rendered) + "\n\n"
+    if node_type == "listItem":
+        return children.strip()
+    if node_type == "codeBlock":
+        language = node.get("attrs", {}).get("language") or ""
+        return f"```{language}\n{children.rstrip()}\n```\n\n"
+    if node_type in {"ctaCaption", "subscribeWidget"}:
+        return children.strip() + "\n\n" if children.strip() else ""
+    return children
+
+
+class _ReadableHTMLParser(HTMLParser):
+    """Small dependency-free HTML-to-readable-text converter."""
+
+    BLOCKS = {
+        "address",
+        "article",
+        "aside",
+        "blockquote",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "li",
+        "main",
+        "p",
+        "section",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self.BLOCKS:
+            self.parts.append("\n\n")
+        elif tag == "br":
+            self.parts.append("\n")
+        elif tag == "hr":
+            self.parts.append("\n\n---\n\n")
+        elif tag == "img":
+            values = dict(attrs)
+            if values.get("src"):
+                self.parts.append(f"![{values.get('alt') or ''}]({values['src']})")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.BLOCKS:
+            self.parts.append("\n\n")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    def markdown(self) -> str:
+        text = "".join(self.parts).replace("\r\n", "\n")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r" *\n *", "\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip() + "\n"
+
+
+def html_to_markdown(value: str) -> str:
+    parser = _ReadableHTMLParser()
+    parser.feed(value)
+    parser.close()
+    return parser.markdown()
+
+
+def readable_body(value: Any) -> str | None:
+    if isinstance(value, dict) and value.get("type") == "doc":
+        rendered = render_prosemirror(value).strip()
+        return rendered + "\n" if rendered else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    stripped = value.strip()
+    if stripped.startswith(("{", "[")):
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            decoded = None
+        rendered = readable_body(decoded)
+        if rendered:
+            return rendered
+    if re.search(r"<(?:p|div|h[1-6]|article|section|br|blockquote)\b", value, re.I):
+        return html_to_markdown(value)
+    return stripped + "\n"
+
+
+def find_readable(value: Any) -> tuple[str, str] | None:
+    """Find and render the first likely body in a nested Substack response."""
+    if not isinstance(value, dict):
+        return None
+    title = item_title(value)
+    for key in ("body_html", "draft_body", "draft_body_html", "body"):
+        rendered = readable_body(value.get(key))
+        if rendered:
+            return title, rendered
+    for nested_key in ("post", "draft"):
+        found = find_readable(value.get(nested_key))
+        if found:
+            return found
+    return None
+
+
 def find_html(value: Any) -> tuple[str, str] | None:
     """Find the first likely HTML body and title in a nested response."""
     if not isinstance(value, dict):
@@ -478,13 +672,29 @@ class SyncEngine:
                 self.output_dir / category / f"{post_id}.html",
                 html_document(title, body),
             )
+        self._write_readable_companion(category, post_id, content)
         return relative.as_posix()
+
+    def _write_readable_companion(
+        self,
+        category: str,
+        post_id: str,
+        content: Any,
+    ) -> Path | None:
+        readable = find_readable(content)
+        if readable:
+            title, body = readable
+            path = self.output_dir / category / f"{post_id}.md"
+            atomic_write_text(path, f"# {title}\n\n{body.lstrip()}")
+            return path
+        return None
 
     def sync(self, *, refresh_published: bool = False) -> dict[str, Any]:
         state = self._load_state()
         synced_at = self.now()
         summary: dict[str, Any] = {
             "publication": self.api.base_url,
+            "directory": str(self.output_dir.resolve()),
             "synced_at": synced_at,
             "categories": {},
             "errors": [],
@@ -502,6 +712,8 @@ class SyncEngine:
             category_state = state["categories"].setdefault(category, {})
             seen: set[str] = set()
             fetched = 0
+            fetched_items: list[dict[str, Any]] = []
+            readable_backfilled = 0
             unchanged = 0
             failures = 0
             for list_item in items:
@@ -544,10 +756,32 @@ class SyncEngine:
                         "remote_status": "present",
                     }
                     fetched += 1
+                    readable_file = self.output_dir / category / f"{post_id}.md"
+                    fetched_item: dict[str, Any] = {
+                        "id": post_id,
+                        "title": item_title(list_item),
+                        "updated_at": item_updated_at(list_item),
+                        "file": str((self.output_dir / relative_file).resolve()),
+                    }
+                    if readable_file.is_file():
+                        fetched_item["readable_file"] = str(readable_file.resolve())
+                    fetched_items.append(fetched_item)
                 else:
                     previous["last_seen_at"] = synced_at
                     previous["remote_status"] = "present"
                     previous.pop("missing_since", None)
+                    markdown_path = self.output_dir / category / f"{post_id}.md"
+                    if not markdown_path.is_file():
+                        envelope = read_json(
+                            self.output_dir / str(previous.get("file", "")),
+                            None,
+                        )
+                        if isinstance(envelope, dict) and self._write_readable_companion(
+                            category,
+                            post_id,
+                            envelope.get("content"),
+                        ):
+                            readable_backfilled += 1
                     unchanged += 1
 
             missing = 0
@@ -560,6 +794,8 @@ class SyncEngine:
             summary["categories"][category] = {
                 "remote": len(items),
                 "fetched": fetched,
+                "fetched_items": fetched_items,
+                "readable_backfilled": readable_backfilled,
                 "unchanged": unchanged,
                 "missing_local_preserved": missing,
                 "failures": failures,
@@ -572,6 +808,71 @@ class SyncEngine:
 
 def config_path_from(args: argparse.Namespace) -> Path:
     return Path(args.config).expanduser().resolve()
+
+
+def resolve_output_dir(
+    config_path: Path,
+    config: dict[str, Any],
+    directory_override: str | None = None,
+) -> Path:
+    directory_value = directory_override or config.get("directory", DEFAULT_OUTPUT)
+    output_dir = Path(str(directory_value)).expanduser()
+    if not output_dir.is_absolute():
+        output_dir = config_path.parent / output_dir
+    return output_dir.resolve()
+
+
+def collect_local_posts(
+    output_dir: Path,
+    *,
+    category: str | None = None,
+    include_missing: bool = False,
+) -> list[dict[str, Any]]:
+    state_path = output_dir / ".sync" / "state.json"
+    state = read_json(state_path, None)
+    if state is None:
+        raise PullError(f"No sync state exists at {state_path}. Run pull first.")
+    categories = state.get("categories", {})
+    category_names = [category] if category else list(CATEGORY_ENDPOINTS)
+    posts: list[dict[str, Any]] = []
+    for category_name in category_names:
+        entries = categories.get(category_name, {})
+        if not isinstance(entries, dict):
+            continue
+        for post_id, entry in entries.items():
+            if not isinstance(entry, dict):
+                continue
+            remote_status = entry.get("remote_status", "present")
+            if remote_status == "missing" and not include_missing:
+                continue
+            relative_file = entry.get("file")
+            if not relative_file:
+                continue
+            file_path = (output_dir / str(relative_file)).resolve()
+            envelope = read_json(file_path, None)
+            if not isinstance(envelope, dict):
+                continue
+            source = envelope.get("source", {})
+            if not isinstance(source, dict):
+                source = {}
+            markdown_path = file_path.with_suffix(".md")
+            result: dict[str, Any] = {
+                "category": category_name,
+                "id": str(post_id),
+                "title": item_title(source),
+                "subtitle": item_subtitle(source),
+                "updated_at": item_updated_at(source) or entry.get("last_fetched_at"),
+                "remote_status": remote_status,
+                "file": str(file_path),
+            }
+            if markdown_path.is_file():
+                result["readable_file"] = str(markdown_path)
+            posts.append(result)
+    posts.sort(
+        key=lambda post: (str(post.get("updated_at") or ""), str(post.get("id") or "")),
+        reverse=True,
+    )
+    return posts
 
 
 def command_auth(args: argparse.Namespace) -> int:
@@ -605,10 +906,7 @@ def command_sync(args: argparse.Namespace) -> int:
     config_path = config_path_from(args)
     config = load_config(config_path, args.publication)
     publication = config["publication"]
-    directory_value = args.directory or config.get("directory", DEFAULT_OUTPUT)
-    output_dir = Path(directory_value).expanduser()
-    if not output_dir.is_absolute():
-        output_dir = (config_path.parent / output_dir).resolve()
+    output_dir = resolve_output_dir(config_path, config, args.directory)
 
     token = KeychainStore().get(host_for(publication))
     api = ApiClient(
@@ -628,16 +926,14 @@ def command_sync(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     config_path = config_path_from(args)
     config = load_config(config_path, args.publication)
-    directory_value = args.directory or config.get("directory", DEFAULT_OUTPUT)
-    output_dir = Path(directory_value).expanduser()
-    if not output_dir.is_absolute():
-        output_dir = (config_path.parent / output_dir).resolve()
+    output_dir = resolve_output_dir(config_path, config, args.directory)
     state_path = output_dir / ".sync" / "state.json"
     state = read_json(state_path, None)
     if state is None:
         raise PullError(f"No sync state exists at {state_path}. Run sync first.")
     result = {
         "publication": state.get("publication"),
+        "directory": str(output_dir),
         "last_sync_at": state.get("last_sync_at"),
         "categories": {},
     }
@@ -649,6 +945,41 @@ def command_status(args: argparse.Namespace) -> int:
             "present": present,
             "missing_local_preserved": missing,
         }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_list(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    config = load_config(config_path, args.publication)
+    output_dir = resolve_output_dir(config_path, config, args.directory)
+    if args.limit < 1:
+        raise PullError("--limit must be at least 1.")
+    category = None if args.category == "all" else args.category
+    posts = collect_local_posts(
+        output_dir,
+        category=category,
+        include_missing=args.include_missing,
+    )
+    if args.query:
+        needle = args.query.casefold()
+        posts = [
+            post
+            for post in posts
+            if needle
+            in " ".join(
+                str(post.get(key) or "")
+                for key in ("title", "subtitle", "id", "category")
+            ).casefold()
+        ]
+    posts = posts[: args.limit]
+    result = {
+        "publication": config["publication"],
+        "directory": str(output_dir),
+        "query": args.query,
+        "count": len(posts),
+        "items": posts,
+    }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -680,7 +1011,12 @@ def command_doctor(args: argparse.Namespace) -> int:
             config = load_config(config_path, args.publication)
             account = host_for(config["publication"])
             report["publication"] = config["publication"]
+            output_dir = resolve_output_dir(config_path, config)
+            report["directory"] = str(output_dir)
+            report["sync_state_exists"] = (output_dir / ".sync" / "state.json").is_file()
             report["keychain_session_present"] = KeychainStore().exists(account)
+            if not report["keychain_session_present"]:
+                healthy = False
         except PullError as exc:
             report["config_error"] = str(exc)
             healthy = False
@@ -712,20 +1048,28 @@ def build_parser() -> argparse.ArgumentParser:
     auth.add_argument("--request-delay", type=float, default=0.25)
     auth.set_defaults(handler=command_auth)
 
-    sync = subparsers.add_parser("sync", help="pull new and changed content")
-    sync.add_argument("--publication", help="override configured publication")
-    sync.add_argument(
-        "-d",
-        "--directory",
-        "--output",
-        dest="directory",
-        help="override configured content directory for this sync",
+    def add_pull_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument("--publication", help="override configured publication")
+        command.add_argument(
+            "-d",
+            "--directory",
+            "--output",
+            dest="directory",
+            help="override configured content directory for this pull",
+        )
+        command.add_argument("--refresh-published", action="store_true")
+        command.add_argument("--page-limit", type=int, default=50)
+        command.add_argument("--request-delay", type=float, default=0.25)
+        command.add_argument("--timeout", type=float, default=30.0)
+        command.set_defaults(handler=command_sync)
+
+    pull = subparsers.add_parser(
+        "pull", help="pull content and report exactly which posts changed"
     )
-    sync.add_argument("--refresh-published", action="store_true")
-    sync.add_argument("--page-limit", type=int, default=50)
-    sync.add_argument("--request-delay", type=float, default=0.25)
-    sync.add_argument("--timeout", type=float, default=30.0)
-    sync.set_defaults(handler=command_sync)
+    add_pull_arguments(pull)
+
+    sync = subparsers.add_parser("sync", help="alias for pull")
+    add_pull_arguments(sync)
 
     status = subparsers.add_parser("status", help="show local sync state")
     status.add_argument("--publication", help="override configured publication")
@@ -737,6 +1081,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="override configured content directory",
     )
     status.set_defaults(handler=command_status)
+
+    list_posts = subparsers.add_parser(
+        "list", help="find recent posts in the local backup"
+    )
+    list_posts.add_argument("--publication", help="override configured publication")
+    list_posts.add_argument(
+        "-d",
+        "--directory",
+        "--output",
+        dest="directory",
+        help="override configured content directory",
+    )
+    list_posts.add_argument("--query", help="case-insensitive title or ID search")
+    list_posts.add_argument(
+        "--category",
+        choices=("all", "drafts", "scheduled", "published"),
+        default="all",
+    )
+    list_posts.add_argument("--limit", type=int, default=20)
+    list_posts.add_argument("--include-missing", action="store_true")
+    list_posts.set_defaults(handler=command_list)
 
     configure = subparsers.add_parser(
         "configure", help="change publication or default content directory"
@@ -760,7 +1125,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
+    if not raw_args:
+        raw_args = ["pull"]
+    args = parser.parse_args(raw_args)
     try:
         return int(args.handler(args))
     except PullError as exc:
