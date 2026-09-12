@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Read-only, incremental Substack backup CLI.
 
-The CLI uses Substack's undocumented dashboard API. Authentication is stored in
-the macOS Keychain; the session value is never written to the project directory.
+Authenticated pulls use Substack's undocumented dashboard API. Public pulls use
+only anonymously accessible archive and post endpoints and never send a session
+cookie. Authentication is stored in the macOS Keychain; the session value is
+never written to the project directory.
 """
 
 from __future__ import annotations
@@ -251,14 +253,15 @@ class ApiClient:
     def __init__(
         self,
         base_url: str,
-        session_token: str,
+        session_token: str | None = None,
         *,
         timeout: float = 30.0,
         request_delay: float = 0.25,
         opener: Callable[..., Any] | None = None,
     ):
         self.base_url = normalize_publication(base_url)
-        require_substack_host(self.base_url)
+        if session_token is not None:
+            require_substack_host(self.base_url)
         self.session_token = session_token
         self.timeout = timeout
         self.request_delay = max(0.0, request_delay)
@@ -275,14 +278,15 @@ class ApiClient:
         if not path.startswith("/"):
             raise PullError(f"API path must start with '/': {path}")
         url = self.base_url + path
-        headers = {
+        headers: dict[str, str] = {
             "Accept": "application/json",
-            "Cookie": (
-                f"connect.sid={self.session_token}; "
-                f"substack.sid={self.session_token}"
-            ),
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) substack-pull/1",
         }
+        if self.session_token is not None:
+            headers["Cookie"] = (
+                f"connect.sid={self.session_token}; "
+                f"substack.sid={self.session_token}"
+            )
         last_error: Exception | None = None
         for attempt in range(3):
             self._throttle()
@@ -298,11 +302,17 @@ class ApiClient:
             except urllib.error.HTTPError as exc:
                 self._last_request_at = time.monotonic()
                 if exc.code in {401, 403}:
-                    raise PullError(
-                        "Substack rejected the stored session. Re-copy connect.sid from "
-                        "Safari or substack.sid from Chromium DevTools, then run "
-                        "'./substack-pull auth' again."
-                    ) from exc
+                    if self.session_token is None:
+                        raise PullError(
+                            "Substack denied anonymous access to this public endpoint. "
+                            "The publication may be private, restricted, or unavailable."
+                        ) from exc
+                    else:
+                        raise PullError(
+                            "Substack rejected the stored session. Re-copy connect.sid "
+                            "from Safari or substack.sid from Chromium DevTools, then "
+                            "run './substack-pull auth' again."
+                        ) from exc
                 if exc.code == 429 or 500 <= exc.code < 600:
                     last_error = exc
                     if attempt < 2:
@@ -356,6 +366,46 @@ def paginate_posts(
             raise PullError(f"Unexpected response shape from {path}.")
         if not isinstance(posts, list) or any(not isinstance(item, dict) for item in posts):
             raise PullError(f"Unexpected posts list from {path}.")
+        collected.extend(posts)
+        offset += len(posts)
+        if not posts:
+            break
+        if isinstance(total, int) and offset >= total:
+            break
+        if len(posts) < limit:
+            break
+    return collected
+
+
+def paginate_public_posts(
+    api: ApiClient,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List only posts exposed by a publication's anonymous public archive."""
+    offset = 0
+    collected: list[dict[str, Any]] = []
+    while True:
+        endpoint = query_path(
+            "/api/v1/archive",
+            {
+                "sort": "new",
+                "search": "",
+                "offset": offset,
+                "limit": limit,
+            },
+        )
+        payload = api.get_json(endpoint)
+        if isinstance(payload, dict):
+            posts = payload.get("posts", [])
+            total = payload.get("total")
+        elif isinstance(payload, list):
+            posts = payload
+            total = None
+        else:
+            raise PullError("Unexpected response shape from /api/v1/archive.")
+        if not isinstance(posts, list) or any(not isinstance(item, dict) for item in posts):
+            raise PullError("Unexpected posts list from /api/v1/archive.")
         collected.extend(posts)
         offset += len(posts)
         if not posts:
@@ -609,11 +659,13 @@ class SyncEngine:
         output_dir: Path,
         *,
         page_limit: int = 50,
+        public_only: bool = False,
         now: Callable[[], str] = utc_now,
     ):
         self.api = api
         self.output_dir = output_dir
         self.page_limit = page_limit
+        self.public_only = public_only
         self.now = now
         self.state_path = output_dir / ".sync" / "state.json"
 
@@ -695,6 +747,7 @@ class SyncEngine:
         summary: dict[str, Any] = {
             "publication": self.api.base_url,
             "directory": str(self.output_dir.resolve()),
+            "mode": "public" if self.public_only else "authenticated",
             "synced_at": synced_at,
             "categories": {},
             "errors": [],
@@ -702,11 +755,16 @@ class SyncEngine:
 
         # Fetch every index before changing the manifest. A list failure should
         # not make untouched remote items appear missing.
-        indexes: dict[str, list[dict[str, Any]]] = {}
-        for category, (path, order_by) in CATEGORY_ENDPOINTS.items():
-            indexes[category] = paginate_posts(
-                self.api, path, order_by, limit=self.page_limit
-            )
+        if self.public_only:
+            indexes = {
+                "published": paginate_public_posts(self.api, limit=self.page_limit)
+            }
+        else:
+            indexes: dict[str, list[dict[str, Any]]] = {}
+            for category, (path, order_by) in CATEGORY_ENDPOINTS.items():
+                indexes[category] = paginate_posts(
+                    self.api, path, order_by, limit=self.page_limit
+                )
 
         for category, items in indexes.items():
             category_state = state["categories"].setdefault(category, {})
@@ -908,14 +966,28 @@ def command_sync(args: argparse.Namespace) -> int:
     publication = config["publication"]
     output_dir = resolve_output_dir(config_path, config, args.directory)
 
-    token = KeychainStore().get(host_for(publication))
-    api = ApiClient(
-        publication,
-        token,
-        request_delay=args.request_delay,
-        timeout=args.timeout,
+    if args.page_limit < 1:
+        raise PullError("--page-limit must be at least 1.")
+    if args.public:
+        api = ApiClient(
+            publication,
+            request_delay=args.request_delay,
+            timeout=args.timeout,
+        )
+    else:
+        token = KeychainStore().get(host_for(publication))
+        api = ApiClient(
+            publication,
+            token,
+            request_delay=args.request_delay,
+            timeout=args.timeout,
+        )
+    engine = SyncEngine(
+        api,
+        output_dir,
+        page_limit=args.page_limit,
+        public_only=args.public,
     )
-    engine = SyncEngine(api, output_dir, page_limit=args.page_limit)
     summary = engine.sync(refresh_published=args.refresh_published)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if summary["errors"]:
@@ -1056,6 +1128,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--output",
             dest="directory",
             help="override configured content directory for this pull",
+        )
+        command.add_argument(
+            "--public",
+            action="store_true",
+            help="pull only anonymously visible published posts; do not use a session",
         )
         command.add_argument("--refresh-published", action="store_true")
         command.add_argument("--page-limit", type=int, default=50)

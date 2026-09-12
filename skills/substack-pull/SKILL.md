@@ -1,15 +1,20 @@
 ---
 name: substack-pull
-description: Pull, back up, find, and inspect a Substack publication's drafts, scheduled posts, and published posts through a read-only incremental local sync on macOS. Use for requests about the newest or local version of Substack writing. Do not use for publishing, editing, deleting, or subscriber management.
+description: Pull, back up, find, and inspect any Substack publication's public posts without authentication, or an authorized publication's drafts, scheduled posts, and published posts through a read-only incremental local sync on macOS. Use for requests about public Substack posts or the newest local version of Substack writing. Do not use for publishing, editing, deleting, paywall bypass, or subscriber management.
 ---
 
 # Substack Pull
 
-Use the bundled CLI to maintain and inspect a lossless local copy of a Substack
+Use the bundled CLI to maintain and inspect a local copy of a Substack
 publication. The API is undocumented; keep every operation read-only and report
-endpoint failures plainly.
+endpoint failures plainly. Choose between these modes:
 
-## Default workflow
+- For another publication's anonymously visible posts, use public mode. It never
+  reads or sends a session cookie and syncs only the public archive.
+- For a publication the user owns or edits, use authenticated mode to include
+  drafts and scheduled posts as well as published posts.
+
+## Authenticated workflow
 
 Resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
 from the user's workspace and pass the workspace's absolute config path. When a
@@ -30,10 +35,34 @@ python3 /absolute/path/to/scripts/substack_pull.py \
 `sync` remains an alias for `pull`. With the repository wrapper, running
 `./substack-pull` with no subcommand also pulls.
 
+## Public published-post workflow
+
+For a public publication that the user does not own, pass `--public`, the
+publication URL, and a separate backup directory. Do this immediately; public
+mode needs neither `doctor` nor `auth` and must not access Keychain.
+
+```bash
+python3 /absolute/path/to/scripts/substack_pull.py \
+  --config /absolute/path/to/.substack-pull.json \
+  pull --public \
+  --publication https://name.substack.com \
+  --directory /absolute/path/to/name-substack
+```
+
+Public mode downloads only items listed in Substack's anonymous public archive
+and stores only the body returned to an anonymous request. Never use credentials
+to expand public-mode access or work around a subscription, paywall, invitation,
+geoblock, or other restriction. It is lossless for the response Substack exposes,
+but it may contain only a preview when that is all the public endpoint returns.
+
+Use `--refresh-published` when the user requests a full reconciliation or a body
+edit is not detected from archive metadata. Normal public pulls are incremental.
+
 ## Finding writing
 
 When the user asks for a post, the newest version, or analysis of current
-writing, pull first. Then search the local index by title or post ID:
+writing, pull first in the matching public or authenticated mode. Then search
+the local index by title or post ID:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_pull.py \
@@ -53,10 +82,10 @@ their contents only when the user asks about them.
 
 ## First-time setup
 
-If no usable config exists, run `doctor` once. Determine the canonical public
-`*.substack.com` publication URL and the intended backup directory. A custom
-reader domain is not accepted because credentials are sent only to Substack
-hosts.
+This setup applies only to authenticated mode. If no usable config exists, run
+`doctor` once. Determine the canonical public `*.substack.com` publication URL
+and the intended backup directory. A custom reader domain is not accepted
+because credentials are sent only to Substack hosts.
 
 Authentication requires macOS Keychain. Give the user an `auth` command to run
 in their own terminal; never execute the interactive secret-entry step for
@@ -85,7 +114,9 @@ tracked `.gitignore`.
 ## Safety and recovery
 
 - Use only the bundled read-only commands: `auth`, `pull`, `sync`, `list`,
-  `status`, `configure`, and `doctor`.
+  `status`, `configure`, and `doctor`. Public mode is `pull --public` or
+  `sync --public`.
+- In public mode, never retrieve a Keychain session or send a `Cookie` header.
 - Never add publishing, scheduling, editing, deletion, subscriber, or settings
   requests.
 - Never delete local files when an item disappears remotely. The manifest marks

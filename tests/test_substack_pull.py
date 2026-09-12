@@ -22,6 +22,7 @@ from substack_pull import (
     find_readable,
     load_config,
     normalize_publication,
+    paginate_public_posts,
     require_substack_host,
     save_config,
 )
@@ -80,6 +81,12 @@ class MockHandler(BaseHTTPRequestHandler):
             "/api/v1/post_management/scheduled": self.server.state.scheduled,
             "/api/v1/post_management/published": self.server.state.published,
         }
+        if path == "/api/v1/archive":
+            items = self.server.state.published
+            offset = int(query.get("offset", [0])[0])
+            limit = int(query.get("limit", [50])[0])
+            self.send_json(items[offset : offset + limit])
+            return
         if path in lists:
             items = lists[path]
             offset = int(query.get("offset", [0])[0])
@@ -174,6 +181,13 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(legacy.directory, "/old/name")
         self.assertEqual(short.directory, "/short")
 
+    def test_pull_accepts_public_mode(self):
+        args = build_parser().parse_args(
+            ["pull", "--public", "--publication", "writer.substack.com"]
+        )
+        self.assertTrue(args.public)
+        self.assertEqual(args.publication, "writer.substack.com")
+
     def test_list_command_accepts_search_and_category(self):
         args = build_parser().parse_args(
             ["list", "--query", "roses", "--category", "drafts", "--limit", "3"]
@@ -220,6 +234,50 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(
                 fixture.state.cookies[-1],
                 "connect.sid=browser-session; substack.sid=browser-session",
+            )
+
+    def test_public_client_never_sends_a_cookie(self):
+        with ServerFixture() as fixture:
+            api = ApiClient(fixture.url, request_delay=0)
+
+            paginate_public_posts(api, limit=2)
+
+            self.assertTrue(fixture.state.cookies)
+            self.assertEqual(set(fixture.state.cookies), {None})
+
+    def test_public_sync_fetches_only_public_published_posts(self):
+        with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
+            api = ApiClient(fixture.url, request_delay=0)
+            engine = SyncEngine(
+                api,
+                Path(temp),
+                page_limit=2,
+                public_only=True,
+                now=lambda: "2026-08-29T12:00:00Z",
+            )
+
+            summary = engine.sync()
+
+            self.assertEqual(summary["mode"], "public")
+            self.assertEqual(set(summary["categories"]), {"published"})
+            self.assertEqual(summary["categories"]["published"]["fetched"], 3)
+            self.assertTrue((Path(temp) / "published" / "32.json").is_file())
+            self.assertTrue((Path(temp) / "published" / "32.md").is_file())
+            self.assertTrue(
+                all(cookie is None for cookie in fixture.state.cookies)
+            )
+            self.assertFalse(
+                any("post_management" in request for request in fixture.state.requests)
+            )
+            self.assertFalse(
+                any("/drafts/" in request for request in fixture.state.requests)
+            )
+
+            fixture.state.requests.clear()
+            second = engine.sync()
+            self.assertEqual(second["categories"]["published"]["fetched"], 0)
+            self.assertFalse(
+                any("/posts/by-id/" in request for request in fixture.state.requests)
             )
 
     def test_first_sync_paginates_and_writes_all_categories(self):
