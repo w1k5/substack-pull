@@ -419,10 +419,50 @@ def authored_note(item: Any, profile_id: str) -> dict[str, Any] | None:
     return note
 
 
+_VOLATILE_FEED_KEYS = {
+    "autotranslate_to",
+    "impression_id",
+    "reaction",
+    "restacked",
+    "trackingParameters",
+    "userStatus",
+}
+
+_NESTED_ENGAGEMENT_KEYS = {
+    "child_comment_count",
+    "children_count",
+    "comment_count",
+    "reaction_count",
+    "reactions",
+    "restacks",
+}
+
+
+def _stable_feed_value(value: Any, *, drop_engagement: bool) -> Any:
+    """Remove per-request and nested engagement data from fingerprint inputs."""
+    if isinstance(value, dict):
+        return {
+            key: _stable_feed_value(item, drop_engagement=drop_engagement)
+            for key, item in value.items()
+            if key not in _VOLATILE_FEED_KEYS
+            and (not drop_engagement or key not in _NESTED_ENGAGEMENT_KEYS)
+        }
+    if isinstance(value, list):
+        return [
+            _stable_feed_value(item, drop_engagement=drop_engagement)
+            for item in value
+        ]
+    return value
+
+
 def note_content_fingerprint(note: dict[str, Any]) -> str:
     return digest(
         {
-            key: note.get(key)
+            key: (
+                _stable_feed_value(note.get(key), drop_engagement=True)
+                if key == "attachments"
+                else note.get(key)
+            )
             for key in (
                 "id",
                 "user_id",
@@ -438,10 +478,20 @@ def note_content_fingerprint(note: dict[str, Any]) -> str:
 
 
 def note_snapshot_fingerprint(item: dict[str, Any]) -> str:
+    comment = item.get("comment")
+    stable_comment = _stable_feed_value(comment, drop_engagement=False)
+    if isinstance(comment, dict) and isinstance(stable_comment, dict):
+        stable_comment["attachments"] = _stable_feed_value(
+            comment.get("attachments"), drop_engagement=True
+        )
     return digest(
         {
-            key: item.get(key)
-            for key in ("comment", "context", "post", "publication")
+            "comment": stable_comment,
+            "context": _stable_feed_value(item.get("context"), drop_engagement=True),
+            "post": _stable_feed_value(item.get("post"), drop_engagement=True),
+            "publication": _stable_feed_value(
+                item.get("publication"), drop_engagement=True
+            ),
         }
     )
 

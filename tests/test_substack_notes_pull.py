@@ -256,6 +256,20 @@ class SyncTests(unittest.TestCase):
                 any("cursor=page-two" in request for request in fixture.state.requests)
             )
 
+    def test_incremental_pull_ignores_volatile_attachment_tracking(self):
+        with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
+            attachment = fixture.state.page_one[0]["comment"]["attachments"][0]
+            attachment["trackingParameters"] = {"impression_id": "first-request"}
+            engine = self.engine(fixture, temp)
+            engine.sync()
+            attachment["trackingParameters"]["impression_id"] = "second-request"
+
+            summary = engine.sync()
+
+            self.assertEqual(summary["pages"], 1)
+            self.assertEqual(summary["updated"], 0)
+            self.assertEqual(summary["unchanged"], 1)
+
     def test_new_note_is_pulled_and_older_edit_waits_for_refresh(self):
         with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
             engine = self.engine(fixture, temp)
