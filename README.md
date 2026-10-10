@@ -1,5 +1,9 @@
 # substack-pull
 
+Looking for the Notes-only companion? See
+[`SUBSTACK_NOTES_PULL.md`](SUBSTACK_NOTES_PULL.md) and run
+`./substack-notes-pull`.
+
 A read-only, incremental local backup of Substack drafts, scheduled posts, and
 published posts. It uses the same undocumented JSON endpoints as Substack's
 writer dashboard.

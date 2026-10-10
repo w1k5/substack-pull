@@ -1,0 +1,4 @@
+interface:
+  display_name: "Substack Notes Pull"
+  short_description: "Pull and search public Substack Notes"
+  default_prompt: "Use $substack-notes-pull to pull this profile's public Notes and help me find or analyze them."
