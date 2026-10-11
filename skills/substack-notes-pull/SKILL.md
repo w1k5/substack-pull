@@ -1,87 +1,134 @@
 ---
 name: substack-notes-pull
-description: Pull, back up, search, and rank the public Notes authored by a Substack profile through a read-only incremental local sync. Use for requests about a profile's Notes or popular Note history. Do not use for posts, replies, private content, publishing, reactions, or account management.
+description: Pull and inspect an account's draft and scheduled Substack Notes, generate a rolling schedule runway, and explicitly schedule or reschedule a Note. Use for Note drafts, scheduled Notes, schedule density, spacing, and future allocation. Also supports published Note history when explicitly requested. Do not use for publication posts, immediate publishing, body editing, deleting, replies, reactions, or account management.
 ---
 
 # Substack Notes Pull
 
-Use the bundled CLI to maintain and inspect a local copy of the public,
-top-level Notes authored by a Substack profile. It uses an undocumented public
-feed endpoint, so keep every operation read-only and report endpoint changes
-plainly.
+Use the bundled read-only CLI for Substack Notes. Resolve
+`scripts/substack_notes_pull.py` relative to this file and use the workspace's
+absolute config path.
 
-Resolve `scripts/substack_notes_pull.py` relative to this file. No login,
-browser cookie, Keychain entry, or Python package is required. Never request or
-retrieve authentication for this workflow.
+## Normal workflow
 
-## Pull Notes
-
-When a usable `.substack-notes-pull.json` already exists in the workspace, pull
-immediately:
+Pull all draft and scheduled Notes:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py \
   --config /absolute/path/to/.substack-notes-pull.json pull
 ```
 
-For a one-off public profile, provide a handle or profile URL and a separate
-directory:
+This single command also rebuilds:
+
+- `notes.md`, with every Note labeled `Scheduled` or `Draft`;
+- `note-runway.html`, a self-contained planning view for the next 90 days;
+- lossless JSON and readable Markdown in `note-scheduled/` and `note-drafts/`.
+
+The pull reads `GET https://substack.com/api/v1/feed/drafts?limit=20` and follows
+the cursor until every item is collected. Treat a Note with `trigger_at` as
+scheduled; otherwise treat it as a draft. Always sort scheduled Notes by
+`trigger_at`. Sort drafts by their most recent edit or creation time.
+
+To rebuild the visual from the local files without contacting Substack:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py \
   --config /absolute/path/to/.substack-notes-pull.json \
-  pull --profile @handle \
-  --directory /absolute/path/to/handle-notes
+  visualize --days 90 --minimum-spacing 3
 ```
 
-The first pull scans the complete history. It checkpoints after every page and
-resumes an interrupted initial crawl on the next run. Later pulls stop after a
-safe overlap with unchanged local Notes while still updating engagement counts
-for the pages they visit. Use `pull --refresh` for a complete reconciliation of
-older edits or removals.
+The runway places scheduled Notes on the calendar and shows drafts only as a
+backlog count. It marks same-day clusters, totals each week's load, and suggests
+openings that respect the selected 2/3/4-day spacing. Clicking a numbered day
+shows the scheduled Notes in time order beneath that day's summary, including
+their times, IDs, and text. Draft bodies remain outside the runway.
 
-The puller ignores posts, replies, and restacks of other people's Notes. Each
-authored Note is saved as lossless JSON plus readable Markdown. Items absent
-during a completed refresh are marked missing in the manifest and never deleted
-locally.
-
-## Configure a Default
+List the pulled Notes when a text view is more useful:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py \
   --config /absolute/path/to/.substack-notes-pull.json \
-  configure --profile @handle \
-  --directory /absolute/path/to/handle-notes
+  list --status all --limit 1000
 ```
 
-The config contains only the public profile handle and local directory.
+## Schedule changes
 
-## Find or Rank Notes
+Substack's editor updates both draft and scheduled Notes with:
 
-Pull before analyzing current Notes, then query the local copy:
+```text
+PATCH https://substack.com/api/v1/feed/comment/{note_id}
+```
+
+The JSON request preserves the complete `bodyJson`, reply role, and attachment
+IDs while setting `trigger_at` to an ISO UTC timestamp. A draft becomes
+scheduled when it receives a future `trigger_at`; an already scheduled Note is
+rescheduled by changing that value.
+
+Preview a change first. This fetches the current remote Note but does not write:
+
+```bash
+./substack-notes-pull schedule NOTE_ID --at "2026-10-30 09:30"
+```
+
+A time without an offset uses the configured time zone. Only after the user has
+explicitly approved that Note and time, send the change with `--apply`:
+
+```bash
+./substack-notes-pull schedule NOTE_ID --at "2026-10-30 09:30" --apply
+```
+
+The command refreshes the local Notes, overview, and runway after a successful
+request and verifies that Substack returned the requested timestamp. Never use
+`--apply` speculatively or for a batch the user has not approved.
+
+## Authentication
+
+Reuse the session already stored by `substack-pull`. Both tools read the same
+Keychain item; never ask the user to authenticate twice. The Notes puller finds
+the publication host in the workspace's `.substack-pull.json` automatically.
+
+If no shared session exists, tell the user to authenticate through
+`substack-pull` in their own terminal:
+
+```bash
+./substack-pull auth
+```
+
+The user copies only the cookie value into the hidden macOS Keychain prompt:
+
+- Safari: `connect.sid` under Web Inspector → Storage → Cookies.
+- Chrome, Chromium, Brave, or Edge: `substack.sid` under DevTools → Application
+  → Storage → Cookies.
+
+Never ask the user to paste the cookie into chat, a file, an environment
+variable, or an agent-controlled command. Never print or inspect a value read
+from Keychain. If the output directory is inside Git, verify that exact
+directory is ignored before pulling.
+
+## Published Note history
+
+Only when the user explicitly asks for already-published Notes, prefix the
+command with `public` and keep that history in a separate directory:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py \
   --config /absolute/path/to/.substack-notes-pull.json \
-  list --query "words in the note" --limit 20
-
-python3 /absolute/path/to/scripts/substack_notes_pull.py \
-  --config /absolute/path/to/.substack-notes-pull.json \
-  list --sort reactions --limit 50
+  public pull --profile @handle --directory /absolute/path/to/published-notes
 ```
 
-Sorting options are `recent`, `reactions`, `restacks`, and `replies`. Prefer the
-returned `readable_file` for prose analysis and the JSON file when exact
-attachments or metadata matter.
+Public history is anonymous and ignores posts, replies, and restacks of other
+people's Notes. Use `public pull --refresh` for a full reconciliation.
 
-## Safety and Recovery
+## Safety and recovery
 
-- Use only `pull`, `sync`, `list`, `status`, `configure`, and `doctor`.
-- Never add a cookie or authorization header, or use credentials to expand what
-  the public endpoint exposes.
-- Never add publishing, replying, reacting, following, deletion, subscriber, or
-  settings requests.
-- Treat `401`/`403` as a public-access restriction, not an authentication task.
-- On repeated `429` or server errors, keep the checkpoint and report that the
-  next pull will resume.
-- Choose a separate directory when the manifest belongs to another profile.
+- Keep all operations read-only except the explicit `schedule --apply` command.
+  Never add immediate publishing, body editing, deletion, replying, reacting,
+  following, subscriber, or settings requests.
+- Do not quote or summarize draft bodies unless the user asks.
+- Never delete local files when an item disappears remotely; preserve the
+  backup and mark it missing in sync state.
+- If the shared session expires, provide the `./substack-pull auth` command again.
+- If a schedule request has an uncertain network result, pull and verify before
+  retrying it.
+- On repeated rate limits or server errors, preserve local state and report the
+  failure plainly.

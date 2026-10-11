@@ -768,13 +768,16 @@ def load_config(path: Path, profile_override: str | None) -> dict[str, Any]:
 
 
 def save_config(path: Path, config: dict[str, Any]) -> None:
-    atomic_write_json(
-        path,
-        {
-            "profile": "@" + normalize_handle(str(config["profile"])),
-            "directory": str(config.get("directory") or DEFAULT_OUTPUT),
-        },
-    )
+    safe = {
+        "profile": "@" + normalize_handle(str(config["profile"])),
+        "directory": str(config.get("directory") or DEFAULT_OUTPUT),
+    }
+    for key in ("notes_directory", "timezone"):
+        if config.get(key):
+            safe[key] = str(config[key])
+    if not safe.get("notes_directory") and config.get("private_directory"):
+        safe["notes_directory"] = str(config["private_directory"])
+    atomic_write_json(path, safe)
 
 
 def config_path_from(args: argparse.Namespace) -> Path:
@@ -880,6 +883,11 @@ def command_configure(args: argparse.Namespace) -> int:
         "profile": "@" + normalize_handle(str(profile)),
         "directory": args.directory or existing.get("directory") or DEFAULT_OUTPUT,
     }
+    for key in ("notes_directory", "timezone"):
+        if existing.get(key):
+            config[key] = existing[key]
+    if not config.get("notes_directory") and existing.get("private_directory"):
+        config["notes_directory"] = existing["private_directory"]
     save_config(path, config)
     print(f"Profile: {config['profile']}")
     print(f"Directory: {config['directory']}")
@@ -1039,10 +1047,11 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = commands.add_parser("doctor", help="check local configuration")
     add_local_arguments(doctor)
     doctor.set_defaults(handler=command_doctor)
+
     return parser
 
 
-def main(argv: Iterable[str] | None = None) -> int:
+def public_main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
     raw = list(argv) if argv is not None else sys.argv[1:]
     if not raw:
@@ -1056,6 +1065,23 @@ def main(argv: Iterable[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("cancelled", file=sys.stderr)
         return 130
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    raw = list(argv) if argv is not None else sys.argv[1:]
+    if raw and raw[0] == "public":
+        return public_main(raw[1:])
+    if not raw:
+        raw = ["pull"]
+    script_dir = str(Path(__file__).resolve().parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+    try:
+        from substack_draft_notes import main as notes_main
+    except ImportError as exc:
+        print(f"error: the Notes planner is missing from this skill: {exc}", file=sys.stderr)
+        return 2
+    return int(notes_main(raw))
 
 
 if __name__ == "__main__":

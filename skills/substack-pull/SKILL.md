@@ -1,6 +1,6 @@
 ---
 name: substack-pull
-description: Pull, back up, find, and inspect any Substack publication's public posts without authentication, or an authorized publication's drafts, scheduled posts, and published posts through a read-only incremental local sync on macOS. Use for requests about public Substack posts or the newest local version of Substack writing. Do not use for publishing, editing, deleting, paywall bypass, or subscriber management.
+description: Pull, back up, find, and inspect any Substack publication's public posts without authentication, or an authorized publication's drafts, scheduled posts, and published posts through a read-only incremental local sync on macOS. Use for requests about public Substack posts or the newest local version of Substack writing. Do not use for Notes, publishing, editing, deleting, paywall bypass, or subscriber management.
 ---
 
 # Substack Pull
@@ -13,6 +13,9 @@ endpoint failures plainly. Choose between these modes:
   reads or sends a session cookie and syncs only the public archive.
 - For a publication the user owns or edits, use authenticated mode to include
   drafts and scheduled posts as well as published posts.
+
+Route public, draft, and scheduled **Notes** to `substack-notes-pull`; this skill
+is for publication posts.
 
 ## Authenticated workflow
 
@@ -91,6 +94,9 @@ Authentication requires macOS Keychain. Give the user an `auth` command to run
 in their own terminal; never execute the interactive secret-entry step for
 them. They must copy only the cookie value and paste it at the hidden Keychain
 prompt:
+
+`substack-notes-pull` reuses this same Keychain entry for the account's draft
+and scheduled Notes. Do not create or request a second session for Notes.
 
 - Safari: `connect.sid` under Web Inspector → Storage → Cookies.
 - Chrome, Chromium, Brave, or Edge: `substack.sid` under DevTools → Application

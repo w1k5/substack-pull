@@ -24,6 +24,7 @@ from substack_notes_pull import (
     normalize_handle,
     parse_preloads,
     resolve_profile,
+    save_config,
 )
 
 
@@ -199,6 +200,24 @@ class ProfileTests(unittest.TestCase):
             authored_note(comment(3, "reply", ancestor_path="1.3"), PROFILE_ID)
         )
         self.assertIsNone(authored_note({"type": "post"}, PROFILE_ID))
+
+    def test_public_config_save_preserves_private_planner_settings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "config.json"
+            save_config(
+                path,
+                {
+                    "profile": "@writer",
+                    "directory": "public-notes",
+                    "notes_directory": "draft-notes",
+                    "timezone": "America/New_York",
+                },
+            )
+
+            saved = json.loads(path.read_text())
+
+        self.assertEqual(saved["notes_directory"], "draft-notes")
+        self.assertEqual(saved["timezone"], "America/New_York")
 
 
 class SyncTests(unittest.TestCase):

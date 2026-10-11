@@ -1,4 +1,4 @@
 interface:
   display_name: "Substack Notes Pull"
-  short_description: "Pull and search public Substack Notes"
-  default_prompt: "Use $substack-notes-pull to pull this profile's public Notes and help me find or analyze them."
+  short_description: "Pull, map, and schedule Notes"
+  default_prompt: "Use $substack-notes-pull to pull my draft and scheduled Notes, then show me the next 90 days without clustering."

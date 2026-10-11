@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Substack Note runway</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: light-dark(#ffffff, #111111);
+      --surface: light-dark(#f5f5f4, #1d1d1d);
+      --surface-strong: light-dark(#e7e5e4, #2b2b2b);
+      --ink: light-dark(#1c1917, #fafaf9);
+      --muted: light-dark(#78716c, #a8a29e);
+      --line: light-dark(#d6d3d1, #44403c);
+      --accent: light-dark(#2563eb, #60a5fa);
+      --warn: light-dark(#b45309, #fbbf24);
+      --danger: light-dark(#b91c1c, #f87171);
+      --success: light-dark(#047857, #34d399);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--bg); }
+    main { width: min(1120px, 100%); margin: 0 auto; padding: 24px; }
+    h1 { margin: 0; font-size: clamp(22px, 3vw, 32px); line-height: 1.15; letter-spacing: -0.025em; font-weight: 500; }
+    .subhead { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .metrics { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .metric { min-width: 92px; padding: 9px 11px; border-radius: 10px; background: var(--surface); }
+    .metric strong { display: block; font-size: 19px; line-height: 1.1; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .metric span { color: var(--muted); font-size: 11px; }
+    .controls { margin: 20px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface); }
+    .swatch.one { background: var(--surface-strong); }
+    .swatch.many { background: color-mix(in srgb, var(--danger) 30%, var(--bg)); border-color: var(--danger); }
+    .swatch.open { background: var(--bg); border: 2px solid var(--success); }
+    .spacing-control { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .segmented { display: inline-flex; gap: 2px; border: 1px solid var(--line); border-radius: 9px; padding: 2px; background: var(--surface); }
+    .spacing-btn { border: 0; border-radius: 6px; padding: 5px 9px; color: var(--muted); background: transparent; font: inherit; cursor: pointer; }
+    .spacing-btn[aria-pressed="true"] { color: var(--bg); background: var(--ink); font-weight: 500; }
+    .calendar-row { display: grid; grid-template-columns: minmax(72px, .85fr) repeat(7, minmax(38px, 1fr)) minmax(54px, .7fr); gap: 5px; align-items: center; margin-bottom: 5px; }
+    .calendar-head { color: var(--muted); font-size: 11px; text-align: center; margin-bottom: 8px; }
+    .calendar-head .week-head { text-align: left; }
+    .week-label { color: var(--muted); font-size: 11px; line-height: 1.15; }
+    .week-label strong { display: block; color: var(--ink); font-size: 12px; font-weight: 500; }
+    .day { position: relative; height: 38px; width: 100%; border: 1px solid transparent; border-radius: 7px; background: var(--bg); color: var(--muted); font: inherit; cursor: pointer; padding: 3px; text-align: left; }
+    .day:hover, .day:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); outline: none; }
+    .day.outside { opacity: .24; cursor: default; }
+    .day.has-one { background: var(--surface); color: var(--ink); }
+    .day.has-two { background: color-mix(in srgb, var(--warn) 22%, var(--bg)); border-color: var(--warn); color: var(--ink); }
+    .day.has-many { background: color-mix(in srgb, var(--danger) 30%, var(--bg)); border-color: var(--danger); color: var(--ink); }
+    .day.good-slot { border: 2px solid var(--success); }
+    .day.good-slot::after { content: "+"; position: absolute; right: 5px; bottom: 1px; color: var(--success); font-size: 15px; font-weight: 500; }
+    .day.selected { box-shadow: inset 0 0 0 2px var(--accent); }
+    .day-num { position: absolute; top: 4px; left: 5px; font-size: 11px; }
+    .note-count { position: absolute; inset: 0; display: grid; place-items: center; font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .week-total { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+    .week-total strong { min-width: 10px; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+    .week-bar { flex: 1; height: 5px; border-radius: 999px; overflow: hidden; background: var(--surface); }
+    .week-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .week-total.hot .week-bar > span { background: var(--danger); }
+    .detail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; min-height: 48px; display: grid; grid-template-columns: minmax(120px, .9fr) 2fr; gap: 16px; }
+    .detail-date { font-size: 13px; font-weight: 500; }
+    .detail-body { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .detail-body strong { color: var(--ink); font-weight: 500; }
+    .note-list { display: grid; gap: 9px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .note-detail { padding: 10px 12px; border-radius: 8px; background: var(--surface); color: var(--ink); }
+    .note-meta { margin-bottom: 5px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    footer { margin-top: 10px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 650px) {
+      main { padding: 16px 10px; }
+      .topline { display: block; }
+      .metrics { justify-content: flex-start; margin-top: 14px; }
+      .metric { min-width: 78px; }
+      .calendar-row { grid-template-columns: 58px repeat(7, minmax(28px, 1fr)); gap: 2px; }
+      .week-total, .load-head { display: none; }
+      .day { height: 34px; border-radius: 6px; }
+      .detail { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="topline">
+      <div>
+        <h1>Note runway</h1>
+        <div class="subhead" id="subhead"></div>
+      </div>
+      <div class="metrics" aria-label="Schedule summary">
+        <div class="metric"><strong id="scheduled-count">0</strong><span>scheduled in window</span></div>
+        <div class="metric"><strong id="draft-count">0</strong><span>drafts off-calendar</span></div>
+        <div class="metric"><strong id="active-count">0</strong><span>active days</span></div>
+        <div class="metric"><strong id="busiest-count">0</strong><span>busiest week</span></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="legend" aria-label="Legend">
+        <span class="legend-item"><span class="swatch one"></span>1 note</span>
+        <span class="legend-item"><span class="swatch many"></span>2+ clustered</span>
+        <span class="legend-item"><span class="swatch open"></span>best opening</span>
+      </div>
+      <div class="spacing-control">
+        <span>Minimum distance</span>
+        <span class="segmented" role="group" aria-label="Minimum distance from another scheduled note">
+          <button class="spacing-btn" type="button" data-spacing="2" aria-pressed="false">2d</button>
+          <button class="spacing-btn" type="button" data-spacing="3" aria-pressed="false">3d</button>
+          <button class="spacing-btn" type="button" data-spacing="4" aria-pressed="false">4d</button>
+        </span>
+      </div>
+    </div>
+
+    <div id="calendar" aria-label="Scheduled Notes by week"></div>
+    <div class="detail" aria-live="polite">
+      <div class="detail-date" id="detail-date">Select a day</div>
+      <div class="detail-body" id="detail-body">Click any date to see its load and nearest scheduled Notes.</div>
+    </div>
+    <footer id="footer"></footer>
+  </main>
+
+  <script>
+  (() => {
+    const data = __RUNWAY_DATA__;
+    const eventMap = new Map();
+    data.events.forEach(event => {
+      if (!eventMap.has(event.date)) eventMap.set(event.date, []);
+      eventMap.get(event.date).push(event);
+    });
+    const parseDay = value => new Date(`${value}T00:00:00Z`);
+    const ymd = value => value.toISOString().slice(0, 10);
+    const plusDays = (value, amount) => {
+      const next = parseDay(value);
+      next.setUTCDate(next.getUTCDate() + amount);
+      return ymd(next);
+    };
+    const dayDiff = (a, b) => Math.round((parseDay(a) - parseDay(b)) / 86400000);
+    const formatLong = value => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(parseDay(value));
+    const formatShort = value => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(parseDay(value));
+    const scheduledDays = [...eventMap.keys()].sort();
+    const first = parseDay(data.start);
+    const gridStartDate = new Date(first);
+    gridStartDate.setUTCDate(first.getUTCDate() - ((first.getUTCDay() + 6) % 7));
+    const gridStart = ymd(gridStartDate);
+    const last = parseDay(data.end);
+    const gridEndDate = new Date(last);
+    gridEndDate.setUTCDate(last.getUTCDate() + (7 - ((last.getUTCDay() + 6) % 7) - 1));
+    const gridEnd = ymd(gridEndDate);
+    const calendar = document.getElementById("calendar");
+    const detailDate = document.getElementById("detail-date");
+    const detailBody = document.getElementById("detail-body");
+    let spacing = data.minimumSpacing;
+    let selectedDay = null;
+
+    document.getElementById("subhead").textContent = `${formatLong(data.start)}–${formatLong(data.end)} · scheduled Notes only · ${data.timezone}`;
+    document.getElementById("scheduled-count").textContent = data.scheduledInWindow;
+    document.getElementById("draft-count").textContent = data.draftCount;
+    document.getElementById("active-count").textContent = data.activeDays;
+    document.getElementById("busiest-count").textContent = data.busiestWeek;
+    document.getElementById("footer").textContent = data.scheduledTotal === data.scheduledInWindow
+      ? `${data.scheduledTotal} scheduled Notes total.`
+      : `${data.scheduledTotal} scheduled Notes total; ${data.scheduledTotal - data.scheduledInWindow} fall outside this window.`;
+
+    function nearestDistance(day) {
+      if (!scheduledDays.length) return Number.POSITIVE_INFINITY;
+      return Math.min(...scheduledDays.map(other => Math.abs(dayDiff(day, other))));
+    }
+    function weekCount(weekStart) {
+      let count = 0;
+      for (let i = 0; i < 7; i += 1) count += (eventMap.get(plusDays(weekStart, i)) || []).length;
+      return count;
+    }
+    function isBestOpening(day, weekStart) {
+      if (day < data.start || day > data.end || eventMap.has(day) || !scheduledDays.length) return false;
+      const distance = nearestDistance(day);
+      if (distance < spacing || weekCount(weekStart) > 2) return false;
+      return distance >= nearestDistance(plusDays(day, -1)) && distance >= nearestDistance(plusDays(day, 1));
+    }
+    function showDetail(day) {
+      selectedDay = day;
+      const events = eventMap.get(day) || [];
+      const offset = (parseDay(day).getUTCDay() + 6) % 7;
+      const weekStart = plusDays(day, -offset);
+      const total = weekCount(weekStart);
+      const distance = nearestDistance(day);
+      detailDate.textContent = formatLong(day);
+      if (events.length) {
+        const times = events.map(event => event.time).join(", ");
+        detailBody.replaceChildren();
+        const summary = document.createElement("div");
+        const count = document.createElement("strong");
+        count.textContent = `${events.length} scheduled ${events.length === 1 ? "Note" : "Notes"}`;
+        summary.append(count, document.createTextNode(` at ${times}. This week carries ${total} total.`));
+        const list = document.createElement("ol");
+        list.className = "note-list";
+        events.forEach(event => {
+          const item = document.createElement("li");
+          item.className = "note-detail";
+          const meta = document.createElement("div");
+          meta.className = "note-meta";
+          meta.textContent = `${event.time} · Note ${event.id}`;
+          const text = document.createElement("div");
+          text.className = "note-text";
+          text.textContent = event.text;
+          item.append(meta, text);
+          list.appendChild(item);
+        });
+        detailBody.append(summary, list);
+      } else if (!scheduledDays.length) {
+        detailBody.innerHTML = "<strong>No Notes scheduled.</strong> Every day in the window is currently open.";
+      } else {
+        const verdict = isBestOpening(day, weekStart)
+          ? "The best opening in this gap at the selected spacing."
+          : `${distance} day${distance === 1 ? "" : "s"} from the nearest scheduled Note.`;
+        detailBody.innerHTML = `<strong>No Note scheduled.</strong> ${verdict} This week currently carries ${total}.`;
+      }
+      calendar.querySelectorAll(".day").forEach(cell => cell.classList.toggle("selected", cell.dataset.day === day));
+    }
+    function render() {
+      calendar.innerHTML = "";
+      const head = document.createElement("div");
+      head.className = "calendar-row calendar-head";
+      head.innerHTML = `<span class="week-head">Week of</span>${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(day => `<span>${day}</span>`).join("")}<span class="load-head">Load</span>`;
+      calendar.appendChild(head);
+      for (let week = gridStart; week <= gridEnd; week = plusDays(week, 7)) {
+        const row = document.createElement("div");
+        row.className = "calendar-row";
+        const total = weekCount(week);
+        const label = document.createElement("div");
+        label.className = "week-label";
+        label.innerHTML = `<strong>${formatShort(week)}</strong>${total === 0 ? "open" : `${total} scheduled`}`;
+        row.appendChild(label);
+        for (let i = 0; i < 7; i += 1) {
+          const day = plusDays(week, i);
+          const events = eventMap.get(day) || [];
+          const outside = day < data.start || day > data.end;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "day";
+          button.dataset.day = day;
+          if (outside) button.classList.add("outside");
+          if (events.length === 1) button.classList.add("has-one");
+          if (events.length === 2) button.classList.add("has-two");
+          if (events.length >= 3) button.classList.add("has-many");
+          if (isBestOpening(day, week)) button.classList.add("good-slot");
+          if (selectedDay === day) button.classList.add("selected");
+          button.disabled = outside;
+          button.setAttribute("aria-label", `${formatLong(day)}: ${events.length} scheduled Note${events.length === 1 ? "" : "s"}${isBestOpening(day, week) ? ", best opening" : ""}`);
+          button.innerHTML = `<span class="day-num">${parseDay(day).getUTCDate()}</span>${events.length ? `<span class="note-count">${events.length}</span>` : ""}`;
+          button.addEventListener("click", () => showDetail(day));
+          row.appendChild(button);
+        }
+        const load = document.createElement("div");
+        load.className = `week-total${total >= 5 ? " hot" : ""}`;
+        const width = data.busiestWeek ? Math.min(100, total / data.busiestWeek * 100) : 0;
+        load.innerHTML = `<strong>${total}</strong><span class="week-bar"><span style="width:${width}%"></span></span>`;
+        row.appendChild(load);
+        calendar.appendChild(row);
+      }
+    }
+    document.querySelectorAll(".spacing-btn").forEach(button => {
+      button.setAttribute("aria-pressed", String(Number(button.dataset.spacing) === spacing));
+      button.addEventListener("click", () => {
+        spacing = Number(button.dataset.spacing);
+        document.querySelectorAll(".spacing-btn").forEach(other => other.setAttribute("aria-pressed", String(other === button)));
+        render();
+        if (selectedDay) showDetail(selectedDay);
+      });
+    });
+    render();
+    showDetail(data.events.length ? data.events[0].date : data.start);
+  })();
+  </script>
+</body>
+</html>
