@@ -175,6 +175,21 @@ class SchedulingTests(unittest.TestCase):
 
         self.assertEqual(api_timestamp(scheduled), "2026-10-30T13:30:00.000Z")
 
+    def test_attachment_only_note_gets_an_empty_editor_document(self):
+        note = private_note(9, "")
+        note["body_json"] = None
+        note["attachments"] = [{"id": "image-1", "type": "image"}]
+        scheduled = datetime(2026, 10, 31, 14, 28, tzinfo=timezone.utc)
+
+        payload = schedule_payload(note, scheduled)
+
+        self.assertEqual(
+            payload["bodyJson"],
+            {"type": "doc", "content": [{"type": "paragraph"}]},
+        )
+        self.assertEqual(payload["attachmentIds"], ["image-1"])
+        self.assertEqual(payload["trigger_at"], "2026-10-31T14:28:00.000Z")
+
 
 class RunwayTests(unittest.TestCase):
     def test_classifies_drafts_and_uses_local_scheduled_dates(self):

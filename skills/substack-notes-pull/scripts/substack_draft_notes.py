@@ -889,11 +889,20 @@ def api_timestamp(value: datetime) -> str:
 
 
 def schedule_payload(note: dict[str, Any], trigger_at: datetime) -> dict[str, Any]:
+    attachment_ids = note.get("attachment_ids") or note.get("attachmentIds")
+    if not isinstance(attachment_ids, list):
+        attachment_ids = [
+            attachment.get("id")
+            for attachment in note.get("attachments", [])
+            if isinstance(attachment, dict) and attachment.get("id")
+        ]
     body_json = note.get("body_json") or note.get("bodyJson")
     if not isinstance(body_json, dict):
-        raise PrivateNotesError(
-            f"Note {item_id(note)} has no editable body document; no change was made."
-        )
+        if str(note.get("body") or "").strip() or not attachment_ids:
+            raise PrivateNotesError(
+                f"Note {item_id(note)} has no editable body document; no change was made."
+            )
+        body_json = {"type": "doc", "content": [{"type": "paragraph"}]}
     payload: dict[str, Any] = {
         "bodyJson": body_json,
         "replyMinimumRole": (
@@ -903,13 +912,6 @@ def schedule_payload(note: dict[str, Any], trigger_at: datetime) -> dict[str, An
         ),
         "trigger_at": api_timestamp(trigger_at),
     }
-    attachment_ids = note.get("attachment_ids") or note.get("attachmentIds")
-    if not isinstance(attachment_ids, list):
-        attachment_ids = [
-            attachment.get("id")
-            for attachment in note.get("attachments", [])
-            if isinstance(attachment, dict) and attachment.get("id")
-        ]
     if attachment_ids:
         payload["attachmentIds"] = [str(value) for value in attachment_ids]
     if "ai_detection_disabled" in note or "aiDetectionDisabled" in note:
