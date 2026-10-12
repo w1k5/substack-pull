@@ -35,6 +35,19 @@ python3 /absolute/path/to/scripts/substack_pull.py \
 - counts for every category; and
 - each fetched post's title, timestamp, JSON path, and readable Markdown path.
 
+Authenticated pulls reconcile category changes by post ID. After the post is
+successfully saved in its current category, the manifest entry and generated
+`.json`, `.md`, and `.html` files are removed from its former category. This
+applies to every move among `drafts`, `scheduled`, and `published`; a failed
+fetch leaves the former copy intact for recovery. Public mode does not infer
+private category transitions.
+
+When a post is absent from every category returned by the applicable remote
+indexes, `pull` moves its local files from the active category into
+`archive/<former-category>/`. Archived posts no longer appear as active drafts,
+scheduled posts, or published posts, but their last synchronized copy remains
+recoverable.
+
 `sync` remains an alias for `pull`. With the repository wrapper, running
 `./substack-pull` with no subcommand also pulls.
 
@@ -125,8 +138,11 @@ tracked `.gitignore`.
 - In public mode, never retrieve a Keychain session or send a `Cookie` header.
 - Never add publishing, scheduling, editing, deletion, subscriber, or settings
   requests.
-- Never delete local files when an item disappears remotely. The manifest marks
-  it missing and preserves the backup.
+- When an item truly disappears remotely, move its generated files to
+  `archive/<former-category>/` and remove it from the active category manifest.
+  A post found under a different authenticated category is a move, not a
+  disappearance: keep the successfully refreshed copy in its current directory
+  and remove stale copies from former category directories.
 - On `401` or `403`, explain that the browser session expired and provide the
   `auth` command again. Preserve the old Keychain item and local files.
 - On a publication/directory mismatch, choose a separate directory instead of

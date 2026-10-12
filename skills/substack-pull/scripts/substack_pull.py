@@ -32,6 +32,7 @@ KEYCHAIN_SERVICE = "com.local.substack-pull"
 DEFAULT_CONFIG = ".substack-pull.json"
 DEFAULT_OUTPUT = "substack"
 STATE_VERSION = 1
+POST_ARTIFACT_SUFFIXES = (".json", ".html", ".md")
 
 CATEGORY_ENDPOINTS = {
     "drafts": (
@@ -688,6 +689,7 @@ class SyncEngine:
                 f"{self.api.base_url}. Choose a different output directory."
             )
         state.setdefault("categories", {})
+        state.setdefault("archive", {})
         return state
 
     def _fetch_full(self, category: str, post_id: str) -> Any:
@@ -741,6 +743,114 @@ class SyncEngine:
             return path
         return None
 
+    def _remove_stale_category_copy(
+        self,
+        state: dict[str, Any],
+        *,
+        post_id: str,
+        old_category: str,
+    ) -> bool:
+        categories = state.get("categories", {})
+        old_entries = categories.get(old_category, {})
+        if not isinstance(old_entries, dict):
+            return False
+        old_entry = old_entries.get(post_id)
+        if not isinstance(old_entry, dict):
+            return False
+
+        category_dir = (self.output_dir / old_category).resolve()
+        candidates = {
+            (category_dir / f"{post_id}{suffix}").resolve()
+            for suffix in POST_ARTIFACT_SUFFIXES
+        }
+        relative_file = old_entry.get("file")
+        if relative_file:
+            manifest_path = (self.output_dir / str(relative_file)).resolve()
+            if (
+                manifest_path.parent == category_dir
+                and manifest_path.name == f"{post_id}.json"
+            ):
+                candidates.add(manifest_path)
+
+        for path in sorted(candidates):
+            # Category names are controlled by CATEGORY_ENDPOINTS, but keep the
+            # cleanup bounded even if an old manifest contains a bad path.
+            if path.parent != category_dir:
+                continue
+            try:
+                if path.is_file():
+                    path.unlink()
+            except OSError as exc:
+                raise PullError(
+                    f"Could not remove stale {old_category} copy for post "
+                    f"{post_id}: {exc}"
+                ) from exc
+
+        del old_entries[post_id]
+        return True
+
+    def _reconcile_category_location(
+        self,
+        state: dict[str, Any],
+        *,
+        post_id: str,
+        current_category: str,
+        remote_locations: dict[str, set[str]],
+    ) -> None:
+        # Public mode does not query private category indexes, so it cannot
+        # safely infer that a private draft or scheduled post changed category.
+        if self.public_only or remote_locations.get(post_id) != {current_category}:
+            return
+
+        for old_category in CATEGORY_ENDPOINTS:
+            if old_category == current_category:
+                continue
+            self._remove_stale_category_copy(
+                state,
+                post_id=post_id,
+                old_category=old_category,
+            )
+
+    def _archive_missing_post(
+        self,
+        state: dict[str, Any],
+        *,
+        category: str,
+        post_id: str,
+        entry: dict[str, Any],
+        archived_at: str,
+    ) -> None:
+        source_dir = (self.output_dir / category).resolve()
+        archive_dir = (self.output_dir / "archive" / category).resolve()
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        for suffix in POST_ARTIFACT_SUFFIXES:
+            source = (source_dir / f"{post_id}{suffix}").resolve()
+            destination = (archive_dir / f"{post_id}{suffix}").resolve()
+            if source.parent != source_dir or destination.parent != archive_dir:
+                continue
+            try:
+                if source.is_file():
+                    os.replace(source, destination)
+            except OSError as exc:
+                raise PullError(
+                    f"Could not archive missing {category} post {post_id}: {exc}"
+                ) from exc
+
+        archived_entry = dict(entry)
+        archived_entry.update(
+            {
+                "archived_at": archived_at,
+                "former_category": category,
+                "remote_status": "archived",
+                "file": (Path("archive") / category / f"{post_id}.json").as_posix(),
+            }
+        )
+        state.setdefault("archive", {}).setdefault(category, {})[post_id] = (
+            archived_entry
+        )
+        del state["categories"][category][post_id]
+
     def sync(self, *, refresh_published: bool = False) -> dict[str, Any]:
         state = self._load_state()
         synced_at = self.now()
@@ -765,6 +875,11 @@ class SyncEngine:
                 indexes[category] = paginate_posts(
                     self.api, path, order_by, limit=self.page_limit
                 )
+
+        remote_locations: dict[str, set[str]] = {}
+        for category, items in indexes.items():
+            for list_item in items:
+                remote_locations.setdefault(item_id(list_item), set()).add(category)
 
         for category, items in indexes.items():
             category_state = state["categories"].setdefault(category, {})
@@ -842,12 +957,32 @@ class SyncEngine:
                             readable_backfilled += 1
                     unchanged += 1
 
+                self._reconcile_category_location(
+                    state,
+                    post_id=post_id,
+                    current_category=category,
+                    remote_locations=remote_locations,
+                )
+
             missing = 0
-            for post_id, entry in category_state.items():
+            archived = 0
+            for post_id, entry in list(category_state.items()):
                 if post_id not in seen:
-                    missing += 1
-                    entry["remote_status"] = "missing"
-                    entry.setdefault("missing_since", synced_at)
+                    if post_id in remote_locations:
+                        # The destination category will remove this copy after a
+                        # successful fetch. Preserve it if that fetch fails.
+                        missing += 1
+                        entry["remote_status"] = "missing"
+                        entry.setdefault("missing_since", synced_at)
+                    else:
+                        self._archive_missing_post(
+                            state,
+                            category=category,
+                            post_id=post_id,
+                            entry=entry,
+                            archived_at=synced_at,
+                        )
+                        archived += 1
 
             summary["categories"][category] = {
                 "remote": len(items),
@@ -856,8 +991,21 @@ class SyncEngine:
                 "readable_backfilled": readable_backfilled,
                 "unchanged": unchanged,
                 "missing_local_preserved": missing,
+                "archived": archived,
                 "failures": failures,
             }
+
+        # A transition may be discovered after its former category has already
+        # been summarized. Recalculate this value from the reconciled state so
+        # the report does not count moved posts as preserved missing posts.
+        for category, category_summary in summary["categories"].items():
+            entries = state["categories"].get(category, {})
+            category_summary["missing_local_preserved"] = sum(
+                1
+                for entry in entries.values()
+                if isinstance(entry, dict)
+                and entry.get("remote_status") == "missing"
+            )
 
         state["last_sync_at"] = synced_at
         atomic_write_json(self.state_path, state)
