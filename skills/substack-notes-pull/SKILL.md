@@ -135,16 +135,38 @@ directory is ignored before pulling.
 ## Published Note history
 
 Only when the user explicitly asks for already-published Notes, prefix the
-command with `public` and keep that history in a separate directory:
+command with `public` **before** `--config` and keep each profile's history in a
+separate directory:
 
 ```bash
-python3 /absolute/path/to/scripts/substack_notes_pull.py \
+python3 /absolute/path/to/scripts/substack_notes_pull.py public \
   --config /absolute/path/to/.substack-notes-pull.json \
-  public pull --profile @handle --directory /absolute/path/to/published-notes
+  pull --profile @handle --directory /absolute/path/to/published-notes
 ```
 
 Public history is anonymous and ignores posts, replies, and restacks of other
-people's Notes. Use `public pull --refresh` for a full reconciliation.
+people's Notes. When the output directory is inside Git, verify that exact
+directory is ignored before pulling. A complete first pull reports
+`complete: true` and `exhausted_feed: true`. Later pulls are incremental, so use
+`public pull --refresh` when older edits, removals, or current engagement
+counts matter.
+
+Rank the local history with the same profile and directory:
+
+```bash
+python3 /absolute/path/to/scripts/substack_notes_pull.py public \
+  --config /absolute/path/to/.substack-notes-pull.json \
+  list --profile @handle --directory /absolute/path/to/published-notes \
+  --sort restacks --limit 20
+```
+
+The public archive records reactions, restacks, and replies, but not impressions
+or subscriber conversions. Treat popularity patterns as correlations, not proof
+that a Note caused audience growth. Image-only Notes may have an empty text body;
+inspect their attachments before describing their content. A profile metadata
+parse error can reflect a changed Substack page format, and a DNS error can
+reflect restricted network access; neither establishes that the profile is
+unavailable.
 
 ## Safety and recovery
 

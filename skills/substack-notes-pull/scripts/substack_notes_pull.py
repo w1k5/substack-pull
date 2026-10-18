@@ -236,11 +236,19 @@ def parse_preloads(html: str) -> dict[str, Any]:
         html,
         re.DOTALL,
     )
-    if not match:
-        raise PullError("Substack's profile page did not contain profile metadata.")
     try:
-        encoded = json.loads(match.group(1))
-        value = json.loads(encoded)
+        if match:
+            encoded = json.loads(match.group(1))
+            value = json.loads(encoded)
+        else:
+            embedded = re.search(
+                r'<script[^>]*\bid=["\']preloads-json["\'][^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            if not embedded:
+                raise PullError("Substack's profile page did not contain profile metadata.")
+            value = json.loads(embedded.group(1))
     except json.JSONDecodeError as exc:
         raise PullError("Substack returned unreadable profile metadata.") from exc
     if not isinstance(value, dict):

@@ -192,6 +192,16 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(profile["id"], PROFILE_ID)
         self.assertEqual(profile["handle"], "writer")
 
+    def test_decodes_embedded_profile_preload(self):
+        preload = {"profile": {"id": 7, "handle": "writer", "name": "Writer"}}
+        html = (
+            f'<script id="preloads-json" type="application/json">'
+            f"{json.dumps(preload)}</script>"
+            '<script>window._preloads = JSON.parse(document.querySelector('
+            "'script#preloads-json').textContent)</script>"
+        )
+        self.assertEqual(parse_preloads(html), preload)
+
     def test_authored_note_filters_restacks_replies_and_posts(self):
         own = comment(1, "own")
         self.assertEqual(authored_note(own, PROFILE_ID)["id"], 1)
