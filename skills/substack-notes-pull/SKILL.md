@@ -87,8 +87,35 @@ Reuse the session already stored by `substack-pull`. Both tools read the same
 Keychain item; never ask the user to authenticate twice. The Notes puller finds
 the publication host in the workspace's `.substack-pull.json` automatically.
 
-If no shared session exists, tell the user to authenticate through
-`substack-pull` in their own terminal:
+The CLI's “No reusable Substack session was found” error can also mean that
+the execution sandbox blocked Keychain access. It does not establish that the
+user has not authenticated. Before asking them to authenticate again:
+
+1. Use the same absolute config path to check session presence:
+
+   ```bash
+   ./substack-notes-pull --config /absolute/path/to/.substack-notes-pull.json status
+   ```
+
+   Read `keychain_session_present`; do not read or print the credential itself.
+   Use `status`, not `doctor` (the Notes CLI has no `doctor` command).
+2. If the sandbox reports no session, request normal execution escalation for
+   that same status check outside the sandbox, where available. If the user
+   says they already authenticated, investigate access before repeating the
+   authentication instructions. Do not bypass an escalation denial.
+3. If the elevated check finds the session, run the already-authorized command
+   with the necessary execution permission. Preserve approval of the exact Note
+   body or schedule across authentication/access failures; do not ask for the
+   same content approval again. An uncertain remote write still requires the
+   pull-and-verify recovery below before retrying.
+
+Keychain access can wait for a macOS prompt. Keep the user informed if the check
+stalls, and ask whether a prompt is visible only when needed; do not assume
+one appeared. Distinguish an inaccessible session from an absent or expired
+session in the result you report.
+
+If the accessible Keychain has no shared session, tell the user to authenticate
+through `substack-pull` in their own terminal:
 
 ```bash
 ./substack-pull auth
