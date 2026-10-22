@@ -80,6 +80,27 @@ but it may contain only a preview when that is all the public endpoint returns.
 Use `--refresh-published` when the user requests a full reconciliation or a body
 edit is not detected from archive metadata. Normal public pulls are incremental.
 
+## Performance analysis
+
+When the user asks to compare post performance, predict how a draft may fare
+against past posts, or otherwise needs current views, reactions, comments,
+shares, restacks, or signups, run an authenticated pull with
+`--refresh-published` before analyzing the results:
+
+```bash
+python3 /absolute/path/to/scripts/substack_pull.py \
+  --config /absolute/path/to/.substack-pull.json \
+  pull --refresh-published
+```
+
+Normal incremental pulls deliberately exclude engagement and delivery stats
+from their change fingerprints, so the `source.stats` values in unchanged local
+JSON files can be stale even after a successful pull. A refresh remains
+read-only; it re-fetches every published post body and its current dashboard
+metadata. Use the refreshed published JSON plus the current draft's readable
+Markdown for the comparison, and distinguish observed historical performance
+from any forecast.
+
 ## Finding writing
 
 When the user asks for a post, the newest version, or analysis of current
@@ -153,6 +174,7 @@ tracked `.gitignore`.
   `auth` command again. Preserve the old Keychain item and local files.
 - On a publication/directory mismatch, choose a separate directory instead of
   overwriting another publication's manifest.
-- Use `pull --refresh-published` only when the user requests reconciliation or
-  a published edit appears absent; normal pulls already detect new drafts,
-  scheduling changes, and exposed editorial changes.
+- Use `pull --refresh-published` only when the user requests reconciliation,
+  current performance analysis, or a published edit appears absent; normal
+  pulls already detect new drafts, scheduling changes, and exposed editorial
+  changes, but not changing engagement or delivery stats.
