@@ -24,6 +24,12 @@ from the user's workspace and pass the workspace's absolute config path. When a
 configured `.substack-pull.json` is present, pull immediately; do not run
 `doctor` or ask setup questions on every use.
 
+If a pull inside an agent sandbox says no Keychain session is stored, but the
+user has recently run the wrapper successfully, retry the same read-only pull
+with the available elevated execution permission before asking the user to
+authenticate again. Restricted execution can make an existing Keychain item
+appear absent. Do not print or inspect the session value.
+
 ```bash
 python3 /absolute/path/to/scripts/substack_pull.py \
   --config /absolute/path/to/.substack-pull.json pull
