@@ -1,4 +1,4 @@
-import { fmt, pct, number, loadingIndicator } from './common.js';
+import { fmt, pct, number, loadingIndicator } from '../shared.js';
 
 function noteComparison(actual, average) {
   const a = number(actual),

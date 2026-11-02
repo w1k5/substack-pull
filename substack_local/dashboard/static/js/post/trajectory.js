@@ -1,5 +1,5 @@
-import { fmt, number } from './common.js';
-import { attachNoteInspectors } from './post_notes.js';
+import { fmt, number } from '../shared.js';
+import { attachNoteInspectors } from './notes.js';
 
 export function renderPostTrajectory(rows, notes = []) {
   const panel = document.createElement('div');

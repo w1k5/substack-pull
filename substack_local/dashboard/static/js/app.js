@@ -1,5 +1,5 @@
-import { $, fmt, pct, date, cell, loadingIndicator } from './common.js';
-import { showPost, clearNoteStatsRequests } from './post.js';
+import { $, fmt, pct, date, cell, loadingIndicator } from './shared.js';
+import { showPost, clearNoteStatsRequests } from './post/index.js';
 
 let data;
 const sortState = {

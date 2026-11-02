@@ -5,11 +5,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from substack_local import pulls as workflows
+from substack_local.mcp import pulls as workflows
 
 
 class WorkflowTests(unittest.TestCase):
-    @patch("substack_local.pulls.subprocess.run")
+    @patch("substack_local.mcp.pulls.subprocess.run")
     def test_public_post_pull_uses_anonymous_mode_and_ignored_directory(self, run):
         run.return_value.returncode = 0
         run.return_value.stdout = '{"mode":"public"}'
@@ -21,7 +21,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(str(workflows.ROOT / "substack/public-posts/example.substack.com"), command)
         self.assertNotIn("auth", command)
 
-    @patch("substack_local.pulls.subprocess.run")
+    @patch("substack_local.mcp.pulls.subprocess.run")
     def test_private_note_previews_are_opt_in(self, run):
         run.return_value.returncode = 0
         run.return_value.stdout = '{"count":1,"items":[{"id":"c-1","preview":"private body"}]}'
@@ -29,7 +29,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("preview", workflows.find_note_copies()["items"][0])
         self.assertEqual(workflows.find_note_copies(include_preview=True)["items"][0]["preview"], "private body")
 
-    @patch("substack_local.pulls.subprocess.run")
+    @patch("substack_local.mcp.pulls.subprocess.run")
     def test_public_note_history_is_anonymous_and_profile_scoped(self, run):
         run.return_value.returncode = 0
         run.return_value.stdout = '{"complete":true}'

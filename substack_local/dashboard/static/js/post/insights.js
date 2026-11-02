@@ -1,4 +1,4 @@
-import { fmt, pct, section } from './common.js';
+import { fmt, pct, section } from '../shared.js';
 
 function progressRow(label, count, total, note) {
   const row = document.createElement('div');

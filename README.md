@@ -2,7 +2,7 @@
 
 ## Code map
 
-The local analytics dashboard and MCP server live in [`substack_local/`](substack_local/README.md). Their shared Substack requests and data shaping are in `substack_local/analytics.py`; `web.py` serves the dashboard, `mcp_server.py` defines the tools, and `pulls.py` connects MCP tools to the existing post and Note CLIs. The browser code is in `substack_local/ui/`.
+The local analytics dashboard and MCP server live in [`substack_local/`](substack_local/README.md). `analytics/` fetches and shapes Substack data, `mcp/` defines tools and calls the existing puller CLIs, and `dashboard/` serves the browser UI. The root entry points remain available.
 
 The standalone post and Note pullers remain in `skills/substack-pull/scripts/` and `skills/substack-notes-pull/scripts/`. The root launchers (`./substack-analytics`, `./substack-analytics-mcp`, `./substack-pull`, and `./substack-notes-pull`) are the user-facing entry points.
 
@@ -16,7 +16,7 @@ The selected date range can differ slightly from Substack's rolling “30d views
 
 ### Substack MCP server
 
-The dashboard and local MCP server use the same request and normalization code in `substack_local/analytics.py`. The MCP server reads the session already saved by `./substack-pull auth`; it does not need the dashboard to be running. Each process keeps its own short-lived in-memory cache, so using both at once can occasionally repeat a Substack request.
+The dashboard and local MCP server use the same request and normalization code in `substack_local/analytics/`. The MCP server reads the session already saved by `./substack-pull auth`; it does not need the dashboard to be running. Each process keeps its own short-lived in-memory cache, so using both at once can occasionally repeat a Substack request.
 
 To set it up on another Mac with this repository and a saved Substack session:
 

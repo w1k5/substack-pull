@@ -1,7 +1,7 @@
-import { $, fmt, pct, date, cell, number, section, loadingIndicator } from './common.js';
-import { renderPostTrajectory } from './post_trajectory.js';
-import { renderPostInsights } from './post_insights.js';
-export { clearNoteStatsRequests } from './post_notes.js';
+import { $, fmt, pct, date, cell, number, section, loadingIndicator } from '../shared.js';
+import { renderPostTrajectory } from './trajectory.js';
+import { renderPostInsights } from './insights.js';
+export { clearNoteStatsRequests } from './notes.js';
 
 function detailTable(headers, rows) {
   const wrap = document.createElement('div');
