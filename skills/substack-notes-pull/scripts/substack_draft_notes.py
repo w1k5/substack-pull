@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only sync and planning view for Substack draft and scheduled Notes."""
+"""Sync, create, and plan Substack draft and scheduled Notes."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ DEFAULT_CONFIG = ".substack-notes-pull.json"
 DEFAULT_OUTPUT = "substack-notes"
 STATE_VERSION = 1
 NOTE_CATEGORIES = ("note-drafts", "note-scheduled")
+MAX_NOTE_LENGTH = 5_000
 
 
 class PrivateNotesError(RuntimeError):
@@ -203,14 +204,19 @@ def render_prosemirror(node: Any) -> str:
 
 
 def note_body(item: dict[str, Any]) -> str:
-    document = item.get("body_json")
+    document = note_body_document(item)
+    rendered = render_prosemirror(document).strip() if document else ""
+    return rendered or str(item.get("body") or "").strip()
+
+
+def note_body_document(item: dict[str, Any]) -> dict[str, Any] | None:
+    document = item.get("body_json") or item.get("bodyJson")
     if isinstance(document, str):
         try:
             document = json.loads(document)
         except json.JSONDecodeError:
-            document = None
-    rendered = render_prosemirror(document).strip() if isinstance(document, dict) else ""
-    return rendered or str(item.get("body") or "").strip()
+            return None
+    return document if isinstance(document, dict) else None
 
 
 def _attachment_markdown(attachment: dict[str, Any]) -> str:
@@ -428,7 +434,14 @@ class PrivateApiClient:
                     continue
         raise PrivateNotesError(f"Substack request failed for {path}: {last_error}")
 
-    def patch_json(self, path: str, payload: dict[str, Any]) -> Any:
+    def _write_json(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        operation: str,
+    ) -> Any:
         if not path.startswith("/"):
             raise PrivateNotesError(f"API path must start with '/': {path}")
         remaining = self.request_delay - (time.monotonic() - self._last_request_at)
@@ -453,7 +466,7 @@ class PrivateApiClient:
                     "substack-notes-pull/1"
                 ),
             },
-            method="PATCH",
+            method=method,
         )
         try:
             with self.opener(request, timeout=self.timeout) as response:
@@ -467,22 +480,34 @@ class PrivateApiClient:
                     "'./substack-pull auth' again."
                 ) from exc
             detail = exc.read(500).decode("utf-8", errors="replace")
+            if 500 <= exc.code < 600:
+                raise PrivateNotesError(
+                    f"The {operation} request may have reached Substack, but the "
+                    f"server returned {exc.code}. Pull and check the exact Note before "
+                    "retrying."
+                ) from exc
             raise PrivateNotesError(
-                f"Substack rejected the schedule change ({exc.code}): {detail}"
+                f"Substack rejected the {operation} ({exc.code}): {detail}"
             ) from exc
         except urllib.error.URLError as exc:
             self._last_request_at = time.monotonic()
             raise PrivateNotesError(
-                "The schedule request may have reached Substack, but its result could "
-                "not be confirmed. Pull again before retrying."
+                f"The {operation} request may have reached Substack, but its result "
+                "could not be confirmed. Pull and check the exact Note before retrying."
             ) from exc
         try:
             return json.loads(raw) if raw else {}
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise PrivateNotesError(
-                "Substack accepted the schedule request but returned non-JSON data. "
-                "Pull again to verify the result."
+                f"Substack accepted the {operation} request but returned non-JSON data. "
+                "Pull and check the exact Note before retrying."
             ) from exc
+
+    def patch_json(self, path: str, payload: dict[str, Any]) -> Any:
+        return self._write_json("PATCH", path, payload, operation="schedule change")
+
+    def post_json(self, path: str, payload: dict[str, Any]) -> Any:
+        return self._write_json("POST", path, payload, operation="draft creation")
 
 
 def query_path(path: str, params: dict[str, Any]) -> str:
@@ -888,6 +913,89 @@ def api_timestamp(value: datetime) -> str:
     )
 
 
+def normalize_draft_text(value: str) -> str:
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    if not text:
+        raise PrivateNotesError("A Note draft cannot be empty.")
+    if len(text) > MAX_NOTE_LENGTH:
+        raise PrivateNotesError(
+            f"A Note draft cannot exceed {MAX_NOTE_LENGTH:,} characters."
+        )
+    lines = [line for line in text.split("\n") if line]
+    if not lines or not any(line.strip() for line in lines):
+        raise PrivateNotesError("A Note draft must contain visible text.")
+    return "\n".join(lines)
+
+
+def draft_body_json(text: str) -> dict[str, Any]:
+    normalized = normalize_draft_text(text)
+    return {
+        "type": "doc",
+        "attrs": {"schemaVersion": "v1", "title": None},
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": line}],
+            }
+            for line in normalized.split("\n")
+        ],
+    }
+
+
+def draft_payload(text: str) -> dict[str, Any]:
+    return {
+        "bodyJson": draft_body_json(text),
+        "replyMinimumRole": "everyone",
+        "trigger_at": None,
+    }
+
+
+def read_draft_text(args: argparse.Namespace) -> str:
+    if args.text is not None:
+        return normalize_draft_text(args.text)
+    path = Path(args.file).expanduser().resolve()
+    try:
+        return normalize_draft_text(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise PrivateNotesError(f"Could not read Note text from {path}: {exc}") from exc
+
+
+def matching_drafts(
+    notes: Iterable[dict[str, Any]], body_json: dict[str, Any]
+) -> list[dict[str, Any]]:
+    expected_text = normalize_draft_text(render_prosemirror(body_json).strip())
+    matches: list[dict[str, Any]] = []
+    for note in notes:
+        if note_body_document(note) == body_json:
+            matches.append(note)
+            continue
+        try:
+            if normalize_draft_text(note_body(note)) == expected_text:
+                matches.append(note)
+        except PrivateNotesError:
+            continue
+    return matches
+
+
+def created_note_from_response(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("id") is not None:
+        return payload
+    for key in ("draft", "comment"):
+        value = payload.get(key)
+        if isinstance(value, dict) and value.get("id") is not None:
+            return value
+    item = payload.get("item")
+    if isinstance(item, dict):
+        if item.get("id") is not None:
+            return item
+        comment = item.get("comment")
+        if isinstance(comment, dict) and comment.get("id") is not None:
+            return comment
+    return None
+
+
 def schedule_payload(note: dict[str, Any], trigger_at: datetime) -> dict[str, Any]:
     attachment_ids = note.get("attachment_ids") or note.get("attachmentIds")
     if not isinstance(attachment_ids, list):
@@ -991,6 +1099,112 @@ def command_pull(args: argparse.Namespace) -> int:
         minimum_spacing=args.minimum_spacing,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_create_draft(args: argparse.Namespace) -> int:
+    text = read_draft_text(args)
+    payload = draft_payload(text)
+    preview: dict[str, Any] = {
+        "body": text,
+        "characters": len(text),
+        "paragraphs": len(payload["bodyJson"]["content"]),
+        "reply_minimum_role": payload["replyMinimumRole"],
+        "trigger_at": None,
+        "applied": False,
+    }
+    if not args.apply:
+        preview["next_step"] = (
+            "After the exact body is approved, run the same command with --apply."
+        )
+        print(json.dumps(preview, ensure_ascii=False, indent=2))
+        return 0
+
+    config_path = Path(args.config).expanduser().resolve()
+    config = load_config(config_path)
+    output_dir = output_dir_from(config_path, config, args.directory)
+    zone_name = zone_name_from(config, args.timezone)
+    token = reusable_session(config_path, config)
+    api = PrivateApiClient(token, timeout=args.timeout, request_delay=0.25, attempts=3)
+    before = paginate_private_notes(api)
+    duplicates = matching_drafts(before, payload["bodyJson"])
+    if duplicates:
+        preview.update(
+            {
+                "duplicate": True,
+                "existing_notes": [
+                    {
+                        "id": item_id(note),
+                        "status": "scheduled" if note.get("trigger_at") else "draft",
+                        "trigger_at": note.get("trigger_at"),
+                    }
+                    for note in duplicates
+                ],
+                "next_step": "No Note was created because this exact body already exists.",
+            }
+        )
+        print(json.dumps(preview, ensure_ascii=False, indent=2))
+        return 0
+
+    existing_ids = {item_id(note) for note in before}
+    response = api.post_json("/api/v1/comment/draft", payload)
+    response_note = created_note_from_response(response)
+    response_id = item_id(response_note) if response_note else None
+    try:
+        summary = PrivateNotesSync(api, output_dir, zone_name=zone_name).sync(
+            days=args.days,
+            minimum_spacing=args.minimum_spacing,
+        )
+    except PrivateNotesError as exc:
+        raise PrivateNotesError(
+            "Substack returned a draft-creation response, but the local refresh failed. "
+            "Pull and check the exact body before retrying."
+        ) from exc
+
+    refreshed_notes = load_private_notes(output_dir)
+    if response_id:
+        refreshed = next(
+            (note for note in refreshed_notes if item_id(note) == response_id), None
+        )
+    else:
+        candidates = [
+            note
+            for note in matching_drafts(refreshed_notes, payload["bodyJson"])
+            if item_id(note) not in existing_ids
+        ]
+        refreshed = candidates[0] if len(candidates) == 1 else None
+    if refreshed is None:
+        raise PrivateNotesError(
+            "Substack returned a draft-creation response, but the new draft could not "
+            "be identified after refresh. Pull and check the exact body before retrying."
+        )
+    if refreshed.get("trigger_at"):
+        raise PrivateNotesError(
+            "The created Note unexpectedly has a scheduled time. Pull and inspect it "
+            "before making another change."
+        )
+    if not matching_drafts([refreshed], payload["bodyJson"]):
+        raise PrivateNotesError(
+            "The refreshed draft body did not match the approved text. Pull and inspect "
+            "it before making another change."
+        )
+
+    created_id = item_id(refreshed)
+    preview.update(
+        {
+            "applied": True,
+            "note_id": created_id,
+            "verified_status": "draft",
+            "local_json": str(
+                (output_dir / "note-drafts" / f"{created_id}.json").resolve()
+            ),
+            "local_markdown": str(
+                (output_dir / "note-drafts" / f"{created_id}.md").resolve()
+            ),
+            "runway_file": summary["runway_file"],
+        }
+    )
+    print(json.dumps(preview, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1196,7 +1410,9 @@ def add_runway_args(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=APP_NAME,
-        description="Pull draft and scheduled Notes and build a 90-day schedule runway.",
+        description=(
+            "Pull, create, and schedule Note drafts and build a 90-day runway."
+        ),
     )
     parser.add_argument("--config", default=DEFAULT_CONFIG)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -1217,6 +1433,22 @@ def build_parser() -> argparse.ArgumentParser:
     pull.add_argument("--timeout", type=float, default=30.0)
     pull.add_argument("--attempts", type=int, default=6)
     pull.set_defaults(handler=command_pull)
+
+    create_draft = commands.add_parser(
+        "create-draft", help="preview or create one unpublished, unscheduled text Note"
+    )
+    draft_source = create_draft.add_mutually_exclusive_group(required=True)
+    draft_source.add_argument("--text", help="exact plain-text Note body")
+    draft_source.add_argument("--file", help="UTF-8 file containing the exact Note body")
+    create_draft.add_argument(
+        "--apply",
+        action="store_true",
+        help="create the draft on Substack; omission produces a preview only",
+    )
+    create_draft.add_argument("--timeout", type=float, default=30.0)
+    add_local_args(create_draft)
+    add_runway_args(create_draft)
+    create_draft.set_defaults(handler=command_create_draft)
 
     schedule = commands.add_parser(
         "schedule", help="schedule a draft or change a scheduled Note's date"

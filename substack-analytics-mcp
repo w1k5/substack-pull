@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PYTHON="${SUBSTACK_ANALYTICS_MCP_PYTHON:-$HOME/.codex/substack-analytics-mcp-venv/bin/python}"
+if [ ! -x "$PYTHON" ]; then
+  echo "Install the MCP runtime: python3 -m venv \"$HOME/.codex/substack-analytics-mcp-venv\" && \"$HOME/.codex/substack-analytics-mcp-venv/bin/python\" -m pip install -r \"$ROOT/requirements-analytics-mcp.txt\"" >&2
+  exit 1
+fi
+exec "$PYTHON" "$ROOT/substack_analytics_mcp.py"

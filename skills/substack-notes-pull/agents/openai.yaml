@@ -1,4 +1,4 @@
 interface:
   display_name: "Substack Notes Pull"
-  short_description: "Pull, map, and schedule Notes"
-  default_prompt: "Use $substack-notes-pull to pull my draft and scheduled Notes, then show me the next 90 days without clustering."
+  short_description: "Pull, draft, map, and schedule Notes"
+  default_prompt: "Use $substack-notes-pull to pull my draft and scheduled Notes, safely create approved new drafts when asked, then show me the next 90 days without clustering."

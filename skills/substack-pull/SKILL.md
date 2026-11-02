@@ -5,9 +5,11 @@ description: Pull, back up, find, and inspect any Substack publication's public 
 
 # Substack Pull
 
-Use the bundled CLI to maintain and inspect a local copy of a Substack
-publication. The API is undocumented; keep every operation read-only and report
-endpoint failures plainly. Choose between these modes:
+Use the local `substack-analytics-local` MCP tools when they are available and
+point at the requested workspace. Otherwise use the bundled CLI. Both paths
+maintain the same local copy. The API is undocumented; keep every remote
+operation read-only and report endpoint failures plainly. Choose between these
+modes:
 
 - For another publication's anonymously visible posts, use public mode. It never
   reads or sends a session cookie and syncs only the public archive.
@@ -17,9 +19,38 @@ endpoint failures plainly. Choose between these modes:
 Route public, draft, and scheduled **Notes** to `substack-notes-pull`; this skill
 is for publication posts.
 
+## MCP workflow
+
+Call `workspace_info` once to verify the MCP's workspace. For an own-publication
+pull, also verify its publication and backup directory match the requested
+copy. For a public pull, the publication can differ; use the MCP only when its
+managed per-publication directory is acceptable. This MCP is bound to one
+local repository. If it is unavailable or points elsewhere, use the CLI
+workflow below. Do not run both paths for the same pull.
+
+- Own publication: call `pull_own_posts` first. Use
+  `find_post_copies` to locate titles or IDs, then `read_post_copy` only when
+  the post body is needed. `backup_status` shows the last local sync.
+- Other public publication: call `pull_public_posts(publication_url=...)`, then
+  pass the same URL to `find_post_copies` or `read_post_copy`. This MCP path
+  accepts `*.substack.com` URLs and keeps each publication in a separate
+  ignored directory. Use the CLI for a custom public domain or a caller-chosen
+  directory. Never send the saved session in public mode.
+- Current performance comparison: call
+  `pull_own_posts(refresh_published=true)` before reading local published
+  copies. The MCP's `post_performance` can add current aggregate analytics.
+  Check any `errors` or `incomplete` result before relying on a pull.
+
+If an MCP pull reports a missing session despite a recent successful local
+pull, follow the Keychain-access recovery below before asking for new auth.
+
+These MCP tools wrap the bundled puller; they do not implement a second sync
+algorithm. `list_posts` is an analytics ranking tool, not the local backup
+index. No MCP tool in this skill publishes, edits, or deletes posts.
+
 ## Authenticated workflow
 
-Resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
+For CLI fallback, resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
 from the user's workspace and pass the workspace's absolute config path. When a
 configured `.substack-pull.json` is present, pull immediately; do not run
 `doctor` or ask setup questions on every use.

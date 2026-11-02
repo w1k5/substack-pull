@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from datetime import date, datetime, timezone
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+import urllib.error
 import urllib.parse
 
 
@@ -18,9 +21,14 @@ from substack_draft_notes import (
     LEGACY_KEYCHAIN_ACCOUNT,
     LEGACY_KEYCHAIN_SERVICE,
     PrivateApiClient,
+    PrivateNotesError,
     PrivateNotesSync,
     api_timestamp,
+    draft_body_json,
+    draft_payload,
     load_private_notes,
+    main,
+    matching_drafts,
     notes_overview,
     paginate_private_notes,
     parse_schedule_at,
@@ -189,6 +197,124 @@ class SchedulingTests(unittest.TestCase):
         )
         self.assertEqual(payload["attachmentIds"], ["image-1"])
         self.assertEqual(payload["trigger_at"], "2026-10-31T14:28:00.000Z")
+
+
+class DraftCreationTests(unittest.TestCase):
+    class Response:
+        def __init__(self, payload: bytes):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def test_post_uses_draft_endpoint_method_and_json(self):
+        captured = {}
+
+        def opener(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return self.Response(b'{"id":321,"status":"draft"}')
+
+        client = PrivateApiClient(
+            "test-session",
+            base_url="http://127.0.0.1",
+            request_delay=0,
+            opener=opener,
+        )
+        payload = draft_payload("First line\nSecond line")
+
+        result = client.post_json("/api/v1/comment/draft", payload)
+
+        request = captured["request"]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.full_url, "http://127.0.0.1/api/v1/comment/draft")
+        self.assertEqual(json.loads(request.data), payload)
+        self.assertEqual(result, {"id": 321, "status": "draft"})
+
+    def test_plain_text_becomes_nonempty_paragraphs_with_schema_attrs(self):
+        body = draft_body_json("First\n\nSecond\r\nThird")
+
+        self.assertEqual(body["attrs"], {"schemaVersion": "v1", "title": None})
+        self.assertEqual(
+            [paragraph["content"][0]["text"] for paragraph in body["content"]],
+            ["First", "Second", "Third"],
+        )
+
+    def test_payload_is_explicitly_unscheduled_and_unpublished(self):
+        payload = draft_payload("Keep this unpublished")
+
+        self.assertEqual(payload["replyMinimumRole"], "everyone")
+        self.assertIsNone(payload["trigger_at"])
+        self.assertNotIn("draftCommentId", payload)
+        self.assertNotIn("surface", payload)
+
+    def test_creation_is_not_retried_after_an_uncertain_network_result(self):
+        calls = 0
+
+        def opener(request, timeout):
+            nonlocal calls
+            calls += 1
+            raise urllib.error.URLError("connection dropped")
+
+        client = PrivateApiClient(
+            "test-session",
+            base_url="http://127.0.0.1",
+            request_delay=0,
+            attempts=6,
+            opener=opener,
+        )
+
+        with self.assertRaisesRegex(PrivateNotesError, "check the exact Note"):
+            client.post_json("/api/v1/comment/draft", draft_payload("Only once"))
+
+        self.assertEqual(calls, 1)
+
+    def test_duplicate_detection_accepts_substacks_paragraph_rendering(self):
+        note = private_note(7, "First\n\nSecond")
+        note["body_json"] = {
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "First"}]},
+                {"type": "paragraph", "content": [{"type": "text", "text": "Second"}]},
+            ],
+        }
+
+        matches = matching_drafts([note], draft_body_json("First\nSecond"))
+
+        self.assertEqual([value["id"] for value in matches], [7])
+
+    def test_rejects_empty_and_overlong_text_before_any_request(self):
+        with self.assertRaisesRegex(PrivateNotesError, "visible text"):
+            draft_body_json("   \n")
+        with self.assertRaisesRegex(PrivateNotesError, "5,000"):
+            draft_body_json("x" * 5_001)
+
+    def test_preview_requires_no_authentication_and_shows_normalized_body(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = main(
+                    [
+                        "--config",
+                        str(config),
+                        "create-draft",
+                        "--text",
+                        "First\n\nSecond",
+                    ]
+                )
+
+        preview = json.loads(output.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(preview["body"], "First\nSecond")
+        self.assertEqual(preview["paragraphs"], 2)
+        self.assertFalse(preview["applied"])
 
 
 class RunwayTests(unittest.TestCase):

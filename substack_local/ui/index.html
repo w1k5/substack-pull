@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Substack · Clearview</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">↗</div>
+          <div><strong>Clearview</strong><small>Substack analytics</small></div>
+        </div>
+        <div class="side-label">WORKSPACE</div>
+        <a class="side-link active" href="#overview"><span>◫</span> Overview</a>
+        <a class="side-link" href="#sources"><span>◎</span> Sources</a>
+        <a class="side-link" href="#posts"><span>▤</span> Posts</a>
+        <div class="side-bottom">
+          <span class="live-dot"></span> Read-only · local<br /><small
+            >Session stays in macOS Keychain</small
+          >
+        </div>
+      </aside>
+      <main>
+        <header class="topbar">
+          <div class="eyebrow">PUBLICATION INTELLIGENCE</div>
+          <div class="top-actions">
+            <span id="header-spinner" class="spinner spinner-small" aria-hidden="true" hidden></span
+            ><span id="updated">Loading live data…</span
+            ><button id="refresh" class="refresh">↻ Refresh</button>
+          </div>
+        </header>
+        <div class="content" id="overview">
+          <div class="hero">
+            <div>
+              <h1>Your publication, <em>in focus.</em></h1>
+              <p>Traffic, subscriber growth, and post performance in one place.</p>
+            </div>
+            <div class="range-wrap">
+              <label for="range">Publication metrics</label
+              ><select id="range">
+                <option value="30">Last 30 days</option>
+                <option value="90" selected>Last 90 days</option>
+                <option value="180">Last 180 days</option>
+                <option value="365">Last 365 days</option>
+              </select>
+            </div>
+          </div>
+          <div id="notice" class="notice" hidden></div>
+          <section class="metrics" aria-label="Publication metrics">
+            <div class="metric">
+              <div class="metric-label">Total views</div>
+              <div class="metric-value" id="views">—</div>
+              <div class="metric-note">Across web, email, and app</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Unique visitors</div>
+              <div class="metric-value" id="visitors">—</div>
+              <div class="metric-note">Growth attribution total</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">New subscribers</div>
+              <div class="metric-value" id="subscribers">—</div>
+              <div class="metric-note">Growth attribution total</div>
+            </div>
+            <div class="metric accent">
+              <div class="metric-label">Visitors → subscribers</div>
+              <div class="metric-value" id="conversion">—</div>
+              <div class="metric-note">Directional ratio for this period</div>
+            </div>
+          </section>
+          <section class="panel trend">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow">MOMENTUM</div>
+                <h2>Views over time</h2>
+              </div>
+              <div class="panel-meta" id="period">—</div>
+            </div>
+            <div class="chart-wrap">
+              <svg
+                id="chart"
+                viewBox="0 0 1000 240"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label="Publication views with post and Note markers"
+              ></svg>
+            </div>
+            <div class="chart-axis"><span id="start-date"></span><span id="end-date"></span></div>
+            <div class="event-legend">
+              <span><i class="post-key"></i> Post published</span
+              ><span><i class="note-key"></i> Note published</span
+              ><span>Select a marker to inspect posts and Note reach</span>
+            </div>
+            <div id="event-detail" class="event-detail" hidden></div>
+          </section>
+          <div class="two-col" id="sources">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <div class="eyebrow">DISCOVERY</div>
+                  <h2>Where subscribers come from</h2>
+                </div>
+                <span class="panel-meta">Selected period</span>
+              </div>
+              <div id="growth-list" class="growth-list"></div>
+              <p class="footnote">
+                Substack’s source attribution. Child sources, including Notes, are listed
+                separately; parent totals include their children.
+              </p>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <div class="eyebrow">SOURCE QUALITY</div>
+                  <h2>Traffic by source</h2>
+                </div>
+                <span class="panel-meta">Selected period</span>
+              </div>
+              <div class="table-toolbar">
+                <input
+                  id="source-search"
+                  type="search"
+                  placeholder="Search sources"
+                  aria-label="Search traffic sources"
+                /><select id="source-sort" aria-label="Sort traffic sources">
+                  <option value="views">Most views</option>
+                  <option value="users">Most users</option>
+                  <option value="free_signups">Most signups</option>
+                  <option value="rate">Highest signup ratio</option>
+                </select>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Views</th>
+                      <th>Users</th>
+                      <th>Subs</th>
+                      <th>Subs / users</th>
+                    </tr>
+                  </thead>
+                  <tbody id="source-table"></tbody>
+                </table>
+              </div>
+              <p class="footnote">
+                Ratios use attributed signups ÷ source users. Treat them as directional, especially
+                for small sources.
+              </p>
+            </section>
+          </div>
+          <section class="panel posts-panel" id="posts">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow">CONTENT</div>
+                <h2>Posts at a glance</h2>
+              </div>
+              <span class="badge">Lifetime metrics</span>
+            </div>
+            <div class="table-toolbar">
+              <input
+                id="post-search"
+                type="search"
+                placeholder="Find a post"
+                aria-label="Find a post"
+              /><select id="post-sort" aria-label="Sort posts">
+                <option value="date">Newest first</option>
+                <option value="views">Most views</option>
+                <option value="signups">Most signups</option>
+                <option value="shares">Most shares</option>
+                <option value="open_rate">Highest open rate</option>
+              </select>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Post</th>
+                    <th>Date</th>
+                    <th>Views</th>
+                    <th>Opens</th>
+                    <th>Open rate</th>
+                    <th>Shares</th>
+                    <th>Signups</th>
+                    <th>Engagement</th>
+                  </tr>
+                </thead>
+                <tbody id="post-table"></tbody>
+              </table>
+            </div>
+            <p class="footnote">
+              Post metrics are lifetime totals. The date selector above applies only to publication
+              traffic and growth.
+            </p>
+          </section>
+          <section class="panel post-detail" id="post-detail" hidden aria-live="polite">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow">POST PERFORMANCE</div>
+                <h2 id="detail-title">—</h2>
+                <div class="panel-meta" id="detail-meta"></div>
+              </div>
+              <div class="detail-actions">
+                <a id="detail-open" class="refresh" target="_blank" rel="noopener noreferrer"
+                  >Open in Substack ↗</a
+                ><button
+                  class="refresh"
+                  id="detail-close"
+                  type="button"
+                  aria-label="Close post details"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div id="detail-content"></div>
+          </section>
+          <footer>
+            Data from your authenticated Substack dashboard · Updated on demand · Local to this Mac
+          </footer>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

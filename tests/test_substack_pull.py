@@ -383,7 +383,7 @@ class SyncTests(unittest.TestCase):
                 ),
             )
 
-    def test_missing_remote_item_is_preserved_locally(self):
+    def test_missing_remote_item_is_archived_locally(self):
         with ServerFixture() as fixture, tempfile.TemporaryDirectory() as temp:
             engine = self.make_engine(fixture, temp)
             engine.sync()
@@ -394,13 +394,15 @@ class SyncTests(unittest.TestCase):
             summary = engine.sync()
 
             self.assertEqual(
-                summary["categories"]["published"]["missing_local_preserved"], 1
+                summary["categories"]["published"]["archived"], 1
             )
-            self.assertTrue(existing.is_file())
+            self.assertFalse(existing.exists())
+            archived = Path(temp) / "archive" / "published" / "30.json"
+            self.assertTrue(archived.is_file())
             with (Path(temp) / ".sync" / "state.json").open() as handle:
                 state = json.load(handle)
             self.assertEqual(
-                state["categories"]["published"]["30"]["remote_status"], "missing"
+                state["archive"]["published"]["30"]["remote_status"], "archived"
             )
 
     def test_refresh_published_forces_only_published_bodies(self):
