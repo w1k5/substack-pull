@@ -158,10 +158,6 @@ h2 {
   flex: 1;
   font-size: 12px;
 }
-.table-toolbar select {
-  font-size: 12px;
-  max-width: 160px;
-}
 .table-scroll {
   max-height: 444px;
   overflow: auto;
@@ -330,21 +326,6 @@ th[aria-sort='descending'] .sort-arrow {
 .sort-header:focus-visible {
   color: #315f49;
   text-decoration: underline;
-}
-.sort-direction {
-  border: 1px solid #dce4da;
-  background: #fff;
-  color: #3f7654;
-  border-radius: 9px;
-  padding: 9px 12px;
-  font:
-    700 16px -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
-  cursor: pointer;
-}
-.sort-direction:hover {
-  background: #edf5e8;
 }
 .growth-row.child .growth-bar {
   margin-left: 15px;

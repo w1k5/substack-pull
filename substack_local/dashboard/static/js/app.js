@@ -57,7 +57,8 @@ function updateSortControls(section) {
   const { key, direction } = sortState[section];
   const table = $(section === 'source' ? 'source-table' : 'post-table').closest('table');
   table.querySelectorAll('thead th').forEach((th, index) => {
-    const selected = sortColumns[section][index][0] === key;
+    const [columnKey, label] = sortColumns[section][index];
+    const selected = columnKey === key;
     th.setAttribute(
       'aria-sort',
       selected ? (direction === 'asc' ? 'ascending' : 'descending') : 'none',
@@ -67,19 +68,20 @@ function updateSortControls(section) {
         ? '↑'
         : '↓'
       : '↕';
+    const nextDirection = selected
+      ? direction === 'asc'
+        ? 'descending'
+        : 'ascending'
+      : ['name', 'title'].includes(columnKey)
+        ? 'ascending'
+        : 'descending';
+    th.querySelector('.sort-header').setAttribute('aria-label', `Sort by ${label}, ${nextDirection}`);
   });
-  $(section === 'source' ? 'source-sort' : 'post-sort').value = key;
-  const reverse = $(section === 'source' ? 'source-direction' : 'post-direction');
-  reverse.textContent = direction === 'asc' ? '↑' : '↓';
-  reverse.setAttribute(
-    'aria-label',
-    `Reverse ${section} sort direction; currently ${direction === 'asc' ? 'ascending' : 'descending'}`,
-  );
 }
-function setSort(section, key, toggle = false) {
+function setSort(section, key) {
   const state = sortState[section];
-  if (state.key === key && toggle) state.direction = state.direction === 'asc' ? 'desc' : 'asc';
-  else if (state.key !== key) {
+  if (state.key === key) state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+  else {
     state.key = key;
     state.direction = ['name', 'title'].includes(key) ? 'asc' : 'desc';
   }
@@ -100,17 +102,8 @@ function setupSort(section) {
     arrow.setAttribute('aria-hidden', 'true');
     button.append(arrow);
     th.replaceChildren(button);
-    button.addEventListener('click', () => setSort(section, key, true));
+    button.addEventListener('click', () => setSort(section, key));
   });
-  const select = $(section === 'source' ? 'source-sort' : 'post-sort');
-  select.replaceChildren(...sortColumns[section].map(([key, label]) => new Option(label, key)));
-  select.addEventListener('change', () => setSort(section, select.value));
-  const reverse = document.createElement('button');
-  reverse.type = 'button';
-  reverse.className = 'sort-direction';
-  reverse.id = `${section}-direction`;
-  select.after(reverse);
-  reverse.addEventListener('click', () => setSort(section, sortState[section].key, true));
   updateSortControls(section);
 }
 
