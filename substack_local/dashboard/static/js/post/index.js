@@ -46,7 +46,7 @@ function linkLabel(value) {
 function renderPostDetail(post) {
   $('detail-title').textContent = post.title;
   $('detail-meta').textContent =
-    `Published ${date(post.date)} · compared with ${fmt(post.comps.n_comp_posts)} similar posts`;
+    `Published ${date(post.date)} · lifetime totals · compared with ${fmt(post.comps.n_comp_posts)} similar posts`;
   const root = $('detail-content');
   root.replaceChildren();
   const daily = [...(post.first_week || [])].sort((a, b) => Number(a.day_n) - Number(b.day_n));
@@ -58,6 +58,47 @@ function renderPostDetail(post) {
     ].join('-');
   const complete = daily.filter((d) => !d.dt || d.dt.slice(0, 10) !== today);
   const latest = complete.at(-1) || daily.at(-1);
+  const week = complete.findLast((row) => Number(row.day_n) >= 6);
+  if (week) {
+    const panel = section('First week and later reach');
+    panel.classList.add('afterlife-panel');
+    const context = document.createElement('p');
+    context.className = 'detail-context';
+    context.textContent = 'Lifetime totals split at the end of day 7';
+    panel.append(context);
+    for (const [label, first, lifetime] of [
+      ['Views', number(week.cumulative_views), number(post.reach?.views)],
+      ['Free signups', number(week.cumulative_signups), number(post.growth?.signups)],
+    ]) {
+      if (first == null || lifetime == null) continue;
+      const later = Math.max(0, lifetime - first);
+      const row = document.createElement('div');
+      row.className = 'afterlife-row';
+      const heading = document.createElement('div');
+      heading.className = 'afterlife-heading';
+      const name = document.createElement('strong');
+      name.textContent = label;
+      const amounts = document.createElement('span');
+      amounts.textContent = `${fmt(first)} first week · ${fmt(later)} later · ${fmt(lifetime)} lifetime`;
+      heading.append(name, amounts);
+      const track = document.createElement('div');
+      track.className = 'afterlife-track';
+      const early = document.createElement('i');
+      early.className = 'afterlife-early';
+      early.style.width = `${lifetime ? (100 * first) / lifetime : 0}%`;
+      const late = document.createElement('i');
+      late.className = 'afterlife-late';
+      late.style.width = `${lifetime ? (100 * later) / lifetime : 0}%`;
+      track.append(early, late);
+      row.append(heading, track);
+      panel.append(row);
+    }
+    const caveat = document.createElement('p');
+    caveat.className = 'footnote';
+    caveat.textContent = 'Later volume has no daily dates in the available post response.';
+    panel.append(caveat);
+    root.append(panel);
+  }
   if (latest) {
     const day = Number(latest.day_n) + 1,
       partial = !complete.length && daily.length > 0;
@@ -135,18 +176,22 @@ function renderPostDetail(post) {
 }
 let detailRequest = 0;
 
-export async function showPost(row, publication) {
+export async function showPost(row, publication, force = false) {
   const request = ++detailRequest;
   const panel = $('post-detail');
   panel.hidden = false;
   panel.setAttribute('aria-busy', 'true');
+  $('detail-refresh').disabled = true;
   $('detail-title').textContent = row.title;
   $('detail-meta').textContent = '';
   $('detail-open').href = `${publication}/publish/posts/detail/${encodeURIComponent(row.id)}`;
   $('detail-content').replaceChildren(loadingIndicator('Loading post details…'));
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
-    const response = await fetch(`/api/post/${encodeURIComponent(row.id)}`, { cache: 'no-store' });
+    const response = await fetch(
+      `/api/post/${encodeURIComponent(row.id)}${force ? '?refresh=1' : ''}`,
+      { cache: 'no-store' },
+    );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Could not load post');
     if (request === detailRequest) renderPostDetail(payload);
@@ -156,10 +201,9 @@ export async function showPost(row, publication) {
       $('detail-meta').textContent = `Could not load details: ${error.message}`;
     }
   } finally {
-    if (request === detailRequest) panel.setAttribute('aria-busy', 'false');
+    if (request === detailRequest) {
+      panel.setAttribute('aria-busy', 'false');
+      $('detail-refresh').disabled = false;
+    }
   }
 }
-$('detail-close').addEventListener('click', () => {
-  detailRequest++;
-  $('post-detail').hidden = true;
-});

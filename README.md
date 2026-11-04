@@ -14,6 +14,8 @@ The post puller, dashboard, and MCP analytics tools read Substack data. The Note
 can also create a draft or change a schedule when you explicitly run an `--apply`
 command.
 
+For a possible no-code Mac and Windows app, see the [desktop app plan](docs/desktop-app-plan.md).
+
 ## Requirements
 
 - macOS and Python 3.10 or newer.
@@ -112,19 +114,73 @@ browser:
 ./substack-analytics
 ```
 
-The dashboard uses the publication and session from the first-time setup. It shows
-publication views and growth sources, post reach and reader response, and published Note
-reach. It listens only on `127.0.0.1`. The session stays in Keychain and is not sent to
-the page. Stop the server with Control-C.
+The dashboard uses the publication and session from the first-time setup. It listens
+only on `127.0.0.1`; the session stays in Keychain and is not sent to the page. Stop the
+server with Control-C.
+When started this way, keep the terminal open; closing it stops the dashboard. It does
+not currently install an automatic background service.
 
-The date selector applies to publication traffic and growth; post metrics are lifetime
-totals. Parent growth sources already include their child sources, so do not add those
-counts together. Signup ratios describe Substack's attribution and are directional,
-especially for small sources. The selected calendar range can differ slightly from
-Substack's rolling “30d views” card.
+Use the sidebar to move between four writer-focused views:
 
-**Refresh** forces a new publication fetch. Post details can be cached for up to five
-minutes, and Note reach for up to an hour. Substack's analytics endpoints are
+| View | What it answers |
+| --- | --- |
+| Briefing | What changed in views and subscriber growth, and which post or Note was published near a traffic change? |
+| Posts | Which posts kept finding readers after launch day, brought in subscribers, or continued drawing views after week one? Select two dots to compare them, then open a post for its sources, direct Note shares, and reader response. |
+| Discovery | When did each subscriber source contribute, where were subscriptions attributed, and which referrers brought traffic? |
+| Notes | Which Notes combine strong age-matched reach with reader response, profile interest, link clicks, or a new audience? Browse and sort every Note in one table, then select one for its detailed reach and reader actions. |
+
+Search posts and Notes from the header. The activity selector offers 7, 30, 90, 180, or
+365 days. It controls publication traffic, discovery, and the Notes list. Post metrics
+and individual Note reach are lifetime totals; the **Published in selected period**
+filter narrows posts by publication date. The Briefing compares equal-length current
+and preceding periods. Today may be incomplete.
+
+The Posts chart has four views: **Staying power** compares first-week reach with the
+share earned on days 2–7; **Subscriber yield** compares first-week signups per 1,000
+views; **Reader sharing** compares recorded shares per 1,000 lifetime views; and
+**Later discovery** shows how many additional views accumulated after week one.
+The first two use equal seven-day windows. The latter two use lifetime totals, so
+check publication dates when comparing older and newer posts. The post portfolio and
+MCP `post_portfolio` tool share these figures.
+
+A post's Distribution section identifies Notes that explicitly attached that post and
+shows the Note's lifetime link clicks. Those clicks are Note interactions, not
+attributed post views or subscriber conversions. The link comes from the local
+published Notes backup; update it with
+`./substack-notes-pull public pull --profile @prettyhostile --directory substack/published-notes/prettyhostile`
+for this publication. Source labels expand Substack's ambiguous terms, including
+Direct (which can include unidentified visits) and Direct to App (an external link
+opened in the app with an unidentified origin).
+
+Tables sort by clicking their headers. Posts can be filtered by date or minimum views,
+and the Posts, Discovery, and Notes views can export their visible rows to CSV. The Notes
+table lists every published Note in the selected period before its stats are loaded.
+Selecting a Note opens its details without moving the page. Analyze Notes shows a spinner
+while the shared analytics service fills the performance map and comparison columns.
+Search filters the table and highlights matching Note text in the map. Reader
+rates need at least 100 impressions; audience-share comparisons need at least 100 people.
+Reach comparison uses Substack's typical Note at the same age. Reader actions and
+audience are lifetime totals. CSV comparison columns remain blank until the analysis
+finishes. Individual Note stats are reused from the one-hour cache when available.
+
+Discovery’s source lines use the same date range and source-series request as Substack’s
+growth page. Choose up to five top-level sources to compare their timing; select a post
+or Note marker to open that piece's performance. Lines are separate attributions, and
+source counts may overlap, so do not add them into a publication total. Parent growth
+sources also include their child sources. Signup ratios describe Substack's attribution and are directional, especially
+for small sources. The selected calendar range can differ slightly from Substack's
+rolling “30d views” card. Note publication markers show timing, not causation.
+
+**Refresh publication** forces a new publication fetch. A post story has **Refresh post**,
+and an individual Note has **Refresh Note**; each bypasses its detail cache. The
+published post index is cached for 15 minutes, while individual post analytics and Note
+reach are cached for one hour in the ignored local `substack/.analytics-cache/`
+directory. Completed first-week post comparisons are cached for 24 hours and need only
+one detail request per uncached post. The dashboard and MCP share these normalized analytics caches across
+restarts; they never store the session cookie. MCP `list_posts`, `post_performance`,
+and `note_performance` accept `refresh=true` to fetch fresh stats. Published post
+content has a separate incremental local backup managed by `substack-pull`.
+Substack's analytics endpoints are
 undocumented and may change.
 
 ## MCP server for Codex
@@ -133,6 +189,11 @@ The MCP server shares the dashboard's analytics code and calls the existing pull
 for backups. It runs over local standard input/output, has no network listener, and does
 not require the dashboard to be open. Pull tools write to the ignored local backup
 directories; their Substack requests are read-only.
+The `publication_sources` tool includes the same dated subscriber source lines shown on
+Discovery. The `post_portfolio` tool returns the same completed first-week cohort and
+lifetime context used by the Posts comparison.
+The `compare_notes` tool returns the Notes page's age-matched reach and reader-outcome
+rankings, medians, and rows for a selected activity period.
 
 On a Mac with this repository and a saved Substack session, run:
 

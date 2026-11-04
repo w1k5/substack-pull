@@ -1,4 +1,5 @@
 import { fmt, pct, section } from '../shared.js';
+import { sourceLabel } from '../source-labels.js';
 
 function progressRow(label, count, total, note) {
   const row = document.createElement('div');
@@ -36,12 +37,18 @@ export function renderPostInsights(post) {
           Number(a.signups || 0) -
           Number(a.subscribes || 0) || Number(b.views || 0) - Number(a.views || 0),
     );
+  const directShares = post.direct_note_shares;
+  const distribution = sources.length || directShares?.notes?.length || directShares?.status === 'not_synced'
+    ? section('Distribution') : null;
   if (sources.length) {
-    const panel = section('Where the subscribers came from');
+    const panel = distribution;
     panel.classList.add('source-story');
+    const heading = document.createElement('h4');
+    heading.textContent = 'Where signups came from';
+    panel.append(heading);
     const context = document.createElement('p');
     context.className = 'detail-context';
-    context.textContent = 'Lifetime view share beside share of source-attributed subscribers';
+    context.textContent = 'Lifetime view share beside share of source-attributed signups';
     panel.append(context);
     const attributed = sources.reduce(
       (sum, row) => sum + Number(row.signups || 0) + Number(row.subscribes || 0),
@@ -62,14 +69,16 @@ export function renderPostInsights(post) {
         const heading = document.createElement('div');
         heading.className = 'source-compare-heading';
         const name = document.createElement('strong');
-        name.textContent = row.source || 'Unknown';
+        const source = sourceLabel(row.source, 'post', row.source_category);
+        name.textContent = source.name;
+        if (source.detail) name.title = source.detail;
         const counts = document.createElement('small');
-        counts.textContent = `${fmt(row.views)} views · ${fmt(subs)} subscribers`;
+        counts.textContent = `${fmt(row.views)} views · ${fmt(subs)} signup${subs === 1 ? '' : 's'}`;
         heading.append(name, counts);
         item.append(heading);
         for (const [label, share, kind] of [
-          ['Views', viewShare, 'view'],
-          ['Subscribers', signupShare, 'signup'],
+          ['Views', viewShare, 'traffic'],
+          ['Signups', signupShare, 'signup'],
         ]) {
           const lane = document.createElement('div');
           lane.className = `compare-lane ${kind}`;
@@ -103,8 +112,58 @@ export function renderPostInsights(post) {
     foot.className = 'footnote';
     foot.textContent = `${fmt(attributed)} signups have source attribution. Shares are directional; the visit credited with a signup can differ from its counted view.`;
     panel.append(foot);
-    root.append(panel);
   }
+  if (directShares?.notes?.length) {
+    const panel = document.createElement('div');
+    panel.className = 'direct-note-shares';
+    const heading = document.createElement('h4');
+    heading.textContent = 'Notes that shared this post';
+    panel.append(heading);
+    const context = document.createElement('p');
+    context.className = 'detail-context';
+    context.textContent = 'Explicit post attachments in published Notes';
+    panel.append(context);
+    for (const note of directShares.notes) {
+      const row = document.createElement('div');
+      row.className = 'direct-note-share';
+      const identity = document.createElement('div');
+      const link = document.createElement('a');
+      link.href = `/notes/${encodeURIComponent(note.id)}`;
+      link.dataset.route = '';
+      link.textContent = note.preview
+        ? `${note.preview.slice(0, 125)}${note.preview.length > 125 ? '…' : ''}`
+        : 'Open Note';
+      const detail = document.createElement('small');
+      detail.textContent = `@${note.profile || 'author'} · ${note.published_at ? new Date(note.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Published Note'} · shared this post`;
+      identity.append(link, detail);
+      const clicks = document.createElement('div');
+      clicks.className = 'direct-note-clicks';
+      const amount = document.createElement('strong');
+      amount.textContent = note.link_clicks == null ? '—' : fmt(note.link_clicks);
+      const unit = document.createElement('span');
+      unit.textContent = 'Note link clicks';
+      clicks.append(amount, unit);
+      row.append(identity, clicks);
+      panel.append(row);
+    }
+    const foot = document.createElement('p');
+    foot.className = 'footnote';
+    foot.textContent = 'Link clicks are interactions with the Note, not attributed post views or new subscribers. This list covers published Notes in the local backup.';
+    panel.append(foot);
+    distribution.append(panel);
+  } else if (directShares?.status === 'not_synced') {
+    const panel = document.createElement('div');
+    panel.className = 'direct-note-shares';
+    const heading = document.createElement('h4');
+    heading.textContent = 'Notes that shared this post';
+    panel.append(heading);
+    const message = document.createElement('p');
+    message.className = 'detail-context';
+    message.textContent = 'Pull your published Notes to connect direct shares to this post.';
+    panel.append(message);
+    distribution.append(panel);
+  }
+  if (distribution) root.append(distribution);
   const depth = engagement.scroll_depth?.full_post || engagement.scroll_depth?.preview,
     previewOnly = !engagement.scroll_depth?.full_post && !!engagement.scroll_depth?.preview;
   if (reach.sent != null || depth?.readers) {
@@ -139,7 +198,7 @@ export function renderPostInsights(post) {
         progressRow(
           'Clicked',
           reach.clicked,
-          Number(reach.sent),
+          Number(reach.opened),
           `${pct(reach.click_through_rate)} of openers · typical ${pct(post.comps?.avg_click_through_rate)}`,
         ),
       );
@@ -173,7 +232,7 @@ export function renderPostInsights(post) {
     const note = document.createElement('p');
     note.className = 'footnote';
     note.textContent =
-      'Email recipients and on-page readers are separate groups; the two tracks are not one funnel.';
+      'Email recipients and on-page readers are separate groups; the two tracks are not one funnel. Typical email rates are Substack’s comparison averages and may reflect different send sizes.';
     panel.append(note);
     const devices = traffic.devices || [];
     if (devices.length) {

@@ -9,18 +9,18 @@
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 15px;
-  margin-bottom: 17px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 .metric,
 .panel {
   background: #fff;
   border: 1px solid #e3e9e1;
-  border-radius: 15px;
+  border-radius: var(--radius-panel);
   box-shadow: 0 2px 8px rgba(20, 54, 42, 0.025);
 }
 .metric {
-  padding: 22px 23px;
+  padding: var(--space-6);
   min-height: 132px;
 }
 .metric.accent {
@@ -28,7 +28,7 @@
   border-color: #dbe9d1;
 }
 .metric-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: #60776b;
   font-weight: 700;
 }
@@ -40,23 +40,23 @@
   letter-spacing: -0.06em;
 }
 .metric-note {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: #899b8e;
   margin-top: 2px;
 }
 .panel {
-  padding: 24px 27px;
+  padding: var(--space-6);
 }
 .panel-heading {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 15px;
-  margin-bottom: 19px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 h2 {
   margin: 5px 0 0;
-  font-size: 20px;
+  font-size: var(--text-section);
   letter-spacing: -0.045em;
 }
 .panel-meta {
@@ -65,7 +65,7 @@ h2 {
   margin-top: 4px;
 }
 .trend {
-  margin-bottom: 17px;
+  margin-bottom: var(--space-4);
 }
 .chart-wrap {
   height: 240px;
@@ -76,6 +76,60 @@ h2 {
   height: 100%;
   overflow: visible;
 }
+.timeline-area {
+  fill: #eaf3e9;
+  opacity: 0.72;
+}
+.timeline-actual {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.timeline-hover-guide,
+.timeline-hover-dot {
+  visibility: hidden;
+  pointer-events: none;
+}
+.timeline-hover-guide.is-active,
+.timeline-hover-dot.is-active {
+  visibility: visible;
+}
+.timeline-hover-guide {
+  stroke: #9db6a2;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+.timeline-hover-dot {
+  fill: #fff;
+  stroke: var(--green);
+  stroke-width: 2;
+}
+.chart-hover {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  text-align: center;
+  text-shadow: 0 1px 3px #fff, 0 -1px 3px #fff;
+}
+.chart-hover[hidden] { display: none; }
+.chart-hover strong {
+  color: var(--green);
+  font-size: 11px;
+}
+.chart-hover span {
+  color: var(--muted);
+  font-size: 9px;
+}
+.timeline-empty {
+  fill: #7f9285;
+  font-size: 13px;
+}
 .chart-axis {
   display: flex;
   justify-content: space-between;
@@ -83,12 +137,133 @@ h2 {
   font-size: 10px;
   margin-top: 10px;
 }
+.chart-partial {
+  color: #63796a;
+  font-size: 11px;
+  margin: 12px 0 0;
+}
 .two-col {
   display: grid;
   grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
-  gap: 17px;
+  gap: var(--space-4);
   align-items: start;
 }
+.source-trend {
+  margin-bottom: var(--space-4);
+}
+.source-trend-intro {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+}
+.source-trend-intro strong { color: var(--ink); }
+.source-trend-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.source-trend-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.source-trend-choice i,
+.source-trend-hover i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.source-trend-choice.active i { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7); }
+.source-trend-choice:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.source-trend-choice.active:disabled { opacity: 1; cursor: default; }
+.source-trend-help {
+  margin: var(--space-2) 0 var(--space-4);
+  color: #819187;
+  font-size: var(--text-caption);
+}
+.source-trend-wrap {
+  height: 265px;
+  position: relative;
+}
+#source-trend-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.source-trend-grid {
+  stroke: #e9eee8;
+  stroke-dasharray: 3 5;
+}
+.source-trend-tick {
+  fill: #809288;
+  font-size: 11px;
+}
+.source-trend-line {
+  pointer-events: none;
+}
+.source-trend-post-event { fill: var(--post-event); }
+.source-trend-note-event { fill: var(--note-event); }
+.source-trend-event-marker { cursor: pointer; }
+.source-trend-event-marker:focus { outline: none; }
+.source-trend-event-marker:hover .source-trend-post-event,
+.source-trend-event-marker:focus .source-trend-post-event,
+.source-trend-event-marker.selected .source-trend-post-event,
+.source-trend-event-marker:hover .source-trend-note-event,
+.source-trend-event-marker:focus .source-trend-note-event,
+.source-trend-event-marker.selected .source-trend-note-event {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.source-trend-guide,
+.source-trend-hover-dot {
+  visibility: hidden;
+  pointer-events: none;
+}
+.source-trend-guide.visible,
+.source-trend-hover-dot.visible { visibility: visible; }
+.source-trend-guide {
+  stroke: #9db6a2;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+.source-trend-hover-dot { stroke: #fff; stroke-width: 2; }
+.source-trend-hover {
+  position: absolute;
+  z-index: 2;
+  min-width: 165px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: #fff;
+  box-shadow: 0 8px 25px rgba(25, 48, 36, 0.12);
+  pointer-events: none;
+  font-size: var(--text-caption);
+}
+.source-trend-hover[hidden],
+#source-trend-visual[hidden],
+#source-trend-empty[hidden],
+#source-trend-event-detail[hidden] { display: none; }
+.source-trend-hover strong,
+.source-trend-hover span,
+.source-trend-hover small { display: block; }
+.source-trend-hover strong { margin-bottom: 6px; }
+.source-trend-hover span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.source-trend-hover b { margin-left: auto; padding-left: 16px; }
+.source-trend-hover small {
+  margin-top: 5px;
+  color: var(--muted);
+}
+.source-trend-legend { margin-top: var(--space-4); }
 .growth-list {
   max-height: 460px;
   overflow: auto;
@@ -142,7 +317,7 @@ h2 {
   margin-top: 2px;
 }
 .footnote {
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: #9aa89e;
   margin: 18px 0 0;
@@ -202,7 +377,7 @@ tbody tr:hover {
   background: #fafcf8;
 }
 .posts-panel {
-  margin-top: 17px;
+  margin-top: var(--space-4);
 }
 .posts-panel .table-scroll {
   max-height: 600px;
@@ -240,6 +415,10 @@ footer {
   }
 }
 @media (max-width: 720px) {
+  .chart-axis span:nth-child(even) { display: none; }
+  #source-trend-axis span { display: none; }
+  #source-trend-axis span:first-child,
+  #source-trend-axis span:last-child { display: block; }
   .shell {
     grid-template-columns: 1fr;
   }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 import json
 from pathlib import Path
 import sys
@@ -213,6 +214,25 @@ class NormalizeTests(unittest.TestCase):
             saved = json.loads(path.read_text())
             self.assertEqual(saved["directory"], "old-backup")
             self.assertNotIn("output", saved)
+
+
+class ApiClientTests(unittest.TestCase):
+    def test_post_json_sends_a_json_query_with_the_saved_session(self):
+        requests = []
+
+        def opener(request, timeout):
+            requests.append(request)
+            return BytesIO(b'{"timeseries":[]}')
+
+        api = ApiClient("https://writer.substack.com", "test-session",
+                        request_delay=0, opener=opener)
+        result = api.post_json("/api/v1/publication/stats/growth/partial-timeseries",
+                               {"sources": ["substack"]})
+        self.assertEqual(result, {"timeseries": []})
+        self.assertEqual(requests[0].get_method(), "POST")
+        self.assertEqual(json.loads(requests[0].data), {"sources": ["substack"]})
+        self.assertEqual(requests[0].get_header("Content-type"), "application/json")
+        self.assertIn("connect.sid=test-session", requests[0].get_header("Cookie"))
 
 
 class SyncTests(unittest.TestCase):

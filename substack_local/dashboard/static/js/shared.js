@@ -33,6 +33,13 @@ export function loadingIndicator(message) {
   return root;
 }
 
+export function emptyMessage(message) {
+  const element = document.createElement('p');
+  element.className = 'empty-state';
+  element.textContent = message;
+  return element;
+}
+
 export const number = (n) => (n == null ? null : Number(n));
 export function section(title) {
   const el = document.createElement('section');

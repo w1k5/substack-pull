@@ -28,6 +28,7 @@ import urllib.request
 
 
 APP_NAME = "substack-pull"
+READ_ONLY_POST_PATHS = frozenset({"/api/v1/publication/stats/growth/partial-timeseries"})
 KEYCHAIN_SERVICE = "com.local.substack-pull"
 DEFAULT_CONFIG = ".substack-pull.json"
 DEFAULT_OUTPUT = "substack"
@@ -276,6 +277,17 @@ class ApiClient:
             time.sleep(remaining)
 
     def get_json(self, path: str) -> Any:
+        return self._request_json(path, method="GET")
+
+    def post_json(self, path: str, payload: dict[str, Any]) -> Any:
+        """Send a JSON query to a read-only analytics endpoint."""
+        if path not in READ_ONLY_POST_PATHS:
+            raise PullError(f"POST query is not supported for {path}.")
+        return self._request_json(path, method="POST", payload=payload)
+
+    def _request_json(
+        self, path: str, *, method: str, payload: dict[str, Any] | None = None
+    ) -> Any:
         if not path.startswith("/"):
             raise PullError(f"API path must start with '/': {path}")
         url = self.base_url + path
@@ -288,10 +300,13 @@ class ApiClient:
                 f"connect.sid={self.session_token}; "
                 f"substack.sid={self.session_token}"
             )
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
         last_error: Exception | None = None
         for attempt in range(3):
             self._throttle()
-            request = urllib.request.Request(url, headers=headers, method="GET")
+            request = urllib.request.Request(url, data=body, headers=headers, method=method)
             try:
                 with self.opener(request, timeout=self.timeout) as response:
                     raw = response.read()

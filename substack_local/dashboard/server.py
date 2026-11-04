@@ -6,6 +6,7 @@ from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 from urllib.parse import parse_qs, urlparse
 
 from ..analytics import AnalyticsService, PullError
@@ -16,12 +17,25 @@ STATIC_FILES = {
     "/css/shell.css": ("css/shell.css", "text/css; charset=utf-8"),
     "/css/overview.css": ("css/overview.css", "text/css; charset=utf-8"),
     "/css/post.css": ("css/post.css", "text/css; charset=utf-8"),
+    "/css/post-portfolio.css": ("css/post-portfolio.css", "text/css; charset=utf-8"),
+    "/css/views.css": ("css/views.css", "text/css; charset=utf-8"),
     "/js/app.js": ("js/app.js", "text/javascript; charset=utf-8"),
     "/js/shared.js": ("js/shared.js", "text/javascript; charset=utf-8"),
+    "/js/export.js": ("js/export.js", "text/javascript; charset=utf-8"),
+    "/js/notes-page.js": ("js/notes-page.js", "text/javascript; charset=utf-8"),
+    "/js/notes-compare.js": ("js/notes-compare.js", "text/javascript; charset=utf-8"),
+    "/js/notes-map.js": ("js/notes-map.js", "text/javascript; charset=utf-8"),
+    "/js/timeline.js": ("js/timeline.js", "text/javascript; charset=utf-8"),
+    "/js/publication-events.js": ("js/publication-events.js", "text/javascript; charset=utf-8"),
+    "/js/source-trend.js": ("js/source-trend.js", "text/javascript; charset=utf-8"),
+    "/js/source-labels.js": ("js/source-labels.js", "text/javascript; charset=utf-8"),
+    "/js/views/publication.js": ("js/views/publication.js", "text/javascript; charset=utf-8"),
+    "/js/views/tables.js": ("js/views/tables.js", "text/javascript; charset=utf-8"),
     "/js/post/index.js": ("js/post/index.js", "text/javascript; charset=utf-8"),
     "/js/post/notes.js": ("js/post/notes.js", "text/javascript; charset=utf-8"),
     "/js/post/trajectory.js": ("js/post/trajectory.js", "text/javascript; charset=utf-8"),
     "/js/post/insights.js": ("js/post/insights.js", "text/javascript; charset=utf-8"),
+    "/js/post/portfolio.js": ("js/post/portfolio.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -53,11 +67,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/note-comparison":
+                days = int(parse_qs(parsed.query).get("days", ["90"])[0])
+                self.send_json(self.service.note_cohort(days))
+                return
+            if parsed.path == "/api/post-portfolio":
+                params = parse_qs(parsed.query)
+                refresh = params.get("refresh", ["0"])[0] == "1"
+                self.send_json(self.service.post_portfolio(refresh=refresh))
+                return
             if parsed.path.startswith("/api/note/"):
-                self.send_json(self.service.note(parsed.path.removeprefix("/api/note/")))
+                refresh = parse_qs(parsed.query).get("refresh", ["0"])[0] == "1"
+                self.send_json(self.service.note(
+                    parsed.path.removeprefix("/api/note/"), refresh=refresh
+                ))
                 return
             if parsed.path.startswith("/api/post/"):
-                self.send_json(self.service.post(parsed.path.removeprefix("/api/post/")))
+                refresh = parse_qs(parsed.query).get("refresh", ["0"])[0] == "1"
+                self.send_json(self.service.post(
+                    parsed.path.removeprefix("/api/post/"), refresh=refresh
+                ))
                 return
             if parsed.path == "/api/dashboard":
                 params = parse_qs(parsed.query)
@@ -72,10 +101,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(exc)}, 400)
             return
 
-        if parsed.path not in STATIC_FILES:
+        route = parsed.path
+        if route in {"/posts", "/discovery", "/notes", "/notes/compare"} or re.fullmatch(
+            r"/(?:posts|notes)/[0-9]+", route
+        ):
+            route = "/"
+        if route not in STATIC_FILES:
             self.send_error(404)
             return
-        name, content_type = STATIC_FILES[parsed.path]
+        name, content_type = STATIC_FILES[route]
         body = (STATIC / name).read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)

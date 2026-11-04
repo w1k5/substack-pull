@@ -14,13 +14,19 @@ export function renderPostTrajectory(rows, notes = []) {
   modes.className = 'trajectory-modes';
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 1000 270');
-  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
   svg.setAttribute('role', 'img');
   svg.classList.add('trajectory-chart');
+  const chartViewport = document.createElement('div');
+  chartViewport.className = 'trajectory-chart-scroll';
+  chartViewport.tabIndex = 0;
+  chartViewport.setAttribute('role', 'region');
+  chartViewport.setAttribute('aria-label', 'Seven-day post performance chart; scroll horizontally on a narrow screen');
+  chartViewport.append(svg);
   const legend = document.createElement('div');
   legend.className = 'trajectory-legend';
   legend.innerHTML =
-    '<span><i class="actual-key"></i>This post</span><span><i class="typical-key"></i>Typical post</span><span><i class="note-key"></i>Note published</span><span>Select a day to inspect</span>';
+    '<span><i class="actual-key"></i>This post</span><span><i class="typical-key"></i>Typical post</span><span><i class="note-key"></i>Note published</span><span class="legend-instruction">Select a day to inspect</span><span class="mobile-chart-hint">Select a day · scroll for later days →</span>';
   const readout = document.createElement('div');
   readout.className = 'trajectory-readout';
   readout.hidden = true;
@@ -203,6 +209,7 @@ export function renderPostTrajectory(rows, notes = []) {
   ]) {
     const button = document.createElement('button');
     button.type = 'button';
+    button.className = 'segment';
     button.dataset.metric = metric;
     button.textContent = label;
     button.addEventListener('click', () => draw(metric));
@@ -213,7 +220,7 @@ export function renderPostTrajectory(rows, notes = []) {
   caveat.textContent =
     'Note markers show when you published Notes; they do not establish that a Note drove this post’s performance.';
   controls.append(description, modes);
-  panel.append(controls, svg, legend, readout, activity, caveat);
+  panel.append(controls, chartViewport, legend, readout, activity, caveat);
   draw('views');
   return panel;
 }

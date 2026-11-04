@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/css/shell.css" />
     <link rel="stylesheet" href="/css/overview.css" />
     <link rel="stylesheet" href="/css/post.css" />
+    <link rel="stylesheet" href="/css/post-portfolio.css" />
+    <link rel="stylesheet" href="/css/views.css" />
   </head>
   <body>
     <div class="shell">
@@ -15,10 +17,13 @@
           <div class="brand-mark">↗</div>
           <div><strong>Clearview</strong><small>Substack analytics</small></div>
         </div>
-        <div class="side-label">WORKSPACE</div>
-        <a class="side-link active" href="#overview"><span>◫</span> Overview</a>
-        <a class="side-link" href="#sources"><span>◎</span> Sources</a>
-        <a class="side-link" href="#posts"><span>▤</span> Posts</a>
+        <div class="side-label">YOUR PUBLICATION</div>
+        <nav aria-label="Analytics views">
+          <a class="side-link active" data-route href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Briefing</a>
+          <a class="side-link" data-route href="/posts"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Posts</a>
+          <a class="side-link" data-route href="/discovery"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>Discovery</a>
+          <a class="side-link" data-route href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5"/></svg>Notes</a>
+        </nav>
         <div class="side-bottom">
           <span class="live-dot"></span> Read-only · local<br /><small
             >Session stays in macOS Keychain</small
@@ -27,50 +32,69 @@
       </aside>
       <main>
         <header class="topbar">
-          <div class="eyebrow">PUBLICATION INTELLIGENCE</div>
-          <div class="top-actions">
-            <span id="header-spinner" class="spinner spinner-small" aria-hidden="true" hidden></span
-            ><span id="updated">Loading live data…</span
-            ><button id="refresh" class="refresh">↻ Refresh</button>
+          <div class="top-search">
+            <label class="visually-hidden" for="global-search">Search posts and Notes</label>
+            <input id="global-search" type="search" placeholder="Search posts and Notes" autocomplete="off" />
+            <div id="search-results" class="search-results" hidden></div>
           </div>
-        </header>
-        <div class="content" id="overview">
-          <div class="hero">
-            <div>
-              <h1>Your publication, <em>in focus.</em></h1>
-              <p>Traffic, subscriber growth, and post performance in one place.</p>
-            </div>
-            <div class="range-wrap">
-              <label for="range">Publication metrics</label
-              ><select id="range">
-                <option value="30">Last 30 days</option>
-                <option value="90" selected>Last 90 days</option>
+          <div class="top-actions">
+            <div class="period-control" id="period-control">
+              <label for="range">Activity period</label>
+              <select id="range">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
                 <option value="180">Last 180 days</option>
                 <option value="365">Last 365 days</option>
               </select>
             </div>
+            <span id="lifetime-scope" class="badge" hidden>Lifetime post metrics</span>
+            <span id="header-spinner" class="spinner spinner-small" aria-hidden="true" hidden></span
+            ><span id="updated">Loading live data…</span
+            ><button id="refresh" class="refresh" type="button">↻ Refresh publication</button>
           </div>
-          <div id="notice" class="notice" hidden></div>
+        </header>
+        <div class="content" id="overview">
+          <div id="notice" class="notice" role="alert" hidden></div>
+          <section class="view" id="view-briefing" aria-labelledby="briefing-title">
+          <div class="hero">
+            <div>
+              <div class="eyebrow">THE WRITER'S BRIEFING</div>
+              <h1 id="briefing-title">What deserves <em>attention?</em></h1>
+              <p id="briefing-period">A clear read on this period's reach and growth.</p>
+            </div>
+          </div>
+          <div id="briefing-insight" class="insight-callout" aria-live="polite"></div>
           <section class="metrics" aria-label="Publication metrics">
             <div class="metric">
-              <div class="metric-label">Total views</div>
-              <div class="metric-value" id="views">—</div>
-              <div class="metric-note">Across web, email, and app</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">Unique visitors</div>
-              <div class="metric-value" id="visitors">—</div>
-              <div class="metric-note">Growth attribution total</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">New subscribers</div>
+              <div class="metric-label">New subscribers
+                <details class="metric-help">
+                  <summary aria-label="Define new subscribers">?</summary>
+                  <p>Substack's subscriber growth attribution for this period. The comparison uses the preceding period of equal length.</p>
+                </details>
+              </div>
               <div class="metric-value" id="subscribers">—</div>
-              <div class="metric-note">Growth attribution total</div>
+              <div class="metric-note" id="subscribers-delta">For selected period</div>
             </div>
-            <div class="metric accent">
-              <div class="metric-label">Visitors → subscribers</div>
-              <div class="metric-value" id="conversion">—</div>
-              <div class="metric-note">Directional ratio for this period</div>
+            <div class="metric">
+              <div class="metric-label">Publication views
+                <details class="metric-help">
+                  <summary aria-label="Define publication views">?</summary>
+                  <p>Views summed across reported traffic sources, including web, email, and app.</p>
+                </details>
+              </div>
+              <div class="metric-value" id="views">—</div>
+              <div class="metric-note" id="views-delta">Across web, email, and app</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Visitors
+                <details class="metric-help">
+                  <summary aria-label="Define visitors">?</summary>
+                  <p>The visitor total reported by Substack's growth attribution response.</p>
+                </details>
+              </div>
+              <div class="metric-value" id="visitors">—</div>
+              <div class="metric-note" id="visitors-delta">Growth attribution total</div>
             </div>
           </section>
           <section class="panel trend">
@@ -85,27 +109,77 @@
               <svg
                 id="chart"
                 viewBox="0 0 1000 240"
-                preserveAspectRatio="none"
+                preserveAspectRatio="xMinYMin meet"
                 role="img"
                 aria-label="Publication views with post and Note markers"
               ></svg>
+              <div id="chart-hover" class="chart-hover" hidden>
+                <strong id="chart-hover-value"></strong>
+                <span id="chart-hover-date"></span>
+              </div>
             </div>
-            <div class="chart-axis"><span id="start-date"></span><span id="end-date"></span></div>
+            <div class="chart-axis" id="chart-axis"></div>
+            <p id="chart-partial" class="chart-partial" hidden></p>
             <div class="event-legend">
               <span><i class="post-key"></i> Post published</span
               ><span><i class="note-key"></i> Note published</span
-              ><span>Select a marker to inspect posts and Note reach</span>
+              ><span>Select a publication marker for its posts and Notes</span>
             </div>
             <div id="event-detail" class="event-detail" hidden></div>
           </section>
+          <div id="briefing-next" class="briefing-next">
+            <a data-route href="/posts">
+              <span>POSTS</span><strong>Which pieces brought readers in?</strong>
+              <small>Compare reach, signups, and reader response →</small>
+            </a>
+            <a data-route href="/discovery">
+              <span>DISCOVERY</span><strong>Where did those readers come from?</strong>
+              <small>Inspect traffic and subscriber attribution →</small>
+            </a>
+          </div>
+          </section>
+          <section class="view" id="view-discovery" aria-labelledby="discovery-title" hidden>
+            <div class="hero">
+              <div><div class="eyebrow">DISCOVERY</div><h1 id="discovery-title">How readers <em>find you.</em></h1>
+                <p>Subscriber attribution and traffic answer related, different questions.</p></div>
+            </div>
+            <div id="discovery-insight" class="insight-callout"></div>
+            <section class="panel source-trend" aria-labelledby="source-trend-title">
+              <div class="panel-heading">
+                <div>
+                  <div class="eyebrow">SUBSCRIBER MOMENTUM</div>
+                  <h2 id="source-trend-title">New subscribers by source</h2>
+                </div>
+                <span class="panel-meta" id="source-trend-unit">Per-source subscribers · daily</span>
+              </div>
+              <p class="source-trend-intro"><strong>Separate lines, not a total.</strong> Each line shows subscribers credited to that source each day or week. Adding a source never changes another line’s values.</p>
+              <div id="source-trend-choices" class="source-trend-choices" aria-label="Subscriber sources to compare"></div>
+              <p id="source-trend-selection-help" class="source-trend-help"></p>
+              <p id="source-trend-empty" class="empty-state" role="status" hidden></p>
+              <div id="source-trend-visual">
+                <div class="source-trend-wrap">
+                  <svg id="source-trend-chart" viewBox="0 0 1000 265" preserveAspectRatio="xMinYMin meet"
+                    role="group" aria-label="New subscribers over time by selected source, with selectable post and Note publication markers"></svg>
+                  <div id="source-trend-hover" class="source-trend-hover" hidden></div>
+                </div>
+                <div id="source-trend-axis" class="chart-axis"></div>
+                <div class="event-legend source-trend-legend">
+                  <span><i class="post-key"></i> Post published</span>
+                  <span><i class="note-key"></i> Note published</span>
+                  <span id="source-trend-partial"></span>
+                  <span>Select a marker to open its posts or Notes</span>
+                </div>
+              </div>
+              <div id="source-trend-event-detail" class="event-detail" hidden></div>
+              <p class="footnote">Source attribution can overlap, so source counts should not be summed into a publication total. Publication markers show timing, not which piece caused a signup.</p>
+            </section>
           <div class="two-col" id="sources">
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <div class="eyebrow">DISCOVERY</div>
+                  <div class="eyebrow">ATTRIBUTION</div>
                   <h2>Where subscribers come from</h2>
                 </div>
-                <span class="panel-meta">Selected period</span>
               </div>
               <div id="growth-list" class="growth-list"></div>
               <p class="footnote">
@@ -116,10 +190,9 @@
             <section class="panel">
               <div class="panel-heading">
                 <div>
-                  <div class="eyebrow">SOURCE QUALITY</div>
+                  <div class="eyebrow">TRAFFIC</div>
                   <h2>Traffic by source</h2>
                 </div>
-                <span class="panel-meta">Selected period</span>
               </div>
               <div class="table-toolbar">
                 <input
@@ -128,6 +201,7 @@
                   placeholder="Search sources"
                   aria-label="Search traffic sources"
                 />
+                <button type="button" class="refresh" id="export-sources" disabled>Export CSV</button>
               </div>
               <div class="table-scroll">
                 <table>
@@ -136,34 +210,70 @@
                       <th>Source</th>
                       <th>Views</th>
                       <th>Users</th>
-                      <th>Subs</th>
-                      <th>Subs / users</th>
+                      <th>Signups</th>
+                      <th>Signup rate</th>
                     </tr>
                   </thead>
                   <tbody id="source-table"></tbody>
                 </table>
               </div>
+              <div id="source-pagination" class="table-pagination"></div>
               <p class="footnote">
                 Ratios use attributed signups ÷ source users. Treat them as directional, especially
                 for small sources.
               </p>
             </section>
           </div>
+          </section>
+          <section class="view" id="view-posts" aria-labelledby="posts-title" hidden>
+            <div class="hero">
+              <div><div class="eyebrow">POST PORTFOLIO</div><h1 id="posts-title">What did your writing <em>do?</em></h1>
+                <p>Compare how posts launch, attract subscribers, get shared, and keep finding readers.</p></div>
+            </div>
+            <section class="panel post-map-panel" id="post-map" aria-labelledby="post-map-title">
+              <div class="panel-heading">
+                <div>
+                  <div class="eyebrow" id="post-map-eyebrow">FIRST-WEEK COMPARISON</div>
+                  <h2 id="post-map-title">How posts travel</h2>
+                </div>
+                <span class="badge" id="post-map-window">Same 7-day window</span>
+              </div>
+              <p class="detail-context" id="post-map-description">See which posts kept finding readers after launch day.</p>
+              <div class="segment-row post-map-lenses" id="post-map-lenses" aria-label="Compare post outcomes">
+                <button type="button" class="segment" data-post-map="staying">Staying power</button>
+                <button type="button" class="segment" data-post-map="yield">Subscriber yield</button>
+                <button type="button" class="segment" data-post-map="sharing">Reader sharing</button>
+                <button type="button" class="segment" data-post-map="tail">Later discovery</button>
+              </div>
+              <p class="detail-context" id="post-map-status">Loading post comparison…</p>
+              <p class="post-map-key" id="post-map-key" hidden></p>
+              <div id="post-map-loading"></div>
+              <button type="button" class="refresh" id="post-map-retry" hidden>Retry comparison</button>
+              <div class="post-map-visual" id="post-map-visual" hidden>
+                <div class="post-map-y-title" id="post-map-y-title">Days 2–7 share of first-week views</div>
+                <div class="post-map-plot" id="post-map-plot">
+                  <div id="post-map-grid"></div>
+                  <div id="post-map-points"></div>
+                  <div class="post-map-tooltip" id="post-map-tooltip" hidden></div>
+                </div>
+                <div class="post-map-x-title" id="post-map-x-title">First-week views · log scale</div>
+              </div>
+              <div class="post-map-later" id="post-map-later" hidden></div>
+              <div class="post-map-comparison" id="post-map-comparison"></div>
+              <p class="footnote" id="post-map-footnote">Guides show cohort medians. Posts need seven complete days and at least 100 first-week views. Views are not unique readers.</p>
+            </section>
           <section class="panel posts-panel" id="posts">
             <div class="panel-heading">
               <div>
                 <div class="eyebrow">CONTENT</div>
-                <h2>Posts at a glance</h2>
+                <h2>Compare published posts</h2>
               </div>
               <span class="badge">Lifetime metrics</span>
             </div>
-            <div class="table-toolbar">
-              <input
-                id="post-search"
-                type="search"
-                placeholder="Find a post"
-                aria-label="Find a post"
-              />
+            <div class="table-toolbar filter-toolbar">
+              <label><input id="posts-in-period" type="checkbox" /> Published in selected period</label>
+              <label><input id="posts-min-views" type="checkbox" /> At least 1,000 views</label>
+              <button type="button" class="refresh" id="export-posts" disabled>Export CSV</button>
             </div>
             <div class="table-scroll">
               <table>
@@ -172,22 +282,106 @@
                     <th>Post</th>
                     <th>Date</th>
                     <th>Views</th>
-                    <th>Opens</th>
-                    <th>Open rate</th>
-                    <th>Shares</th>
                     <th>Signups</th>
+                    <th title="Signups per 1,000 views">Signup yield</th>
+                    <th>Shares</th>
+                    <th>Email opens</th>
                     <th>Engagement</th>
                   </tr>
                 </thead>
                 <tbody id="post-table"></tbody>
               </table>
             </div>
+            <div id="post-pagination" class="table-pagination"></div>
             <p class="footnote">
-              Post metrics are lifetime totals. The date selector above applies only to publication
-              traffic and growth.
+              Post metrics are lifetime totals. Signup yield is signups per 1,000 views and appears
+              for posts with at least 1,000 views. Open rates include their send counts so small lists do not appear more certain
+              than they are.
             </p>
           </section>
-          <section class="panel post-detail" id="post-detail" hidden aria-live="polite">
+          </section>
+          <section class="view" id="view-notes" aria-labelledby="notes-title" hidden>
+            <div class="hero">
+              <div>
+                <div class="eyebrow">NOTES</div>
+                <h1 id="notes-title">Where short writing <em>travels.</em></h1>
+                <p>Explore Notes published in the selected period. Each Note's reach is lifetime.</p>
+              </div>
+            </div>
+            <div id="notes-insight" class="insight-callout"></div>
+            <section class="panel note-map-panel" aria-labelledby="note-map-title">
+              <div class="panel-heading">
+                <div><div class="eyebrow">ACROSS NOTES</div><h2 id="note-map-title">Which Notes travel and move readers?</h2></div>
+              </div>
+              <p class="note-map-lead">Each dot is a Note. Compare its reach with your usual Note at the same age, then choose the reader outcome you care about.</p>
+              <div class="note-map-toolbar">
+                <div id="note-map-lenses" class="note-map-lenses" aria-label="Compare Notes by reader outcome">
+                  <button type="button" class="segment" data-map-lens="responses">Reader response</button>
+                  <button type="button" class="segment" data-map-lens="visits">Profile curiosity</button>
+                  <button type="button" class="segment" data-map-lens="clicks">Onward clicks</button>
+                  <button type="button" class="segment" data-map-lens="unconnected">New audience</button>
+                </div>
+                <button type="button" class="refresh" id="note-map-analyze">Analyze Notes</button>
+                <button type="button" class="refresh" id="note-map-retry" hidden>Retry unavailable</button>
+              </div>
+              <div id="note-map-progress" class="loading-state note-map-progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Analyzing Notes…</span></div>
+              <p id="note-map-key" class="note-map-key" hidden></p>
+              <p id="note-map-empty" class="empty-state">Analyze Notes to compare their performance.</p>
+              <div id="note-map-display" class="note-map-display" hidden>
+                <div class="note-map-visual">
+                  <div id="note-map-y-title" class="note-map-y-title"></div>
+                  <div id="note-map-plot" class="note-map-plot" role="group" aria-label="Note performance comparison">
+                    <div id="note-map-grid"></div>
+                    <div id="note-map-points"></div>
+                  </div>
+                  <div class="note-map-x-title">Reach vs your typical Note at the same age →</div>
+                </div>
+                <aside id="note-map-detail" class="note-map-detail" aria-live="polite"></aside>
+              </div>
+              <p id="note-map-summary" class="note-map-summary" hidden></p>
+              <p id="note-map-search-note" class="footnote">Search Notes above to highlight a word or phrase here.</p>
+              <p class="footnote">Reader rates need at least 100 impressions; audience share needs at least 100 people. Note reach is age matched, while actions and audience are lifetime totals. The chart shows patterns to investigate, not what caused them.</p>
+            </section>
+            <section class="panel note-compare-panel" id="note-comparison" aria-labelledby="note-comparison-title">
+              <div class="panel-heading">
+                <div><div class="eyebrow">EXACT FIGURES</div><h2 id="note-comparison-title">Compare Notes</h2><p id="note-compare-count" class="note-compare-count"></p></div>
+                <button type="button" class="refresh" id="note-compare-export" disabled>Export CSV</button>
+              </div>
+              <p class="note-compare-lead">Browse every Note here. Select one to inspect its reach, or analyze all Notes to compare exact figures. Click a column heading to sort.</p>
+              <p id="note-compare-guide" class="note-compare-guide"></p>
+              <p id="note-compare-empty" class="empty-state" hidden></p>
+              <div id="note-compare-loading" class="loading-state" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Loading Note comparisons…</span></div>
+              <div id="note-compare-results">
+                <div class="table-scroll note-compare-scroll" id="note-compare-scroll">
+                  <table id="note-compare-table" class="note-compare-table">
+                    <thead><tr>
+                      <th><button type="button" class="sort-header" data-note-sort="title">Note <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="pace">Pace vs typical <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="visits">Profile visits / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="responses">Responses / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="clicks">Link clicks / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="unconnected">Unconnected audience <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                    </tr></thead>
+                    <tbody id="note-compare-rows"></tbody>
+                  </table>
+                </div>
+                <p class="footnote">Dash marks mean stats have not been loaded or the sample is too small. Rate and audience-share rankings require at least 100 impressions or audience members. Note stats are lifetime; pace uses Substack’s age-matched typical series. These numbers describe attention and response, not subscriber conversions from an individual Note.</p>
+              </div>
+            </section>
+            <dialog class="panel note-detail-dialog" id="note-detail" aria-label="Selected Note details">
+              <button type="button" class="refresh note-detail-close" id="note-detail-close" aria-label="Close Note details">Close</button>
+              <div id="note-detail-content"></div>
+            </dialog>
+          </section>
+          <section class="view" id="view-post-detail" aria-labelledby="detail-title" hidden>
+          <div class="hero">
+            <div>
+              <a class="back-link" data-route href="/posts">← All posts</a>
+              <div class="eyebrow">POST STORY</div>
+              <h1>How this piece <em>performed.</em></h1>
+            </div>
+          </div>
+          <section class="panel post-detail" id="post-detail" aria-live="polite">
             <div class="panel-heading">
               <div>
                 <div class="eyebrow">POST PERFORMANCE</div>
@@ -195,19 +389,12 @@
                 <div class="panel-meta" id="detail-meta"></div>
               </div>
               <div class="detail-actions">
-                <a id="detail-open" class="refresh" target="_blank" rel="noopener noreferrer"
-                  >Open in Substack ↗</a
-                ><button
-                  class="refresh"
-                  id="detail-close"
-                  type="button"
-                  aria-label="Close post details"
-                >
-                  Close
-                </button>
+                <a id="detail-open" class="refresh" target="_blank" rel="noopener noreferrer">Open in Substack ↗</a>
+                <button class="refresh" id="detail-refresh" type="button">↻ Refresh post</button>
               </div>
             </div>
             <div id="detail-content"></div>
+          </section>
           </section>
           <footer>
             Data from your authenticated Substack dashboard · Updated on demand · Local to this Mac

@@ -13,11 +13,17 @@ class StubAnalytics:
     def dashboard(self, days, *, refresh=False):
         return {"days": days, "refresh": refresh}
 
-    def post(self, post_id):
-        return {"post_id": post_id}
+    def post(self, post_id, *, refresh=False):
+        return {"post_id": post_id, "refresh": refresh}
 
-    def note(self, note_id):
-        return {"note_id": note_id}
+    def post_portfolio(self, *, refresh=False):
+        return {"portfolio": True, "refresh": refresh}
+
+    def note(self, note_id, *, refresh=False):
+        return {"note_id": note_id, "refresh": refresh}
+
+    def note_cohort(self, days=90):
+        return {"days": days, "rows": [], "lenses": {}}
 
 
 class DashboardRoutesTests(unittest.TestCase):
@@ -45,11 +51,22 @@ class DashboardRoutesTests(unittest.TestCase):
     def test_dashboard_and_detail_api_routes(self):
         for route, expected in (
             ("/api/dashboard?days=30&refresh=1", {"days": 30, "refresh": True}),
-            ("/api/post/123", {"post_id": "123"}),
-            ("/api/note/456", {"note_id": "456"}),
+            ("/api/post/123", {"post_id": "123", "refresh": False}),
+            ("/api/post/123?refresh=1", {"post_id": "123", "refresh": True}),
+            ("/api/post-portfolio?refresh=1", {"portfolio": True, "refresh": True}),
+            ("/api/note/456", {"note_id": "456", "refresh": False}),
+            ("/api/note/456?refresh=1", {"note_id": "456", "refresh": True}),
+            ("/api/note-comparison?days=30", {"days": 30, "rows": [], "lenses": {}}),
         ):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
                 self.assertEqual(json.load(response), expected)
+
+    def test_each_view_can_be_opened_directly(self):
+        for route in ("/posts", "/discovery", "/notes", "/notes/compare", "/posts/123", "/notes/456"):
+            with self.subTest(route=route), urlopen(self.base_url + route) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn("text/html", response.headers["Content-Type"])
+                self.assertIn(b'id="view-briefing"', response.read())
 
 
 if __name__ == "__main__":

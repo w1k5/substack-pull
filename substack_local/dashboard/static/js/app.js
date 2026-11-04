@@ -1,358 +1,125 @@
-import { $, fmt, pct, date, cell, loadingIndicator } from './shared.js';
+import { $, loadingIndicator, emptyMessage } from './shared.js';
 import { showPost, clearNoteStatsRequests } from './post/index.js';
+import { renderPublicationTimeline } from './timeline.js';
+import { renderSubscriberSourceTrend } from './source-trend.js';
+import { renderNotesPage, setupNoteDetail, clearNotePageStats } from './notes-page.js';
+import { renderNotesComparison, filterNotesComparison, clearNotesComparison, setupNotesComparison } from './notes-compare.js';
+import { setNoteMapQuery } from './notes-map.js';
+import { setupPostPortfolio } from './post/portfolio.js';
+import { renderBriefing, renderDiscoveryInsight, renderGrowth } from './views/publication.js';
+import { createTables } from './views/tables.js';
 
 let data;
-const sortState = {
-  source: { key: 'views', direction: 'desc' },
-  post: { key: 'date', direction: 'desc' },
-};
-const sortColumns = {
-  source: [
-    ['name', 'Source'],
-    ['views', 'Views'],
-    ['users', 'Users'],
-    ['subs', 'Subs'],
-    ['rate', 'Subs / users'],
-  ],
-  post: [
-    ['title', 'Post'],
-    ['date', 'Date'],
-    ['views', 'Views'],
-    ['opens', 'Opens'],
-    ['open_rate', 'Open rate'],
-    ['shares', 'Shares'],
-    ['signups', 'Signups'],
-    ['engagement_rate', 'Engagement'],
-  ],
-};
+let activePostId;
+let loadRequest = 0;
+let renderedPath = location.pathname;
+let postPortfolio = null;
+let postPortfolioError = null;
+let postPortfolioLoading = false;
+let postPortfolioRequest = 0;
 
-const sourceSubs = (row) => Number(row.free_signups || 0) + Number(row.paid_signups || 0);
-const sourceRate = (row) => (Number(row.users) > 0 ? sourceSubs(row) / Number(row.users) : null);
-function sortValue(section, row, key) {
-  if (section === 'source') {
-    if (key === 'name') return (row.name || '').toLowerCase();
-    if (key === 'subs') return sourceSubs(row);
-    if (key === 'rate') return sourceRate(row);
-  }
-  if (section === 'post') {
-    if (key === 'title') return (row.title || '').toLowerCase();
-    if (key === 'date') return row.date ? new Date(row.date).getTime() : null;
-  }
-  return row[key] == null ? null : Number(row[key]);
+function render() {
+  renderBriefing(data, navigate);
+  renderDiscoveryInsight(data);
+  renderGrowth(data);
+  tables.renderSources();
+  tables.renderPosts();
+  $('updated').textContent =
+    `Updated ${new Date(data.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  renderRoute();
 }
-function compareRows(section, a, b) {
-  const { key, direction } = sortState[section],
-    av = sortValue(section, a, key),
-    bv = sortValue(section, b, key);
-  if (av == null && bv == null) return 0;
-  if (av == null) return 1;
-  if (bv == null) return -1;
-  const result = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
-  return (
-    result * (direction === 'asc' ? 1 : -1) ||
-    String(a.name || a.title || '').localeCompare(String(b.name || b.title || ''))
-  );
+function currentRoute() {
+  const path = location.pathname;
+  if (/^\/posts\/\d+$/.test(path)) return { view: 'post-detail', id: path.split('/')[2] };
+  if (path === '/notes/compare') return { view: 'notes' };
+  if (/^\/notes\/\d+$/.test(path)) return { view: 'notes', id: path.split('/')[2] };
+  if (path === '/posts' || path === '/discovery' || path === '/notes') return { view: path.slice(1) };
+  return { view: 'briefing' };
 }
-function updateSortControls(section) {
-  const { key, direction } = sortState[section];
-  const table = $(section === 'source' ? 'source-table' : 'post-table').closest('table');
-  table.querySelectorAll('thead th').forEach((th, index) => {
-    const [columnKey, label] = sortColumns[section][index];
-    const selected = columnKey === key;
-    th.setAttribute(
-      'aria-sort',
-      selected ? (direction === 'asc' ? 'ascending' : 'descending') : 'none',
-    );
-    th.querySelector('.sort-arrow').textContent = selected
-      ? direction === 'asc'
-        ? '↑'
-        : '↓'
-      : '↕';
-    const nextDirection = selected
-      ? direction === 'asc'
-        ? 'descending'
-        : 'ascending'
-      : ['name', 'title'].includes(columnKey)
-        ? 'ascending'
-        : 'descending';
-    th.querySelector('.sort-header').setAttribute('aria-label', `Sort by ${label}, ${nextDirection}`);
+function renderRoute() {
+  const route = currentRoute();
+  renderedPath = location.pathname;
+  if (route.view !== 'notes' && $('note-detail').open) $('note-detail').close();
+  $('period-control').hidden = route.view === 'post-detail';
+  $('lifetime-scope').hidden = route.view !== 'post-detail';
+  $('refresh').hidden = route.view === 'post-detail';
+  $('updated').hidden = route.view === 'post-detail';
+  for (const view of ['briefing', 'posts', 'discovery', 'notes', 'post-detail'])
+    $(`view-${view}`).hidden = view !== route.view;
+  const primary = route.view === 'post-detail' ? 'posts' : route.view;
+  document.querySelectorAll('.side-link').forEach((link) => {
+    const selected = link.getAttribute('href') === (primary === 'briefing' ? '/' : `/${primary}`);
+    link.classList.toggle('active', selected);
+    if (selected) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
   });
-}
-function setSort(section, key) {
-  const state = sortState[section];
-  if (state.key === key) state.direction = state.direction === 'asc' ? 'desc' : 'asc';
-  else {
-    state.key = key;
-    state.direction = ['name', 'title'].includes(key) ? 'asc' : 'desc';
+  const titles = {
+    briefing: 'Briefing', posts: 'Posts', discovery: 'Discovery',
+    notes: 'Notes', 'post-detail': 'Post story',
+  };
+  document.title = `${titles[route.view]} · Clearview`;
+  if (!data) return;
+  if (route.view === 'posts') loadPostPortfolio();
+  if (route.view === 'discovery') renderSubscriberSourceTrend(data, navigate);
+  if (route.view === 'notes') {
+    renderNotesComparison(data, navigate, route.id);
+    renderNotesPage(data, route.id);
   }
-  updateSortControls(section);
-  if (data) (section === 'source' ? renderSources : renderPosts)();
+  if (route.view === 'post-detail' && route.id !== activePostId) {
+    activePostId = route.id;
+    const row = (data.posts || []).find((post) => String(post.id) === route.id);
+    if (row) showPost(row, data.publication);
+    else {
+      $('detail-title').textContent = 'Post unavailable';
+      $('detail-content').replaceChildren(emptyMessage('This post is not in the published post list.'));
+    }
+  }
 }
-function setupSort(section) {
-  const table = $(section === 'source' ? 'source-table' : 'post-table').closest('table');
-  table.querySelectorAll('thead th').forEach((th, index) => {
-    const [key, label] = sortColumns[section][index];
+const isNoteLibraryPath = (path) => /^\/notes(?:\/\d+)?$/.test(path);
+function navigate(path) {
+  const keepNotePosition = isNoteLibraryPath(location.pathname) && isNoteLibraryPath(path);
+  if (location.pathname !== path) history.pushState({}, '', path);
+  $('search-results').hidden = true;
+  if (!keepNotePosition) {
+    $('global-search').value = '';
+    setNoteMapQuery('');
+  }
+  if (data) tables.renderPosts();
+  renderRoute();
+  if (!keepNotePosition) window.scrollTo({ top: 0, behavior: 'instant' });
+}
+function renderSearchResults() {
+  const q = $('global-search').value.toLowerCase().trim();
+  const results = $('search-results');
+  results.replaceChildren();
+  if (!q || !data) {
+    results.hidden = true;
+    return;
+  }
+  const posts = (data.posts || [])
+    .filter((item) => item.title.toLowerCase().includes(q))
+    .map((item) => ({ title: item.title, type: 'Post', path: `/posts/${item.id}` }));
+  const notes = (data.publication_events || [])
+    .filter((item) => item.type === 'note' && /^\d+$/.test(String(item.id)) && item.title.toLowerCase().includes(q))
+    .map((item) => ({ title: item.title, type: 'Note', path: `/notes/${item.id}` }));
+  for (const item of [...posts, ...notes].slice(0, 8)) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'sort-header';
-    button.setAttribute('aria-label', `Sort by ${label}`);
-    button.append(document.createTextNode(label));
-    const arrow = document.createElement('span');
-    arrow.className = 'sort-arrow';
-    arrow.setAttribute('aria-hidden', 'true');
-    button.append(arrow);
-    th.replaceChildren(button);
-    button.addEventListener('click', () => setSort(section, key));
-  });
-  updateSortControls(section);
-}
-
-const CHART_LEFT = 58,
-  CHART_RIGHT = 990;
-function drawChart(series) {
-  const svg = $('chart');
-  svg.replaceChildren();
-  const values = (series || []).map((point) => Number(point[1]) || 0);
-  if (!values.length) return;
-  const ns = 'http://www.w3.org/2000/svg',
-    top = 12,
-    bottom = 218,
-    rawStep = Math.max(...values, 1) / 3;
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep)),
-    unit = rawStep / magnitude;
-  const step = (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * magnitude,
-    max = step * 3;
-  for (let i = 0; i < 4; i++) {
-    const y = bottom - ((bottom - top) * i) / 3,
-      line = document.createElementNS(ns, 'line');
-    line.setAttribute('x1', CHART_LEFT);
-    line.setAttribute('x2', CHART_RIGHT);
-    line.setAttribute('y1', y);
-    line.setAttribute('y2', y);
-    line.setAttribute('stroke', '#e9eee8');
-    line.setAttribute('stroke-dasharray', '4 6');
-    svg.append(line);
-    const label = document.createElementNS(ns, 'text');
-    label.setAttribute('x', CHART_LEFT - 10);
-    label.setAttribute('y', y + 3);
-    label.setAttribute('text-anchor', 'end');
-    label.setAttribute('fill', '#809288');
-    label.setAttribute('font-size', '11');
-    label.textContent = new Intl.NumberFormat('en-US', {
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(step * i);
-    svg.append(label);
+    const type = document.createElement('small');
+    type.textContent = item.type;
+    const name = document.createElement('span');
+    name.textContent = item.title;
+    button.append(type, name);
+    button.addEventListener('click', () => navigate(item.path));
+    results.append(button);
   }
-  const pts = values.map((v, i) => [
-    CHART_LEFT + (i * (CHART_RIGHT - CHART_LEFT)) / Math.max(1, values.length - 1),
-    bottom - (v / max) * (bottom - top),
-  ]);
-  const area = document.createElementNS(ns, 'path');
-  area.setAttribute(
-    'd',
-    `M ${pts[0][0]} ${bottom} L ${pts.map((p) => p.join(' ')).join(' L ')} L ${pts.at(-1)[0]} ${bottom} Z`,
-  );
-  area.setAttribute('fill', '#e5efe0');
-  svg.append(area);
-  const path = document.createElementNS(ns, 'path');
-  path.setAttribute('d', `M ${pts.map((p) => p.join(' ')).join(' L ')}`);
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', '#4f8067');
-  path.setAttribute('stroke-width', '3');
-  path.setAttribute('vector-effect', 'non-scaling-stroke');
-  svg.append(path);
-  const peak = values.indexOf(Math.max(...values));
-  const circle = document.createElementNS(ns, 'circle');
-  circle.setAttribute('cx', pts[peak][0]);
-  circle.setAttribute('cy', pts[peak][1]);
-  circle.setAttribute('r', '5');
-  circle.setAttribute('fill', '#315b44');
-  svg.append(circle);
-  const title = document.createElementNS(ns, 'title');
-  title.textContent = `Peak: ${fmt(values[peak])} views on ${series[peak][0]}`;
-  circle.append(title);
-  drawPublicationEvents(series);
+  if (!results.children.length) results.append(emptyMessage('No posts or Notes match.'));
+  results.hidden = false;
 }
-function drawPublicationEvents(series) {
-  const events = data?.publication_events || [];
-  if (!events.length || !series?.length) return;
-  const ns = 'http://www.w3.org/2000/svg',
-    svg = $('chart');
-  const parseDay = (value) => new Date(`${value.replaceAll('/', '-')}T12:00:00`).getTime();
-  const first = parseDay(series[0][0]),
-    last = parseDay(series.at(-1)[0]),
-    span = Math.max(1, last - first);
-  const byDay = new Map();
-  events.forEach((event) => {
-    if (!byDay.has(event.day)) byDay.set(event.day, []);
-    byDay.get(event.day).push(event);
-  });
-  [...byDay]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .forEach(([day, items]) => {
-      const fraction = (parseDay(day) - first) / span;
-      if (fraction < 0 || fraction > 1) return;
-      const x = CHART_LEFT + fraction * (CHART_RIGHT - CHART_LEFT);
-      const hasPost = items.some((item) => item.type === 'text'),
-        group = document.createElementNS(ns, 'g');
-      group.setAttribute('tabindex', '0');
-      group.setAttribute('role', 'button');
-      group.setAttribute(
-        'aria-label',
-        `${date(day)}: ${items.filter((e) => e.type === 'text').length} posts and ${items.filter((e) => e.type === 'note').length} Notes. Show events`,
-      );
-      group.setAttribute('class', `event-marker ${hasPost ? 'has-post' : 'note-only'}`);
-      if (hasPost) {
-        const line = document.createElementNS(ns, 'line');
-        line.setAttribute('x1', x);
-        line.setAttribute('x2', x);
-        line.setAttribute('y1', 18);
-        line.setAttribute('y2', 218);
-        line.setAttribute('class', 'post-event-line');
-        group.append(line);
-      }
-      const marker = document.createElementNS(ns, 'circle');
-      marker.setAttribute('cx', x);
-      marker.setAttribute('cy', hasPost ? 215 : 226);
-      marker.setAttribute('r', hasPost ? 6 : 4);
-      marker.setAttribute('class', hasPost ? 'post-event-dot' : 'note-event-dot');
-      group.append(marker);
-      const hit = document.createElementNS(ns, 'rect');
-      hit.setAttribute('x', x - 6);
-      hit.setAttribute('y', hasPost ? 18 : 211);
-      hit.setAttribute('width', 12);
-      hit.setAttribute('height', hasPost ? 215 : 25);
-      hit.setAttribute('fill', 'transparent');
-      group.append(hit);
-      const label = document.createElementNS(ns, 'title');
-      label.textContent = `${date(day)} · ${items.length} publication event${items.length === 1 ? '' : 's'}`;
-      group.append(label);
-      const select = () => showPublicationDay(day, items, series);
-      group.addEventListener('click', select);
-      group.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          select();
-        }
-      });
-      svg.append(group);
-    });
-}
-function showPublicationDay(day, items, series) {
-  const root = $('event-detail');
-  root.hidden = false;
-  root.replaceChildren();
-  const heading = document.createElement('strong');
-  heading.textContent = date(day);
-  root.append(heading);
-  const point = series.find((row) => row[0].replaceAll('/', '-') === day);
-  if (point) {
-    const views = document.createElement('span');
-    views.className = 'event-views';
-    views.textContent = `${fmt(point[1])} views that day`;
-    root.append(views);
-  }
-  const list = document.createElement('ul');
-  items.forEach((item) => {
-    const li = document.createElement('li');
-    const kind = document.createElement('span');
-    kind.className = `event-kind ${item.type === 'note' ? 'note-kind' : 'post-kind'}`;
-    kind.textContent = item.type === 'note' ? 'Note' : 'Post';
-    const title = document.createElement('span');
-    title.className = 'event-title';
-    title.textContent = item.title;
-    title.title = item.title;
-    li.append(kind, title);
-    list.append(li);
-  });
-  root.append(list);
-  if (items.some((item) => item.type === 'note')) {
-    const buttons = attachNoteInspectors(list, items, root);
-    if (buttons.length === 1) buttons[0].click();
-    const caveat = document.createElement('p');
-    caveat.className = 'footnote';
-    caveat.textContent =
-      'Note impressions are separate from publication views. Shared timing does not show what drove traffic.';
-    root.append(caveat);
-  }
-}
-function renderGrowth() {
-  const root = $('growth-list');
-  root.replaceChildren();
-  const rows = [...data.growth_sources]
-    .filter((r) => Number(r.subscribers) > 0)
-    .sort((a, b) => Number(b.subscribers) - Number(a.subscribers));
-  const max = Math.max(...rows.map((r) => Number(r.subscribers)), 1);
-  rows.slice(0, 24).forEach((r) => {
-    const div = document.createElement('div');
-    div.className = `growth-row ${r.parent ? 'child' : ''}`;
-    const left = document.createElement('div');
-    const name = document.createElement('div');
-    name.className = 'growth-name';
-    name.textContent = r.parent ? `${r.parent} / ${r.name}` : r.name;
-    const bar = document.createElement('div');
-    bar.className = 'growth-bar';
-    const fill = document.createElement('div');
-    fill.className = 'growth-fill';
-    fill.style.width = `${Math.max(1, (Number(r.subscribers) / max) * 100)}%`;
-    bar.append(fill);
-    left.append(name, bar);
-    const number = document.createElement('div');
-    number.className = 'growth-number';
-    number.textContent = fmt(r.subscribers);
-    const small = document.createElement('small');
-    small.textContent = Number(r.visitors) ? `${fmt(r.visitors)} visitors` : 'Visitors unavailable';
-    number.append(small);
-    div.append(left, number);
-    root.append(div);
-  });
-}
-function renderSources() {
-  const q = $('source-search').value.toLowerCase().trim();
-  const rows = data.traffic_sources
-    .filter((r) => (r.name || '').toLowerCase().includes(q))
-    .sort((a, b) => compareRows('source', a, b));
-  const body = $('source-table');
-  body.replaceChildren();
-  rows.forEach((r) => {
-    const tr = document.createElement('tr');
-    cell(tr, r.name || 'Unknown');
-    cell(tr, fmt(r.views));
-    cell(tr, fmt(r.users));
-    cell(tr, fmt(sourceSubs(r)));
-    cell(tr, pct(sourceRate(r)));
-    body.append(tr);
-  });
-}
-function renderPosts() {
-  const q = $('post-search').value.toLowerCase().trim();
-  const rows = data.posts
-    .filter((r) => r.title.toLowerCase().includes(q))
-    .sort((a, b) => compareRows('post', a, b));
-  const body = $('post-table');
-  body.replaceChildren();
-  rows.forEach((r) => {
-    const tr = document.createElement('tr');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'post-select';
-    button.textContent = r.title;
-    button.addEventListener('click', () => showPost(r, data.publication));
-    cell(tr, button);
-    cell(tr, date(r.date));
-    cell(tr, fmt(r.views));
-    cell(tr, fmt(r.opens));
-    cell(tr, pct(r.open_rate));
-    cell(tr, fmt(r.shares));
-    cell(tr, fmt(r.signups));
-    cell(tr, pct(r.engagement_rate));
-    body.append(tr);
-  });
-}
-
 function setEmptyPanelsLoading(loading) {
-  document.querySelectorAll('.metric,.trend,.two-col > .panel,.posts-panel').forEach((panel) => {
+  document.querySelectorAll(
+    '.view:not([hidden]) .metric,.view:not([hidden]) .trend,.view:not([hidden]) .panel',
+  ).forEach((panel) => {
     const existing = panel.querySelector(':scope > .panel-spinner');
     if (loading && !existing) {
       const indicator = loadingIndicator('Loading…');
@@ -366,32 +133,17 @@ function setEmptyPanelsLoading(loading) {
     }
   });
 }
-
-function render() {
-  $('views').textContent = fmt(data.totals.views);
-  $('visitors').textContent = fmt(data.totals.visitors);
-  $('subscribers').textContent = fmt(data.totals.subscribers);
-  $('conversion').textContent = Number(data.totals.visitors)
-    ? pct(data.totals.subscribers / data.totals.visitors)
-    : '—';
-  $('period').textContent =
-    `${date(data.range.start)} – ${date(data.range.end)} · ${data.range.days > 90 ? 'weekly' : 'daily'}`;
-  $('chart').setAttribute(
-    'aria-label',
-    `${data.range.days > 90 ? 'Weekly' : 'Daily'} publication views with publication markers`,
-  );
-  $('start-date').textContent = date(data.range.start);
-  $('end-date').textContent = date(data.range.end);
-  $('updated').textContent =
-    `Updated ${new Date(data.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-  $('event-detail').hidden = true;
-  drawChart(data.series);
-  renderGrowth();
-  renderSources();
-  renderPosts();
-}
 async function load(force = false) {
-  if (force) clearNoteStatsRequests();
+  const request = ++loadRequest;
+  if (force) {
+    clearNoteStatsRequests();
+    clearNotePageStats();
+    clearNotesComparison();
+    postPortfolioRequest++;
+    postPortfolio = null;
+    postPortfolioError = null;
+    postPortfolioLoading = false;
+  }
   $('refresh').disabled = true;
   $('header-spinner').hidden = false;
   setEmptyPanelsLoading(!data);
@@ -405,23 +157,108 @@ async function load(force = false) {
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Could not load analytics');
+    if (request !== loadRequest) return;
     data = payload;
+    activePostId = undefined;
+    tables.resetPages();
     render();
+    renderSearchResults();
   } catch (error) {
+    if (request !== loadRequest) return;
     $('notice').textContent = `Could not refresh: ${error.message}`;
     $('notice').hidden = false;
     $('updated').textContent = 'Refresh failed';
   } finally {
-    $('refresh').disabled = false;
-    $('header-spinner').hidden = true;
-    setEmptyPanelsLoading(false);
-    $('overview').setAttribute('aria-busy', 'false');
+    if (request === loadRequest) {
+      $('refresh').disabled = false;
+      $('header-spinner').hidden = true;
+      setEmptyPanelsLoading(false);
+      $('overview').setAttribute('aria-busy', 'false');
+    }
   }
 }
-setupSort('source');
-setupSort('post');
+
+async function loadPostPortfolio(force = false) {
+  if (!data || postPortfolioLoading || ((postPortfolio || postPortfolioError) && !force)) return;
+  const request = ++postPortfolioRequest;
+  postPortfolioLoading = true;
+  postPortfolioError = null;
+  tables.renderPosts();
+  try {
+    const response = await fetch(`/api/post-portfolio${force ? '?refresh=1' : ''}`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Could not compare posts');
+    if (request !== postPortfolioRequest) return;
+    postPortfolio = payload;
+  } catch (error) {
+    if (request !== postPortfolioRequest) return;
+    postPortfolioError = error.message;
+  } finally {
+    if (request === postPortfolioRequest) {
+      postPortfolioLoading = false;
+      if (currentRoute().view === 'posts') tables.renderPosts();
+    }
+  }
+}
+
+// Old section links open their corresponding views after an upgrade.
+if (location.pathname === '/notes/compare') history.replaceState({}, '', '/notes');
+if (location.pathname === '/' && ['#posts', '#sources', '#overview'].includes(location.hash)) {
+  history.replaceState({}, '', { '#posts': '/posts', '#sources': '/discovery', '#overview': '/' }[location.hash]);
+}
+const tables = createTables({
+  getData: () => data,
+  getPortfolio: () => ({ data: postPortfolio, error: postPortfolioError, loading: postPortfolioLoading }),
+  navigate,
+});
+setupNotesComparison();
+setupPostPortfolio();
+setupNoteDetail(navigate);
+renderRoute();
 $('range').addEventListener('change', () => load());
 $('refresh').addEventListener('click', () => load(true));
-$('source-search').addEventListener('input', () => data && renderSources());
-$('post-search').addEventListener('input', () => data && renderPosts());
+$('post-map-retry').addEventListener('click', () => loadPostPortfolio(true));
+$('global-search').addEventListener('input', () => {
+  tables.resetPostPage();
+  if (data) {
+    tables.renderPosts();
+    if (currentRoute().view === 'notes') {
+      setNoteMapQuery($('global-search').value);
+      filterNotesComparison($('global-search').value);
+    }
+  }
+  renderSearchResults();
+});
+$('global-search').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') $('search-results').hidden = true;
+  if (event.key === 'Enter') $('search-results').querySelector('button')?.click();
+});
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-route]');
+  if (link && !event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0) {
+    event.preventDefault();
+    navigate(link.getAttribute('href'));
+  }
+  if (!event.target.closest('.top-search')) $('search-results').hidden = true;
+});
+window.addEventListener('popstate', () => {
+  const keepNotePosition = isNoteLibraryPath(renderedPath) && isNoteLibraryPath(location.pathname);
+  renderRoute();
+  if (!keepNotePosition) window.scrollTo(0, 0);
+});
+let chartResizeFrame;
+window.addEventListener('resize', () => {
+  if (!data) return;
+  cancelAnimationFrame(chartResizeFrame);
+  chartResizeFrame = requestAnimationFrame(() => {
+    const view = currentRoute().view;
+    if (view === 'briefing') renderPublicationTimeline(data, navigate);
+    if (view === 'discovery') renderSubscriberSourceTrend(data, navigate);
+  });
+});
+$('detail-refresh').addEventListener('click', () => {
+  const id = currentRoute().id;
+  const row = (data?.posts || []).find((post) => String(post.id) === id);
+  if (row) showPost(row, data.publication, true);
+});
 load();

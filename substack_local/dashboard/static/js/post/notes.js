@@ -1,30 +1,12 @@
-import { fmt, pct, number, loadingIndicator } from '../shared.js';
+import { fmt, pct, loadingIndicator } from '../shared.js';
 
-function noteComparison(actual, average) {
-  const a = number(actual),
-    b = number(average);
-  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return '—';
-  const ratio = a / b;
-  return ratio >= 3
-    ? `${ratio.toFixed(1)}× avg`
-    : `${a >= b ? '+' : ''}${Math.round((ratio - 1) * 100)}% vs avg`;
-}
-function noteComparisonAt(stats) {
-  const actual = stats.impression_series?.find((series) => series.is_primary)?.points || [];
-  const typical = stats.impression_series?.find((series) => !series.is_primary)?.points || [];
-  const first = Date.parse(actual[0]?.timestamp),
-    last = Date.parse(actual.at(-1)?.timestamp);
-  const age =
-    Number.isFinite(first) && Number.isFinite(last)
-      ? `${Math.round((last - first) / 3600000)}h`
-      : 'same age';
-  return { actual: actual.at(-1)?.value, typical: typical.at(-1)?.value, age };
-}
+const notePace = (stats) => stats.comparison?.pace
+  || { actual: null, typical: null, age: 'same age', ratio: null, label: '—' };
 
-function noteReachCard(stats) {
+export function noteReachCard(stats) {
   const card = document.createElement('div');
   card.className = 'note-reach-card';
-  const matched = noteComparisonAt(stats);
+  const matched = notePace(stats);
   const heading = document.createElement('div');
   heading.className = 'note-reach-heading';
   const title = document.createElement('strong');
@@ -40,8 +22,8 @@ function noteReachCard(stats) {
     ['Impressions', fmt(stats.impressions), 'Total to date'],
     [
       `Pace at ${matched.age}`,
-      noteComparison(matched.actual, matched.typical),
-      `${fmt(matched.actual)} impressions · avg ${fmt(matched.typical)}`,
+      matched.label,
+      `${fmt(matched.actual)} impressions · typical ${fmt(matched.typical)}`,
     ],
     ['Profile visits', fmt(profileVisits), 'From this Note'],
   ]) {
@@ -106,16 +88,17 @@ function noteReachCard(stats) {
   return card;
 }
 const noteStatsRequests = new Map();
-function loadNoteStats(id) {
+export function loadNoteStats(id, refresh = false) {
+  if (refresh) noteStatsRequests.delete(id);
   if (!noteStatsRequests.has(id)) {
-    const request = fetch(`/api/note/${encodeURIComponent(id)}`, { cache: 'no-store' })
+    const request = fetch(`/api/note/${encodeURIComponent(id)}${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' })
       .then(async (response) => {
         const stats = await response.json();
         if (!response.ok) throw new Error(stats.error || 'Could not load Note stats');
         return stats;
       })
       .catch((error) => {
-        noteStatsRequests.delete(id);
+        if (noteStatsRequests.get(id) === request) noteStatsRequests.delete(id);
         throw error;
       });
     noteStatsRequests.set(id, request);
@@ -141,9 +124,9 @@ export function attachNoteInspectors(list, notes, activity) {
     buttons.push(button);
     loadNoteStats(id)
       .then((stats) => {
-        const matched = noteComparisonAt(stats);
+        const matched = notePace(stats);
         if (button.isConnected)
-          button.textContent = `${fmt(stats.impressions)} total · ${noteComparison(matched.actual, matched.typical)} at ${matched.age}`;
+          button.textContent = `${fmt(stats.impressions)} total · ${matched.label} at ${matched.age}`;
       })
       .catch(() => {
         if (button.isConnected) button.textContent = 'Reach unavailable · retry';

@@ -1,6 +1,7 @@
 """Aggregate reach and interactions for one published Note."""
 
 from .client import ApiClient
+from .note_shares import note_preview
 
 def note_stats(api: ApiClient, note_id: str) -> dict:
     """Fetch one published Note's aggregate stats using the puller's numeric ID."""
@@ -19,10 +20,11 @@ def note_stats(api: ApiClient, note_id: str) -> dict:
                 for item in (cards.get(card_id) or {}).get("items") or []]
 
     graph = (cards.get("impressions") or {}).get("graphData") or {}
-    return {
+    result = {
         "id": note_id,
         "permalink": note.get("permalink"),
         "published_at": note.get("timestamp"),
+        "preview": note_preview(note),
         "last_updated_at": payload.get("lastUpdatedAt"),
         "impressions": header_value("impressions"),
         "impression_series": [{
@@ -40,3 +42,4 @@ def note_stats(api: ApiClient, note_id: str) -> dict:
                       for item in (cards.get("interactions") or {}).get("items") or []],
         },
     }
+    return result

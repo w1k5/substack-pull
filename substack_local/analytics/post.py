@@ -1,9 +1,58 @@
 """Aggregate performance for one publication post."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .client import ApiClient, PullError, query_path
+
+
+def first_week_summary(post_id: str, post: dict, *, today: date | None = None) -> dict | None:
+    """Return a completed seven-day result, excluding a still-changing day 7."""
+    stats = post.get("stats") or {}
+    final = next((row for row in stats.get("firstWeekDailyStats") or []
+                  if row.get("day_n") == 6), None)
+    if not final or not final.get("dt"):
+        return None
+    today = today or datetime.now(ZoneInfo("America/New_York")).date()
+    if date.fromisoformat(final["dt"][:10]) >= today:
+        return None
+    views, signups = final.get("cumulative_views"), final.get("cumulative_signups")
+    if not isinstance(views, (int, float)) or isinstance(views, bool) or views < 0:
+        return None
+    if not isinstance(signups, (int, float)) or isinstance(signups, bool) or signups < 0:
+        return None
+    daily = []
+    for row in stats.get("firstWeekDailyStats") or []:
+        day = row.get("day_n")
+        day_views = row.get("cumulative_views")
+        day_signups = row.get("cumulative_signups")
+        if (not isinstance(day, int) or isinstance(day, bool) or not 0 <= day <= 6
+                or not isinstance(day_views, (int, float)) or isinstance(day_views, bool)
+                or not isinstance(day_signups, (int, float)) or isinstance(day_signups, bool)
+                or day_views < 0 or day_signups < 0):
+            continue
+        daily.append({"day": day + 1, "views": int(day_views),
+                      "signups": int(day_signups)})
+    daily.sort(key=lambda row: row["day"])
+    launch = next((row["views"] for row in daily if row["day"] == 1), None)
+    if launch is not None and launch > views:
+        launch = None
+    return {"id": post_id, "date": post.get("post_date"),
+            "post_type": post.get("type") or "unknown",
+            "audience": post.get("audience") or "unknown",
+            "views": int(views), "signups": int(signups),
+            "daily": daily, "launch_views": launch,
+            "later_week_views": int(views - launch) if launch is not None else None,
+            "later_week_share": (views - launch) / views if launch is not None and views else None}
+
+
+def fetch_post_week(api: ApiClient, post_id: str) -> dict | None:
+    """One detail request per post; omit traffic, engagement, and growth calls."""
+    detail = api.get_json(f"/api/v1/post_management/detail/{post_id}")
+    post = next((p for p in detail.get("posts", []) if str(p.get("id")) == post_id), None)
+    if post is None:
+        raise LookupError("Post not found")
+    return first_week_summary(post_id, post)
 
 def fetch_post(api: ApiClient, post_id: str) -> dict:
     """Fetch the aggregate post detail used by both the dashboard and MCP."""
