@@ -5,7 +5,11 @@ import time
 import math
 from hashlib import sha256
 
-from .cache import NOTE_TTL_SECONDS, NoteDiskCache, PostDiskCache, PostWeekDiskCache, PublishedPostsDiskCache
+from .cache import (
+    NOTE_TTL_SECONDS, PUBLICATION_TTL_SECONDS, NoteDiskCache, PostDiskCache,
+    PostWeekDiskCache, PublishedPostsDiskCache, PublicationDiskCache,
+    prune_analytics_caches,
+)
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
@@ -14,6 +18,23 @@ from .post import fetch_post, fetch_post_week, first_week_summary
 from .publication import fetch_dashboard, fetch_posts
 
 ALLOWED_DAYS = {7, 30, 90, 180, 365}
+MEMORY_ENTRY_LIMIT = 64
+
+
+def _prune_memory(cache: dict, ttl_seconds: int) -> None:
+    now = time.monotonic()
+    for key, (loaded_at, _) in list(cache.items()):
+        if now - loaded_at >= ttl_seconds:
+            del cache[key]
+    while len(cache) > MEMORY_ENTRY_LIMIT:
+        cache.pop(next(iter(cache)))
+
+
+def _remember(cache: dict, key, value, ttl_seconds: int) -> None:
+    _prune_memory(cache, ttl_seconds)
+    cache.pop(key, None)
+    cache[key] = (time.monotonic(), value)
+    _prune_memory(cache, ttl_seconds)
 
 def numeric_id(value: str, kind: str) -> str:
     value = str(value)
@@ -29,13 +50,15 @@ class AnalyticsService:
                  note_disk_cache: NoteDiskCache | None = None,
                  post_disk_cache: PostDiskCache | None = None,
                  published_posts_cache: PublishedPostsDiskCache | None = None,
-                 post_week_cache: PostWeekDiskCache | None = None):
+                 post_week_cache: PostWeekDiskCache | None = None,
+                 publication_disk_cache: PublicationDiskCache | None = None):
         self.api = api
         self.note_api = note_api
         self.note_disk_cache = note_disk_cache
         self.post_disk_cache = post_disk_cache
         self.published_posts_cache = published_posts_cache
         self.post_week_cache = post_week_cache
+        self.publication_disk_cache = publication_disk_cache
         self.cache: dict[int, tuple[float, dict]] = {}
         self.post_cache: dict[str, tuple[float, dict]] = {}
         self.note_cache: dict[str, tuple[float, dict]] = {}
@@ -50,44 +73,72 @@ class AnalyticsService:
         # Keep private owner analytics separate across publications and sessions.
         session_scope = sha256(token.encode("utf-8")).hexdigest()[:24]
         cache_root = ROOT / "substack" / ".analytics-cache" / host / session_scope
+        prune_analytics_caches(cache_root.parent)
         return cls(ApiClient(config["publication"], token),
                    ApiClient("https://substack.com", token),
                    NoteDiskCache(cache_root / "notes"),
                    PostDiskCache(cache_root / "posts"),
                    PublishedPostsDiskCache(cache_root / "post-index"),
-                   PostWeekDiskCache(cache_root / "post-week"))
+                   PostWeekDiskCache(cache_root / "post-week"),
+                   PublicationDiskCache(cache_root / "publication"))
 
     def dashboard(self, days: int = 90, *, refresh: bool = False) -> dict:
         if days not in ALLOWED_DAYS:
             raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
         with self.lock:
-            saved = self.cache.get(days)
-            if saved and not refresh and time.monotonic() - saved[0] < 300:
-                return saved[1]
+            _prune_memory(self.cache, PUBLICATION_TTL_SECONDS)
+            if not refresh:
+                if self.publication_disk_cache:
+                    value = self.publication_disk_cache.read(days)
+                    if value is not None:
+                        self.cache.pop(days, None)
+                        return value
+                saved = self.cache.get(days)
+                if saved:
+                    return saved[1]
             value = fetch_dashboard(self.api, days, post_rows=self.posts(refresh=refresh))
-            self.cache[days] = (time.monotonic(), value)
+            cached_on_disk = False
+            if self.publication_disk_cache:
+                try:
+                    self.publication_disk_cache.write(days, value)
+                    cached_on_disk = True
+                except (OSError, ValueError, TypeError):
+                    # A cache write failure must not hide a successful live fetch.
+                    pass
+            if cached_on_disk:
+                self.cache.pop(days, None)
+            else:
+                _remember(self.cache, days, value, PUBLICATION_TTL_SECONDS)
             return value
 
     def post(self, post_id: str, *, refresh: bool = False) -> dict:
         post_id = numeric_id(post_id, "post")
         with self.lock:
-            if self.post_disk_cache:
-                value = self.post_disk_cache.read(post_id) if not refresh else None
-            else:
-                saved = self.post_cache.get(post_id) if not refresh else None
-                value = saved[1] if saved and time.monotonic() - saved[0] < 300 else None
+            _prune_memory(self.post_cache, 300)
+            value = self.post_disk_cache.read(post_id) if self.post_disk_cache and not refresh else None
+            if value is not None:
+                self.post_cache.pop(post_id, None)
+            if value is None and not refresh:
+                saved = self.post_cache.get(post_id)
+                value = saved[1] if saved else None
             if value is None:
                 value = fetch_post(self.api, post_id)
+                cached_on_disk = False
                 if self.post_disk_cache:
                     try:
                         self.post_disk_cache.write(post_id, value)
+                        cached_on_disk = True
                     except (OSError, ValueError, TypeError):
                         pass
-            self.post_cache[post_id] = (time.monotonic(), value)
+                if cached_on_disk:
+                    self.post_cache.pop(post_id, None)
+                else:
+                    _remember(self.post_cache, post_id, value, 300)
             shares = post_note_shares(ROOT / "substack" / "published-notes", post_id)
             for share in shares["notes"]:
                 try:
-                    stats = self.note(share["id"], refresh=refresh)
+                    # Refreshing a post should not refetch unrelated Note stats.
+                    stats = self.note(share["id"])
                     share["link_clicks"] = next(
                         (item.get("value") for item in stats.get("interactions", {}).get("items", [])
                          if item.get("title") == "Link click"), 0
@@ -100,19 +151,24 @@ class AnalyticsService:
 
     def posts(self, *, refresh: bool = False) -> list[dict]:
         with self.lock:
-            if self.published_posts_cache:
-                value = self.published_posts_cache.read() if not refresh else None
-            else:
-                value = (self.posts_cache[1] if self.posts_cache and not refresh
-                         and time.monotonic() - self.posts_cache[0] < 300 else None)
+            if self.posts_cache and time.monotonic() - self.posts_cache[0] >= 300:
+                self.posts_cache = None
+            value = (self.published_posts_cache.read()
+                     if self.published_posts_cache and not refresh else None)
+            if value is not None:
+                self.posts_cache = None
+            if value is None and not refresh and self.posts_cache:
+                value = self.posts_cache[1]
             if value is None:
                 value = fetch_posts(self.api)
+                cached_on_disk = False
                 if self.published_posts_cache:
                     try:
                         self.published_posts_cache.write(value)
+                        cached_on_disk = True
                     except (OSError, ValueError, TypeError):
                         pass
-            self.posts_cache = (time.monotonic(), value)
+                self.posts_cache = None if cached_on_disk else (time.monotonic(), value)
             return value
 
     def post_week(self, post_id: str, *, refresh: bool = False) -> dict | None:
@@ -181,9 +237,11 @@ class AnalyticsService:
     def note(self, note_id: str, *, refresh: bool = False) -> dict:
         note_id = numeric_id(note_id, "Note")
         with self.lock:
+            _prune_memory(self.note_cache, NOTE_TTL_SECONDS)
             if self.note_disk_cache and not refresh:
                 disk_value = self.note_disk_cache.read(note_id)
                 if disk_value is not None:
+                    self.note_cache.pop(note_id, None)
                     disk_value = {**disk_value, "comparison": note_comparison_metrics(disk_value)}
                     if "preview" not in disk_value:
                         disk_value = {**disk_value, "preview": public_note_preview(
@@ -191,17 +249,22 @@ class AnalyticsService:
                         )}
                     return disk_value
             saved = self.note_cache.get(note_id)
-            if saved and not refresh and time.monotonic() - saved[0] < NOTE_TTL_SECONDS:
+            if saved and not refresh:
                 return saved[1]
             value = note_stats(self.note_api, note_id)
             value = {**value, "comparison": note_comparison_metrics(value)}
-            self.note_cache[note_id] = (time.monotonic(), value)
+            cached_on_disk = False
             if self.note_disk_cache:
                 try:
                     self.note_disk_cache.write(note_id, value)
+                    cached_on_disk = True
                 except (OSError, ValueError, TypeError):
                     # A cache write failure must not hide a successful live fetch.
                     pass
+            if cached_on_disk:
+                self.note_cache.pop(note_id, None)
+            else:
+                _remember(self.note_cache, note_id, value, NOTE_TTL_SECONDS)
             return value
 
     def note_cohort(self, days: int = 90) -> dict:

@@ -115,10 +115,11 @@ browser:
 ```
 
 The dashboard uses the publication and session from the first-time setup. It listens
-only on `127.0.0.1`; the session stays in Keychain and is not sent to the page. Stop the
-server with Control-C.
-When started this way, keep the terminal open; closing it stops the dashboard. It does
-not currently install an automatic background service.
+only on `127.0.0.1`; the session stays in Keychain and is not sent to the page. Keep the
+terminal open while using the dashboard, then stop it with Control-C. This command does
+not install a background service.
+
+### Views and time ranges
 
 Use the sidebar to move between four writer-focused views:
 
@@ -135,6 +136,8 @@ and individual Note reach are lifetime totals; the **Published in selected perio
 filter narrows posts by publication date. The Briefing compares equal-length current
 and preceding periods. Today may be incomplete.
 
+### Reading the charts and tables
+
 The Posts chart has four views: **Staying power** compares first-week reach with the
 share earned on days 2–7; **Subscriber yield** compares first-week signups per 1,000
 views; **Reader sharing** compares recorded shares per 1,000 lifetime views; and
@@ -147,8 +150,8 @@ A post's Distribution section identifies Notes that explicitly attached that pos
 shows the Note's lifetime link clicks. Those clicks are Note interactions, not
 attributed post views or subscriber conversions. The link comes from the local
 published Notes backup; update it with
-`./substack-notes-pull public pull --profile @prettyhostile --directory substack/published-notes/prettyhostile`
-for this publication. Source labels expand Substack's ambiguous terms, including
+`./substack-notes-pull public pull --profile @yourhandle --directory substack/published-notes/yourhandle`
+for your profile. Source labels expand Substack's ambiguous terms, including
 Direct (which can include unidentified visits) and Direct to App (an external link
 opened in the app with an unidentified origin).
 
@@ -167,33 +170,50 @@ Discovery’s source lines use the same date range and source-series request as 
 growth page. Choose up to five top-level sources to compare their timing; select a post
 or Note marker to open that piece's performance. Lines are separate attributions, and
 source counts may overlap, so do not add them into a publication total. Parent growth
-sources also include their child sources. Signup ratios describe Substack's attribution and are directional, especially
-for small sources. The selected calendar range can differ slightly from Substack's
-rolling “30d views” card. Note publication markers show timing, not causation.
+sources also include their child sources. Signup ratios describe Substack's attribution
+and are directional, especially for small sources. The selected calendar range can differ
+slightly from Substack's rolling “30d views” card. Note publication markers show timing,
+not causation.
 
-**Refresh publication** forces a new publication fetch. A post story has **Refresh post**,
-and an individual Note has **Refresh Note**; each bypasses its detail cache. The
-published post index is cached for 15 minutes, while individual post analytics and Note
-reach are cached for one hour in the ignored local `substack/.analytics-cache/`
-directory. Completed first-week post comparisons are cached for 24 hours and need only
-one detail request per uncached post. The dashboard and MCP share these normalized analytics caches across
-restarts; they never store the session cookie. MCP `list_posts`, `post_performance`,
-and `note_performance` accept `refresh=true` to fetch fresh stats. Published post
-content has a separate incremental local backup managed by `substack-pull`.
-Substack's analytics endpoints are
-undocumented and may change.
+### Cache and refresh
+
+The dashboard and MCP share normalized disk caches in the ignored
+`substack/.analytics-cache/` directory. The caches never store the session cookie.
+
+| Cached data | Reuse window |
+| --- | --- |
+| Publication traffic, growth, and sources | 5 minutes per activity period |
+| Published post index | 15 minutes |
+| Individual post and Note analytics | 1 hour |
+| Completed first-week post comparisons | 24 hours |
+
+A publication snapshot from a previous New York calendar day is never reused. The
+first-week comparison needs one detail request per uncached post. Expired and invalid
+cache files are pruned at service startup and on access at most once per hour, including
+older session caches for the same publication. Post and Note backups are unaffected.
+In-memory fallbacks expire and are capped at 64 records per type.
+
+**Refresh publication** fetches a new publication snapshot and post index. **Refresh post**
+and **Refresh Note** bypass their respective detail caches. MCP
+`publication_summary`, `publication_timeline`, `publication_sources`, `list_posts`,
+`post_performance`, and `note_performance` accept `refresh=true`. Publication tools
+return `refreshed_at` to show when their shared snapshot was fetched. Published post
+content has a separate incremental backup managed by `substack-pull`. Substack's
+analytics endpoints are undocumented and may change.
 
 ## MCP server for Codex
 
-The MCP server shares the dashboard's analytics code and calls the existing puller CLIs
-for backups. It runs over local standard input/output, has no network listener, and does
-not require the dashboard to be open. Pull tools write to the ignored local backup
-directories; their Substack requests are read-only.
+The MCP server and dashboard call the same analytics service and shared disk cache;
+the browser does not need the MCP server running. MCP uses the existing puller CLIs for
+backups. It runs over local standard input/output and has no network listener. Pull
+tools write to the ignored local backup directories; their Substack requests are
+read-only.
+
 The `publication_sources` tool includes the same dated subscriber source lines shown on
 Discovery. The `post_portfolio` tool returns the same completed first-week cohort and
-lifetime context used by the Posts comparison.
-The `compare_notes` tool returns the Notes page's age-matched reach and reader-outcome
-rankings, medians, and rows for a selected activity period.
+lifetime context used by the Posts comparison. The `compare_notes` tool returns the
+Notes page's age-matched reach, reader-outcome rankings, medians, and rows for a selected
+activity period.
 
 On a Mac with this repository and a saved Substack session, run:
 
