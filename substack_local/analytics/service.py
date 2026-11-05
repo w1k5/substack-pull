@@ -3,7 +3,9 @@
 import threading
 import time
 import math
+from datetime import datetime
 from hashlib import sha256
+from zoneinfo import ZoneInfo
 
 from .cache import (
     NOTE_TTL_SECONDS, PUBLICATION_TTL_SECONDS, NoteDiskCache, PostDiskCache,
@@ -11,14 +13,21 @@ from .cache import (
     prune_analytics_caches,
 )
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
+from .derived import dashboard_metrics, post_detail_metrics, post_index_metrics
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
 from .note_shares import post_note_shares, public_note_preview
 from .post import fetch_post, fetch_post_week, first_week_summary
+from .post_comparison import summarize_post_portfolio
 from .publication import fetch_dashboard, fetch_posts
 
 ALLOWED_DAYS = {7, 30, 90, 180, 365}
 MEMORY_ENTRY_LIMIT = 64
+COMPARISON_TTL_SECONDS = 300
+
+
+def _today() -> str:
+    return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
 
 
 def _prune_memory(cache: dict, ttl_seconds: int) -> None:
@@ -62,6 +71,10 @@ class AnalyticsService:
         self.cache: dict[int, tuple[float, dict]] = {}
         self.post_cache: dict[str, tuple[float, dict]] = {}
         self.note_cache: dict[str, tuple[float, dict]] = {}
+        self.note_cohort_cache: dict[tuple[int, str], tuple[float, dict]] = {}
+        self.portfolio_cache: dict[tuple[int, str], tuple[float, dict]] = {}
+        self.note_cohort_generation = 0
+        self.portfolio_generation = 0
         self.posts_cache: tuple[float, list[dict]] | None = None
         self.lock = threading.RLock()
 
@@ -86,17 +99,21 @@ class AnalyticsService:
         if days not in ALLOWED_DAYS:
             raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
         with self.lock:
+            if refresh:
+                self.note_cohort_cache.clear()
+                self.note_cohort_generation += 1
             _prune_memory(self.cache, PUBLICATION_TTL_SECONDS)
             if not refresh:
                 if self.publication_disk_cache:
                     value = self.publication_disk_cache.read(days)
                     if value is not None:
                         self.cache.pop(days, None)
-                        return value
+                        return dashboard_metrics(value)
                 saved = self.cache.get(days)
-                if saved:
+                if saved and saved[1].get("range", {}).get("end") == _today():
                     return saved[1]
-            value = fetch_dashboard(self.api, days, post_rows=self.posts(refresh=refresh))
+                self.cache.pop(days, None)
+            value = dashboard_metrics(fetch_dashboard(self.api, days, post_rows=self.posts(refresh=refresh)))
             cached_on_disk = False
             if self.publication_disk_cache:
                 try:
@@ -114,6 +131,9 @@ class AnalyticsService:
     def post(self, post_id: str, *, refresh: bool = False) -> dict:
         post_id = numeric_id(post_id, "post")
         with self.lock:
+            if refresh:
+                self.portfolio_cache.clear()
+                self.portfolio_generation += 1
             _prune_memory(self.post_cache, 300)
             value = self.post_disk_cache.read(post_id) if self.post_disk_cache and not refresh else None
             if value is not None:
@@ -147,10 +167,13 @@ class AnalyticsService:
                     # The public attachment still establishes the link when
                     # owner-only Note statistics are temporarily unavailable.
                     pass
-            return {**value, "direct_note_shares": shares}
+            return post_detail_metrics({**value, "direct_note_shares": shares})
 
     def posts(self, *, refresh: bool = False) -> list[dict]:
         with self.lock:
+            if refresh:
+                self.portfolio_cache.clear()
+                self.portfolio_generation += 1
             if self.posts_cache and time.monotonic() - self.posts_cache[0] >= 300:
                 self.posts_cache = None
             value = (self.published_posts_cache.read()
@@ -169,11 +192,14 @@ class AnalyticsService:
                     except (OSError, ValueError, TypeError):
                         pass
                 self.posts_cache = None if cached_on_disk else (time.monotonic(), value)
-            return value
+            return post_index_metrics(value)
 
     def post_week(self, post_id: str, *, refresh: bool = False) -> dict | None:
         post_id = numeric_id(post_id, "post")
         with self.lock:
+            if refresh:
+                self.portfolio_cache.clear()
+                self.portfolio_generation += 1
             value = self.post_week_cache.read(post_id) if self.post_week_cache and not refresh else None
             if value is not None:
                 return value
@@ -197,7 +223,14 @@ class AnalyticsService:
     def post_portfolio(self, *, limit: int = 60, refresh: bool = False) -> dict:
         if not 1 <= limit <= 60:
             raise ValueError("Choose a limit from 1 to 60.")
-        posts = sorted(self.posts(), key=lambda row: row.get("date") or "", reverse=True)[:limit]
+        cache_key = (limit, _today())
+        with self.lock:
+            _prune_memory(self.portfolio_cache, COMPARISON_TTL_SECONDS)
+            if not refresh and cache_key in self.portfolio_cache:
+                return self.portfolio_cache[cache_key][1]
+            generation = self.portfolio_generation
+        all_posts = self.posts()
+        posts = sorted(all_posts, key=lambda row: row.get("date") or "", reverse=True)[:limit]
         rows, incomplete, unavailable = [], 0, 0
         for post in posts:
             try:
@@ -224,6 +257,7 @@ class AnalyticsService:
                               and lifetime_views >= 1000 and lifetime_shares is not None
                               and math.isfinite(lifetime_shares) and lifetime_shares >= 0 else None)
                 rows.append({**summary, "title": post["title"],
+                             "signup_yield": 1000 * summary["signups"] / summary["views"] if summary["views"] else None,
                              "lifetime_views": post.get("views"),
                              "lifetime_signups": post.get("signups"),
                              "lifetime_shares": post.get("shares"),
@@ -231,12 +265,20 @@ class AnalyticsService:
                              "later_views": later_views,
                              "later_multiple": later_views / summary["views"]
                              if later_views is not None and summary["views"] else None})
-        return {"rows": rows, "considered": len(posts), "total": len(self.posts()),
-                "incomplete": incomplete, "unavailable": unavailable}
+        result = {"rows": rows, "considered": len(posts), "total": len(all_posts),
+                  "incomplete": incomplete, "unavailable": unavailable,
+                  "comparison": summarize_post_portfolio(rows)}
+        with self.lock:
+            if refresh or self.portfolio_generation == generation:
+                _remember(self.portfolio_cache, cache_key, result, COMPARISON_TTL_SECONDS)
+        return result
 
     def note(self, note_id: str, *, refresh: bool = False) -> dict:
         note_id = numeric_id(note_id, "Note")
         with self.lock:
+            if refresh:
+                self.note_cohort_cache.clear()
+                self.note_cohort_generation += 1
             _prune_memory(self.note_cache, NOTE_TTL_SECONDS)
             if self.note_disk_cache and not refresh:
                 disk_value = self.note_disk_cache.read(note_id)
@@ -267,8 +309,16 @@ class AnalyticsService:
                 _remember(self.note_cache, note_id, value, NOTE_TTL_SECONDS)
             return value
 
-    def note_cohort(self, days: int = 90) -> dict:
+    def note_cohort(self, days: int = 90, *, retry_unavailable: bool = False) -> dict:
         """Compare published Notes in one period, sharing the same result with UI and MCP."""
+        if days not in ALLOWED_DAYS:
+            raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
+        cache_key = (days, _today())
+        with self.lock:
+            _prune_memory(self.note_cohort_cache, COMPARISON_TTL_SECONDS)
+            if not retry_unavailable and cache_key in self.note_cohort_cache:
+                return self.note_cohort_cache[cache_key][1]
+            generation = self.note_cohort_generation
         data = self.dashboard(days)
         events = sorted(
             (event for event in data.get("publication_events", [])
@@ -286,6 +336,10 @@ class AnalyticsService:
                 continue
             rows.append({"id": note_id, "title": event.get("title") or "Note",
                          "day": event.get("day"), **stats["comparison"]})
-        return {"days": days, "total": len(events), "rows": rows,
-                "unavailable_ids": unavailable_ids,
-                "lenses": summarize_note_cohort(rows)}
+        result = {"days": days, "total": len(events), "rows": rows,
+                  "unavailable_ids": unavailable_ids,
+                  "lenses": summarize_note_cohort(rows)}
+        with self.lock:
+            if self.note_cohort_generation == generation:
+                _remember(self.note_cohort_cache, cache_key, result, COMPARISON_TTL_SECONDS)
+        return result

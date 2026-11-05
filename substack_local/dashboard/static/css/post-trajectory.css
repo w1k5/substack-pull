@@ -1,0 +1,177 @@
+.trend .chart-axis {
+  padding-left: 5.8%;
+  padding-right: 1%;
+}
+.trajectory-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.trajectory-controls .detail-context {
+  margin: 0;
+}
+.trajectory-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.trajectory-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1000 / 270;
+  min-width: 800px;
+  margin-top: 12px;
+  overflow: visible;
+}
+.trajectory-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.mobile-chart-hint { display: none !important; }
+.trajectory-grid {
+  stroke: #e5ece5;
+  stroke-dasharray: 4 6;
+}
+.trajectory-axis {
+  fill: #87998b;
+  font-size: 11px;
+}
+.trajectory-actual,
+.trajectory-typical {
+  fill: none;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.trajectory-actual {
+  stroke: #376a4e;
+}
+.trajectory-typical {
+  stroke: #b78358;
+  stroke-dasharray: 7 5;
+}
+.trajectory-actual-point {
+  fill: #376a4e;
+}
+.trajectory-typical-point {
+  fill: #b78358;
+}
+.trajectory-legend {
+  display: flex;
+  gap: 16px;
+  color: #6f8376;
+  font-size: 11px;
+}
+.trajectory-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trajectory-legend i {
+  display: inline-block;
+  width: 17px;
+  height: 3px;
+  border-radius: 4px;
+}
+.actual-key {
+  background: #376a4e;
+}
+.typical-key {
+  background: #b78358;
+}
+.trajectory-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f6f9f4;
+  border-radius: 9px;
+  color: #526d5c;
+  font-size: 12px;
+}
+.trajectory-readout strong {
+  color: #2b5a3f;
+}
+.trajectory-readout small {
+  margin-left: auto;
+  color: #87988a;
+}
+@media (max-width: 720px) {
+  .trajectory-controls {
+    align-items: start;
+    flex-direction: column;
+  }
+  .trajectory-chart {
+    margin-top: 0;
+  }
+  .trajectory-chart-scroll { margin-top: 12px; }
+  .trajectory-legend { flex-wrap: wrap; gap: 7px 14px; }
+  .trajectory-legend span { flex: 0 0 auto; }
+  .trajectory-legend .legend-instruction { display: none; }
+  .mobile-chart-hint { display: inline-flex !important; width: 100%; }
+  .trajectory-readout {
+    display: grid;
+    gap: 5px;
+  }
+  .trajectory-readout small {
+    margin-left: 0;
+  }
+}
+.trajectory-note-marker {
+  fill: #547c95;
+  stroke: #fff;
+  stroke-width: 2;
+  pointer-events: none;
+}
+.trajectory-note-count {
+  fill: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.trajectory-legend .note-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #547c95;
+}
+.trajectory-notes {
+  margin-top: 9px;
+  padding: 11px 14px;
+  border-left: 3px solid #547c95;
+  background: #f1f6f8;
+  border-radius: 0 8px 8px 0;
+  font-size: 11px;
+}
+.trajectory-notes strong {
+  color: #3d6578;
+}
+.trajectory-notes ul {
+  list-style: none;
+  margin: 7px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.trajectory-notes li {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.trajectory-notes time {
+  color: #668397;
+  font-weight: 700;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+.trajectory-chart rect[role='button']:focus {
+  outline: none;
+}
+.trajectory-chart rect[role='button']:focus-visible {
+  outline: 2px solid #547c95;
+  outline-offset: 2px;
+}
+.trajectory-readout[hidden] {
+  display: none;
+}

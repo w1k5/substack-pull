@@ -10,6 +10,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.parse
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,8 @@ from substack_draft_notes import (
     PrivateNotesError,
     PrivateNotesSync,
     api_timestamp,
+    create_note_draft,
+    create_note_drafts,
     draft_body_json,
     draft_payload,
     load_private_notes,
@@ -35,6 +38,7 @@ from substack_draft_notes import (
     publication_account,
     runway_payload,
     schedule_payload,
+    schedule_note,
     session_candidates,
     write_runway,
 )
@@ -200,6 +204,16 @@ class SchedulingTests(unittest.TestCase):
 
 
 class DraftCreationTests(unittest.TestCase):
+    def test_private_reads_respect_rate_limit_waits(self):
+        response = urllib.error.HTTPError(
+            "https://substack.com/api/v1/feed/drafts", 429, "Too Many Requests",
+            {"Retry-After": "45"}, None,
+        )
+        self.assertEqual(PrivateApiClient._rate_limit_delay(response, 0), 45)
+        response.headers["Retry-After"] = "3600"
+        with self.assertRaisesRegex(PrivateNotesError, "long pause"):
+            PrivateApiClient._rate_limit_delay(response, 0)
+
     class Response:
         def __init__(self, payload: bytes):
             self.payload = payload
@@ -315,6 +329,116 @@ class DraftCreationTests(unittest.TestCase):
         self.assertEqual(preview["body"], "First\nSecond")
         self.assertEqual(preview["paragraphs"], 2)
         self.assertFalse(preview["applied"])
+
+
+class SharedNoteActionTests(unittest.TestCase):
+    def test_batch_drafts_preview_without_auth_and_sync_once_after_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            preview = create_note_drafts(["One", "Two"], config_path=config)
+            self.assertEqual([item["body"] for item in preview["items"]], ["One", "Two"])
+            self.assertFalse(preview["applied"])
+
+            created = [private_note(321, "One"), private_note(322, "Two")]
+            with patch("substack_draft_notes.reusable_session", return_value="session"), \
+                 patch("substack_draft_notes.PrivateApiClient") as api_class, \
+                 patch("substack_draft_notes.paginate_private_notes", return_value=[]), \
+                 patch("substack_draft_notes.PrivateNotesSync") as sync_class, \
+                 patch("substack_draft_notes.load_private_notes", return_value=created):
+                api_class.return_value.post_json.side_effect = [{"id": 321}, {"id": 322}]
+                sync_class.return_value.sync.return_value = {"runway_file": "runway.html"}
+                result = create_note_drafts(["One", "Two"], apply=True, config_path=config,
+                                            timezone_name="America/New_York")
+                self.assertTrue(result["applied"])
+                self.assertEqual(result["created"], 2)
+                self.assertEqual([item["note_id"] for item in result["items"]], ["321", "322"])
+                self.assertEqual(api_class.return_value.post_json.call_count, 2)
+                sync_class.return_value.sync.assert_called_once()
+
+    def test_batch_stops_after_uncertain_write_and_reports_verified_partial_result(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            with patch("substack_draft_notes.reusable_session", return_value="session"), \
+                 patch("substack_draft_notes.PrivateApiClient") as api_class, \
+                 patch("substack_draft_notes.paginate_private_notes", return_value=[]), \
+                 patch("substack_draft_notes.PrivateNotesSync") as sync_class, \
+                 patch("substack_draft_notes.load_private_notes", return_value=[private_note(321, "One")]):
+                api_class.return_value.post_json.side_effect = [
+                    {"id": 321}, PrivateNotesError("Uncertain response")
+                ]
+                sync_class.return_value.sync.return_value = {"runway_file": "runway.html"}
+                result = create_note_drafts(["One", "Two", "Three"], apply=True,
+                                            config_path=config, timezone_name="America/New_York")
+                self.assertFalse(result["applied"])
+                self.assertTrue(result["incomplete"])
+                self.assertEqual(result["created"], 1)
+                self.assertTrue(result["items"][2]["not_attempted"])
+                self.assertEqual(api_class.return_value.post_json.call_count, 2)
+                sync_class.return_value.sync.assert_called_once()
+
+    def test_batch_skips_existing_body_without_posting_or_refreshing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            with patch("substack_draft_notes.reusable_session", return_value="session"), \
+                 patch("substack_draft_notes.PrivateApiClient") as api_class, \
+                 patch("substack_draft_notes.paginate_private_notes",
+                       return_value=[private_note(321, "One")]), \
+                 patch("substack_draft_notes.PrivateNotesSync") as sync_class:
+                result = create_note_drafts(["One"], apply=True, config_path=config,
+                                            timezone_name="America/New_York")
+                self.assertFalse(result["applied"])
+                self.assertEqual(result["duplicates"], 1)
+                self.assertEqual(result["created"], 0)
+                self.assertEqual(result["items"][0]["existing_notes"][0]["id"], "321")
+                api_class.return_value.post_json.assert_not_called()
+                sync_class.assert_not_called()
+
+    def test_direct_draft_preview_and_apply_share_duplicate_and_verification_logic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            preview = create_note_draft("First\n\nSecond", config_path=config)
+            self.assertEqual(preview["body"], "First\nSecond")
+            self.assertFalse(preview["applied"])
+
+            created = private_note(321, "First\n\nSecond")
+            with patch("substack_draft_notes.reusable_session", return_value="session"), \
+                 patch("substack_draft_notes.PrivateApiClient") as api_class, \
+                 patch("substack_draft_notes.paginate_private_notes", return_value=[]), \
+                 patch("substack_draft_notes.PrivateNotesSync") as sync_class, \
+                 patch("substack_draft_notes.load_private_notes", return_value=[created]):
+                api_class.return_value.post_json.return_value = {"id": 321}
+                sync_class.return_value.sync.return_value = {"runway_file": "runway.html"}
+                result = create_note_draft(preview["body"], apply=True, config_path=config,
+                                           timezone_name="America/New_York")
+                self.assertTrue(result["applied"])
+                self.assertEqual(result["note_id"], "321")
+                self.assertEqual(result["verified_status"], "draft")
+                api_class.return_value.post_json.assert_called_once()
+
+    def test_direct_schedule_preview_and_apply_preserve_note_and_verify_time(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / ".substack-notes-pull.json"
+            current = private_note(12, "Keep this body")
+            updated = private_note(12, "Keep this body",
+                                   trigger_at="2099-01-01T14:30:00.000Z")
+            with patch("substack_draft_notes.reusable_session", return_value="session"), \
+                 patch("substack_draft_notes.PrivateApiClient") as api_class, \
+                 patch("substack_draft_notes.paginate_private_notes", return_value=[current]), \
+                 patch("substack_draft_notes.PrivateNotesSync") as sync_class, \
+                 patch("substack_draft_notes.load_private_notes", return_value=[updated]):
+                sync_class.return_value.sync.return_value = {"runway_file": "runway.html"}
+                preview = schedule_note("12", "2099-01-01T14:30:00Z", config_path=config,
+                                        timezone_name="America/New_York")
+                self.assertFalse(preview["applied"])
+                api_class.return_value.patch_json.assert_not_called()
+
+                result = schedule_note("12", "2099-01-01T14:30:00Z", apply=True,
+                                       config_path=config, timezone_name="America/New_York")
+                self.assertTrue(result["applied"])
+                self.assertEqual(result["verified_scheduled_at"], updated["trigger_at"])
+                path, payload = api_class.return_value.patch_json.call_args.args
+                self.assertEqual(path, "/api/v1/feed/comment/12")
+                self.assertEqual(payload["bodyJson"], current["body_json"])
 
 
 class RunwayTests(unittest.TestCase):

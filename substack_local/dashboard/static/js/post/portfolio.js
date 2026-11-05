@@ -16,7 +16,7 @@ const MODES = {
     yTitle: 'Signups per 1,000 first-week views',
     window: 'Same 7-day window',
     footnote: 'Signup yield is first-week signups per 1,000 first-week views. Posts need seven complete days and at least 100 first-week views. Attribution is directional; views are not unique readers.',
-    value: (row) => 1000 * row.signups / row.views,
+    value: (row) => row.signup_yield,
     format: (value) => value.toFixed(1),
   },
   sharing: {
@@ -43,12 +43,6 @@ let snapshot;
 const xValue = (row) => mode === 'sharing' ? Number(row.lifetime_views) : row.views;
 const xTitle = () => mode === 'sharing' ? 'Lifetime views · log scale' : 'First-week views · log scale';
 const minViews = () => mode === 'sharing' ? MIN_LIFETIME_VIEWS : MIN_FIRST_WEEK_VIEWS;
-
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
 
 function niceCeiling(value) {
   if (value <= 0) return 1;
@@ -118,7 +112,7 @@ function showTooltip(row, event, point) {
   tooltip.style.top = `${Math.max(8, anchor.top - rect.top - 76)}px`;
 }
 
-function card(row, medianViews) {
+function card(row, comparison) {
   const root = document.createElement('div');
   root.className = 'post-map-card';
   const heading = document.createElement('div');
@@ -129,7 +123,7 @@ function card(row, medianViews) {
   heading.append(title, published);
   const metrics = document.createElement('div');
   metrics.className = 'post-map-card-metrics';
-  const common = [[fmt(xValue(row)), `${(xValue(row) / medianViews).toFixed(1)}× median ${mode === 'sharing' ? 'lifetime' : 'first-week'} reach`]];
+  const common = [[fmt(xValue(row)), `${comparison.reach_multiple[String(row.id)].toFixed(1)}× median ${mode === 'sharing' ? 'lifetime' : 'first-week'} reach`]];
   const details = mode === 'staying' ? [
     [fmt(row.launch_views), 'day-one views'],
     [fmt(row.later_week_views), 'views on days 2–7'],
@@ -164,7 +158,7 @@ function card(row, medianViews) {
   return root;
 }
 
-function renderSelection(rows, medianViews) {
+function renderSelection(rows, comparison) {
   const root = $('post-map-comparison');
   root.replaceChildren();
   const selected = selectedIds.map((id) => rows.find((row) => row.id === id)).filter(Boolean);
@@ -184,7 +178,7 @@ function renderSelection(rows, medianViews) {
   heading.append(label, clear);
   const cards = document.createElement('div');
   cards.className = 'post-map-cards';
-  selected.forEach((row) => cards.append(card(row, medianViews)));
+  selected.forEach((row) => cards.append(card(row, comparison)));
   root.append(heading, cards);
   if (selected.length === 1) {
     const hint = document.createElement('p');
@@ -193,28 +187,14 @@ function renderSelection(rows, medianViews) {
   }
 }
 
-function renderInsight(rows) {
+function renderInsight(insight) {
   const root = $('post-map-later');
   root.replaceChildren();
-  if (!rows.length) { root.hidden = true; return; }
+  if (!insight) { root.hidden = true; return; }
   const label = document.createElement('strong');
   const text = document.createElement('span');
-  if (mode === 'staying') {
-    const sustained = rows.filter((row) => row.later_week_share >= .5).length;
-    label.textContent = 'After launch day';
-    text.textContent = `${sustained} of ${rows.length} shown posts received at least half their first-week views on days 2–7. Their reach continued beyond launch day.`;
-  } else if (mode === 'yield') {
-    const growing = rows.filter((row) => row.signups > 0).length;
-    label.textContent = 'Reader growth';
-    text.textContent = `${growing} of ${rows.length} shown posts brought in at least one signup during week one. Compare rates alongside the underlying counts.`;
-  } else if (mode === 'sharing') {
-    label.textContent = 'Reader sharing';
-    text.textContent = `The median shown post earned ${median(rows.map((row) => row.share_rate)).toFixed(1)} recorded shares per 1,000 lifetime views. Open high-rate posts to inspect their distribution.`;
-  } else {
-    const delayed = [...rows].sort((a, b) => b.later_multiple - a.later_multiple)[0];
-    label.textContent = 'Later discovery';
-    text.textContent = `${delayed.title} has ${fmt(delayed.later_views)} views after its first week, ${delayed.later_multiple.toFixed(1)}× its first-week total. Publication dates matter here.`;
-  }
+  label.textContent = insight.label;
+  text.textContent = insight.text;
   root.append(label, text);
   root.hidden = false;
 }
@@ -255,18 +235,17 @@ export function renderPostPortfolio(state) {
     status.textContent = loading ? 'Loading completed first-week results…' : 'Open Posts to load the comparison.';
     return;
   }
-  const groups = new Map();
-  for (const row of data.rows || []) {
-    const group = `${row.post_type}|${row.audience}`;
-    if (!groups.has(group)) groups.set(group, []);
-    groups.get(group).push(row);
+  const model = data.comparison;
+  if (!model?.lenses?.[mode]) {
+    status.textContent = 'Comparison data is unavailable. Refresh the dashboard.';
+    return;
   }
-  const cohort = [...groups.values()].sort((a, b) => b.length - a.length)[0] || [];
-  const eligible = cohort.filter((row) => Number.isFinite(xValue(row)) && xValue(row) >= minViews()
-    && Number.isFinite(definition.value(row)) && definition.value(row) >= 0);
+  const lens = model.lenses[mode];
+  const eligibleIds = new Set(lens.eligible_ids);
+  const standoutIds = new Set(lens.standout_ids);
+  const eligible = (data.rows || []).filter((row) => eligibleIds.has(String(row.id)));
   const visible = eligible.filter((row) => visibleIds.has(String(row.id)));
-  const otherTypes = (data.rows || []).length - cohort.length;
-  status.textContent = `${eligible.length} of ${cohort.length} comparable posts meet this view’s sample rule${visible.length < eligible.length ? ` · ${visible.length} shown` : ''}${otherTypes ? ` · ${otherTypes} other post types` : ''}${data.incomplete ? ` · ${data.incomplete} too new` : ''}${data.unavailable ? ` · ${data.unavailable} unavailable` : ''}${data.total > data.considered ? ` · latest ${data.considered} of ${data.total} considered` : ''}.`;
+  status.textContent = `${eligible.length} of ${model.cohort_size} comparable posts meet this view’s sample rule${visible.length < eligible.length ? ` · ${visible.length} shown` : ''}${model.other_types ? ` · ${model.other_types} other post types` : ''}${data.incomplete ? ` · ${data.incomplete} too new` : ''}${data.unavailable ? ` · ${data.unavailable} unavailable` : ''}${data.total > data.considered ? ` · latest ${data.considered} of ${data.total} considered` : ''}.`;
   if (eligible.length < 3) {
     comparison.textContent = `At least three comparable posts with ${fmt(minViews())} ${mode === 'sharing' ? 'lifetime' : 'first-week'} views are needed for this view.`;
     return;
@@ -276,8 +255,8 @@ export function renderPostPortfolio(state) {
     return;
   }
   visual.hidden = false;
-  const medianViews = median(eligible.map(xValue));
-  const medianOutcome = median(eligible.map(definition.value));
+  const medianViews = lens.median_x;
+  const medianOutcome = lens.median_y;
   const metric = mode === 'staying' ? 'views after day one' : mode === 'yield'
     ? 'signups / 1k views' : mode === 'sharing' ? 'shares / 1k views' : 'later views';
   key.textContent = `Cohort medians (dashed): ${fmt(medianViews)} ${mode === 'sharing' ? 'lifetime' : 'first-week'} views · ${definition.format(medianOutcome)} ${metric}.${mode === 'tail' || mode === 'sharing' ? ' Check publication dates.' : ' Amber dots clear both.'}`;
@@ -303,7 +282,7 @@ export function renderPostPortfolio(state) {
     const point = document.createElement('button');
     point.type = 'button';
     point.className = 'post-map-point';
-    if (mode !== 'tail' && mode !== 'sharing' && xValue(row) >= medianViews && outcome >= medianOutcome) point.classList.add('standout');
+    if (standoutIds.has(String(row.id))) point.classList.add('standout');
     if (selectedIds.includes(row.id)) point.classList.add('selected');
     point.style.left = `${x(xValue(row))}%`;
     point.style.top = `${y.position(outcome)}%`;
@@ -323,8 +302,8 @@ export function renderPostPortfolio(state) {
     points.append(point);
   });
   $('post-map-tooltip').hidden = true;
-  renderInsight(visible);
-  renderSelection(visible, medianViews);
+  renderInsight(lens.insight);
+  renderSelection(visible, lens);
 }
 
 export function setupPostPortfolio() {

@@ -27,16 +27,8 @@ export function renderPostInsights(post) {
     reach = post.reach || {},
     engagement = post.engagement || {},
     growth = post.growth || {},
-    traffic = post.traffic || {};
-  const sources = (traffic.referrers || [])
-    .filter((row) => Number(row.views) > 0)
-    .sort(
-      (a, b) =>
-        Number(b.signups || 0) +
-          Number(b.subscribes || 0) -
-          Number(a.signups || 0) -
-          Number(a.subscribes || 0) || Number(b.views || 0) - Number(a.views || 0),
-    );
+    insights = post.insights || {};
+  const sources = insights.sources || [];
   const directShares = post.direct_note_shares;
   const distribution = sources.length || directShares?.notes?.length || directShares?.status === 'not_synced'
     ? section('Distribution') : null;
@@ -50,20 +42,16 @@ export function renderPostInsights(post) {
     context.className = 'detail-context';
     context.textContent = 'Lifetime view share beside share of source-attributed signups';
     panel.append(context);
-    const attributed = sources.reduce(
-      (sum, row) => sum + Number(row.signups || 0) + Number(row.subscribes || 0),
-      0,
-    );
-    const leading = sources.filter((row) => Number(row.views) >= 20).slice(0, 5);
-    if (!leading.length) leading.push(...sources.slice(0, 5));
-    const smaller = sources.filter((row) => !leading.includes(row));
+    const attributed = insights.attributed_signups;
+    const leading = sources.filter((row) => row.leading);
+    const smaller = sources.filter((row) => !row.leading);
     const makeList = (rows) => {
       const list = document.createElement('div');
       list.className = 'source-compare-list';
       rows.forEach((row) => {
-        const subs = Number(row.signups || 0) + Number(row.subscribes || 0),
-          viewShare = Number(row.percent_of_total_views || 0),
-          signupShare = attributed ? subs / attributed : 0;
+        const subs = row.attributed_signups,
+          viewShare = row.view_share,
+          signupShare = row.signup_share;
         const item = document.createElement('div');
         item.className = 'source-compare-row';
         const heading = document.createElement('div');
@@ -105,7 +93,10 @@ export function renderPostInsights(post) {
       more.className = 'detail-more';
       const summary = document.createElement('summary');
       summary.textContent = `Show ${smaller.length} smaller sources`;
-      more.append(summary, makeList(smaller));
+      more.append(summary);
+      more.addEventListener('toggle', () => {
+        if (more.open && more.children.length === 1) more.append(makeList(smaller));
+      });
       panel.append(more);
     }
     const foot = document.createElement('p');
@@ -165,7 +156,7 @@ export function renderPostInsights(post) {
   }
   if (distribution) root.append(distribution);
   const depth = engagement.scroll_depth?.full_post || engagement.scroll_depth?.preview,
-    previewOnly = !engagement.scroll_depth?.full_post && !!engagement.scroll_depth?.preview;
+    previewOnly = insights.reading_preview_only;
   if (reach.sent != null || depth?.readers) {
     const panel = section('What readers did next');
     const grid = document.createElement('div');
@@ -183,7 +174,7 @@ export function renderPostInsights(post) {
           'Delivered',
           reach.delivered,
           Number(reach.sent),
-          `${pct(Number(reach.sent) ? Number(reach.delivered) / Number(reach.sent) : null)} of recipients`,
+          `${pct(insights.delivered_share)} of recipients`,
         ),
       );
       email.append(
@@ -223,7 +214,7 @@ export function renderPostInsights(post) {
             label,
             depth[key],
             Number(depth.readers),
-            `${pct(Number(depth.readers) ? Number(depth[key] || 0) / Number(depth.readers) : null)} of measured readers`,
+            `${pct(insights.reading_shares?.[key])} of measured readers`,
           ),
         );
       grid.append(reading);
@@ -234,14 +225,13 @@ export function renderPostInsights(post) {
     note.textContent =
       'Email recipients and on-page readers are separate groups; the two tracks are not one funnel. Typical email rates are Substack’s comparison averages and may reflect different send sizes.';
     panel.append(note);
-    const devices = traffic.devices || [];
+    const devices = insights.devices || [];
     if (devices.length) {
       const more = document.createElement('details');
       more.className = 'detail-more';
       const summary = document.createElement('summary');
       summary.textContent = 'Where people read';
       more.append(summary);
-      const total = devices.reduce((sum, row) => sum + Number(row.views || 0), 0);
       const list = document.createElement('div');
       list.className = 'device-list';
       devices.forEach((row) =>
@@ -249,8 +239,8 @@ export function renderPostInsights(post) {
           progressRow(
             row.device_type || 'Unknown',
             row.views,
-            total,
-            pct(total ? Number(row.views || 0) / total : null),
+            insights.device_total,
+            pct(row.share),
           ),
         ),
       );
@@ -263,14 +253,15 @@ export function renderPostInsights(post) {
     const panel = section('Reader response');
     const row = document.createElement('div');
     row.className = 'response-grid';
-    for (const [label, count, detail] of [
-      ['Likes', engagement.likes, null],
+    for (const [label, count, detail, rate] of [
+      ['Likes', engagement.likes, null, insights.response_rates?.likes],
       [
         'Comments',
         engagement.comments,
         engagement.commenters == null ? null : `${fmt(engagement.commenters)} commenters`,
+        insights.response_rates?.comments,
       ],
-      ['Shares', reach.shares, null],
+      ['Shares', reach.shares, null, insights.response_rates?.shares],
     ]) {
       if (count == null) continue;
       const card = document.createElement('div');
@@ -279,9 +270,7 @@ export function renderPostInsights(post) {
       const value = document.createElement('strong');
       value.textContent = fmt(count);
       const note = document.createElement('small');
-      note.textContent =
-        detail ||
-        `${reach.views ? Math.round((1000 * Number(count)) / Number(reach.views)) : '—'} per 1k views`;
+      note.textContent = detail || `${rate == null ? '—' : Math.round(rate)} per 1k views`;
       card.append(name, value, note);
       row.append(card);
     }

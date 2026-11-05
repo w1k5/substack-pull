@@ -83,6 +83,21 @@ class PostPortfolioTests(unittest.TestCase):
             self.assertEqual(second.post_week("123")["signups"], 9)
             self.assertEqual(api.calls, ["/api/v1/post_management/detail/123"])
 
+    def test_completed_portfolio_is_reused_until_refresh(self):
+        service = AnalyticsService(object(), object())
+        published = [{"id": "123", "title": "Example", "date": "2026-09-01T12:00:00Z",
+                      "views": 3000, "shares": 30, "signups": 12}]
+        week = first_week_summary("123", detail(views=1000, signups=8)["posts"][0],
+                                  today=date(2026, 9, 8))
+        with patch.object(service, "posts", return_value=published) as posts, \
+             patch.object(service, "post_week", return_value=week) as week_fetch:
+            first = service.post_portfolio()
+            self.assertIs(first, service.post_portfolio())
+            self.assertEqual(posts.call_count, 1)
+            self.assertEqual(week_fetch.call_count, 1)
+            service.post_portfolio(refresh=True)
+            self.assertEqual(week_fetch.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

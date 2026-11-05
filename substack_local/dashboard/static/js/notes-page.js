@@ -10,9 +10,7 @@ export function renderNotesPage(data, selectedId) {
   const notes = (data.publication_events || [])
     .filter((event) => event.type === 'note' && /^\d+$/.test(String(event.id)));
   if (data !== lastData) {
-    const attributed = (data.growth_sources || []).find(
-      (source) => source.name === 'Notes' && source.parent === 'Substack',
-    )?.subscribers;
+    const attributed = data.briefing?.notes_attributed;
     const insight = $('notes-insight');
     insight.replaceChildren();
     const copy = document.createElement('div');

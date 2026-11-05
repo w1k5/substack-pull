@@ -1,54 +1,16 @@
-"""MCP adapters for the existing post and Note puller CLIs.
-
-The CLIs own syncing, reconciliation, authentication, and readable rendering.
-Running them as child processes keeps their JSON output off MCP's stdio stream.
-"""
+"""Direct local backup workflows used by MCP tools."""
 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 import re
-import subprocess
-import sys
 from urllib.parse import urlparse
 
-ROOT = Path(__file__).resolve().parents[2]
-POST_CONFIG = ROOT / ".substack-pull.json"
-NOTE_CONFIG = ROOT / ".substack-notes-pull.json"
-POST_CLI = ROOT / "skills/substack-pull/scripts/substack_pull.py"
-NOTE_CLI = ROOT / "skills/substack-notes-pull/scripts/substack_notes_pull.py"
-
-
-def _run_json(script: Path, args: list[str], *, timeout: int = 270) -> dict:
-    try:
-        completed = subprocess.run(
-            [sys.executable, str(script), *args],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Substack command timed out after {timeout} seconds.") from exc
-    try:
-        value = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        message = completed.stderr.strip() or "Substack command returned no JSON."
-        raise RuntimeError(message[:1000]) from exc
-    if not isinstance(value, dict):
-        raise RuntimeError("Substack command returned an unexpected result.")
-    if completed.returncode:
-        value["incomplete"] = True
-    return value
-
-
-def _post_args(command: str, publication_url: str | None = None) -> list[str]:
-    args = ["--config", str(POST_CONFIG), command]
-    if publication_url is not None:
-        args += ["--publication", _public_post_url(publication_url), "--directory", str(_public_post_dir(publication_url))]
-    return args
+from ..workflows.modules import (
+    NOTE_CONFIG, POST_CONFIG, ROOT, post_puller, private_notes, public_notes,
+)
 
 
 def _public_post_url(value: str) -> str:
@@ -119,29 +81,71 @@ def workspace_info() -> dict:
 
 def backup_status() -> dict:
     result = {}
-    for name, script, args in (
-        ("posts", POST_CLI, _post_args("status")),
-        ("notes", NOTE_CLI, ["--config", str(NOTE_CONFIG), "status"]),
-    ):
-        try:
-            result[name] = _run_json(script, args)
-        except RuntimeError as exc:
-            result[name] = {"error": str(exc)}
+    post = post_puller()
+    try:
+        config = post.load_config(POST_CONFIG, None)
+        directory = post.resolve_output_dir(POST_CONFIG, config)
+        state = post.read_json(directory / ".sync" / "state.json", None)
+        if state is None:
+            raise post.PullError(f"No sync state exists at {directory}. Run pull first.")
+        result["posts"] = {
+            "publication": state.get("publication"),
+            "directory": str(directory),
+            "last_sync_at": state.get("last_sync_at"),
+            "categories": {
+                category: {
+                    "tracked": len(entries),
+                    "present": sum(item.get("remote_status") == "present" for item in entries.values()),
+                    "missing_local_preserved": sum(item.get("remote_status") == "missing" for item in entries.values()),
+                }
+                for category, entries in state.get("categories", {}).items()
+            },
+        }
+    except (OSError, ValueError, post.PullError) as exc:
+        result["posts"] = {"error": str(exc)}
+    private = private_notes()
+    try:
+        config = private.load_config(NOTE_CONFIG)
+        directory = private.output_dir_from(NOTE_CONFIG, config, None)
+        notes = private.load_private_notes(directory)
+        counts = Counter(private.note_category(note) for note in notes)
+        state = private.read_json(directory / ".private-sync" / "state.json", {})
+        result["notes"] = {
+            "directory": str(directory),
+            "last_sync_at": state.get("last_sync_at") if isinstance(state, dict) else None,
+            "drafts": counts["note-drafts"],
+            "scheduled": counts["note-scheduled"],
+            "runway_exists": (directory / "note-runway.html").is_file(),
+            "keychain_session_present": private.reusable_session_present(NOTE_CONFIG, config),
+        }
+    except (OSError, ValueError, private.PrivateNotesError) as exc:
+        result["notes"] = {"error": str(exc)}
     return result
 
 
 def pull_own_posts(refresh_published: bool = False) -> dict:
-    args = _post_args("pull")
-    if refresh_published:
-        args.append("--refresh-published")
-    return _run_json(POST_CLI, args)
+    return _pull_posts(None, refresh_published)
 
 
 def pull_public_posts(publication_url: str, refresh_published: bool = False) -> dict:
-    args = _post_args("pull", publication_url) + ["--public"]
-    if refresh_published:
-        args.append("--refresh-published")
-    return _run_json(POST_CLI, args)
+    return _pull_posts(_public_post_url(publication_url), refresh_published)
+
+
+def _pull_posts(publication_url: str | None, refresh_published: bool) -> dict:
+    post = post_puller()
+    config = post.load_config(POST_CONFIG, publication_url)
+    directory = post.resolve_output_dir(
+        POST_CONFIG, config,
+        str(_public_post_dir(publication_url)) if publication_url else None,
+    )
+    token = None if publication_url else post.KeychainStore().get(post.host_for(config["publication"]))
+    api = post.ApiClient(config["publication"], token)
+    summary = post.SyncEngine(api, directory, public_only=publication_url is not None).sync(
+        refresh_published=refresh_published,
+    )
+    if summary.get("errors"):
+        summary["incomplete"] = True
+    return summary
 
 
 def find_post_copies(query: str = "", category: str = "all", limit: int = 20,
@@ -150,10 +154,23 @@ def find_post_copies(query: str = "", category: str = "all", limit: int = 20,
         raise ValueError("Choose all, drafts, scheduled, or published.")
     if publication_url is not None and category not in {"all", "published"}:
         raise ValueError("Public backups contain only published posts.")
-    args = _post_args("list", publication_url) + ["--category", category, "--limit", str(_bounded_limit(limit))]
+    post = post_puller()
+    config = post.load_config(POST_CONFIG, _public_post_url(publication_url) if publication_url else None)
+    directory = post.resolve_output_dir(
+        POST_CONFIG, config,
+        str(_public_post_dir(publication_url)) if publication_url else None,
+    )
+    items = post.collect_local_posts(directory, category=None if category == "all" else category)
     if query:
-        args += ["--query", query]
-    return _run_json(POST_CLI, args)
+        needle = query.casefold()
+        items = [item for item in items if needle in " ".join(
+            str(item.get(key) or "") for key in ("title", "subtitle", "id", "category")
+        ).casefold()]
+    items = items[:_bounded_limit(limit)]
+    return {
+        "publication": config["publication"], "directory": str(directory),
+        "query": query, "count": len(items), "items": items,
+    }
 
 
 def read_post_copy(post_id: str, publication_url: str | None = None,
@@ -172,22 +189,54 @@ def read_post_copy(post_id: str, publication_url: str | None = None,
 
 
 def pull_notes(days: int = 90, minimum_spacing: int = 3) -> dict:
-    return _run_json(NOTE_CLI, ["--config", str(NOTE_CONFIG), "pull", "--days", str(days),
-                                "--minimum-spacing", str(minimum_spacing)])
+    private = private_notes()
+    config = private.load_config(NOTE_CONFIG)
+    directory = private.output_dir_from(NOTE_CONFIG, config, None)
+    zone_name = private.zone_name_from(config, None)
+    token = private.reusable_session(NOTE_CONFIG, config)
+    api = private.PrivateApiClient(token, request_delay=0.25)
+    return private.PrivateNotesSync(api, directory, zone_name=zone_name).sync(
+        days=days, minimum_spacing=minimum_spacing,
+    )
 
 
 def find_note_copies(query: str = "", status: str = "all", limit: int = 20,
                      include_preview: bool = False) -> dict:
     if status not in {"all", "draft", "scheduled"}:
         raise ValueError("Choose all, draft, or scheduled.")
-    args = ["--config", str(NOTE_CONFIG), "list", "--status", status, "--limit", str(_bounded_limit(limit))]
-    if query:
-        args += ["--query", query]
-    result = _run_json(NOTE_CLI, args)
-    if not include_preview:
-        for item in result.get("items", []):
-            item.pop("preview", None)
-    return result
+    private = private_notes()
+    config = private.load_config(NOTE_CONFIG)
+    directory = private.output_dir_from(NOTE_CONFIG, config, None)
+    zone = private.load_zone(private.zone_name_from(config, None))
+    items = []
+    for note in private.load_private_notes(directory):
+        scheduled = private.note_category(note) == "note-scheduled"
+        note_status = "scheduled" if scheduled else "draft"
+        body = private.note_body(note)
+        note_id = private.item_id(note)
+        if status != "all" and status != note_status:
+            continue
+        if query and query.casefold() not in f"{note_id} {body}".casefold():
+            continue
+        item = {
+            "id": note_id, "status": note_status,
+            "scheduled_at": note.get("trigger_at"),
+            "scheduled_local": private.local_timestamp(note.get("trigger_at"), zone) if scheduled else None,
+            "edited_at": note.get("edited_at"),
+        }
+        if include_preview:
+            item["preview"] = re.sub(r"\s+", " ", body).strip()[:240]
+        items.append(item)
+    scheduled_items = sorted(
+        (item for item in items if item["status"] == "scheduled"),
+        key=lambda item: (str(item.get("scheduled_at") or ""), item["id"]),
+    )
+    draft_items = sorted(
+        (item for item in items if item["status"] == "draft"),
+        key=lambda item: (str(item.get("edited_at") or ""), item["id"]), reverse=True,
+    )
+    items = [*scheduled_items, *draft_items][:_bounded_limit(limit)]
+    return {"count": len(items), "items": items}
 
 
 def read_note_copy(note_id: str, max_chars: int = 16000) -> dict:
@@ -209,17 +258,42 @@ def read_note_copy(note_id: str, max_chars: int = 16000) -> dict:
 
 
 def note_schedule_runway(days: int = 90, minimum_spacing: int = 3) -> dict:
-    return _run_json(NOTE_CLI, ["--config", str(NOTE_CONFIG), "visualize", "--days", str(days),
-                                "--minimum-spacing", str(minimum_spacing)])
+    private = private_notes()
+    config = private.load_config(NOTE_CONFIG)
+    directory = private.output_dir_from(NOTE_CONFIG, config, None)
+    zone_name = private.zone_name_from(config, None)
+    notes = private.load_private_notes(directory)
+    if not notes:
+        raise private.PrivateNotesError(f"No Note JSON files found in {directory}. Run pull first.")
+    state = private.read_json(directory / ".private-sync" / "state.json", {})
+    synced_at = state.get("last_sync_at") if isinstance(state, dict) else None
+    overview_path = directory / "notes.md"
+    private.atomic_write_text(overview_path, private.notes_overview(
+        [note for note in notes if private.note_category(note) == "note-drafts"],
+        [note for note in notes if private.note_category(note) == "note-scheduled"],
+        str(synced_at or private.utc_now()), private.load_zone(zone_name),
+    ))
+    path, payload = private.write_runway(
+        directory, notes, start=private.parse_start(None, zone_name),
+        days=days, zone_name=zone_name, minimum_spacing=minimum_spacing,
+    )
+    return {
+        "overview_file": str(overview_path.resolve()), "runway_file": str(path),
+        "start": payload["start"], "end": payload["end"],
+        "timezone": payload["timezone"],
+        "scheduled_in_window": payload["scheduledInWindow"],
+        "drafts_off_calendar": payload["draftCount"],
+    }
 
 
 def pull_published_notes(profile: str, refresh: bool = False) -> dict:
     profile = _profile(profile)
-    args = ["public", "--config", str(NOTE_CONFIG), "pull", "--profile", profile,
-            "--directory", str(_public_note_dir(profile))]
-    if refresh:
-        args.append("--refresh")
-    return _run_json(NOTE_CLI, args)
+    public = public_notes()
+    config = public.load_config(NOTE_CONFIG, profile)
+    directory = public.resolve_output_dir(NOTE_CONFIG, config, str(_public_note_dir(profile)))
+    api = public.ApiClient()
+    resolved = public.resolve_profile(api, config["profile"])
+    return public.SyncEngine(api, directory, resolved).sync(refresh=refresh)
 
 
 def find_published_notes(profile: str, query: str = "", sort_by: str = "recent",
@@ -227,9 +301,11 @@ def find_published_notes(profile: str, query: str = "", sort_by: str = "recent",
     profile = _profile(profile)
     if sort_by not in {"recent", "reactions", "restacks", "replies"}:
         raise ValueError("Choose recent, reactions, restacks, or replies.")
-    args = ["public", "--config", str(NOTE_CONFIG), "list", "--profile", profile,
-            "--directory", str(_public_note_dir(profile)), "--sort", sort_by,
-            "--limit", str(_bounded_limit(limit))]
-    if query:
-        args += ["--query", query]
-    return _run_json(NOTE_CLI, args)
+    public = public_notes()
+    config = public.load_config(NOTE_CONFIG, profile)
+    directory = public.resolve_output_dir(NOTE_CONFIG, config, str(_public_note_dir(profile)))
+    items = public.collect_local_notes(directory, query=query, sort_by=sort_by)[:_bounded_limit(limit)]
+    return {
+        "profile": config["profile"], "directory": str(directory),
+        "query": query, "sort": sort_by, "count": len(items), "items": items,
+    }

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.parse
 
 
@@ -27,6 +28,18 @@ from substack_pull import (
     require_substack_host,
     save_config,
 )
+
+
+class RateLimitTests(unittest.TestCase):
+    def test_read_requests_respect_retry_after_and_stop_for_long_wait(self):
+        response = urllib.error.HTTPError(
+            "https://example.substack.com/api/v1/posts", 429, "Too Many Requests",
+            {"Retry-After": "45"}, None,
+        )
+        self.assertEqual(ApiClient._rate_limit_delay(response, 0), 45)
+        response.headers["Retry-After"] = "3600"
+        with self.assertRaisesRegex(PullError, "long pause"):
+            ApiClient._rate_limit_delay(response, 0)
 
 
 class MockState:

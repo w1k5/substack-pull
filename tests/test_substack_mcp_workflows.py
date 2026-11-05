@@ -1,4 +1,4 @@
-"""Contract checks for the MCP adapters around the two pullers."""
+"""Contract checks for the process-free MCP backup adapters."""
 
 from pathlib import Path
 import tempfile
@@ -9,35 +9,39 @@ from substack_local.mcp import pulls as workflows
 
 
 class WorkflowTests(unittest.TestCase):
-    @patch("substack_local.mcp.pulls.subprocess.run")
-    def test_public_post_pull_uses_anonymous_mode_and_ignored_directory(self, run):
-        run.return_value.returncode = 0
-        run.return_value.stdout = '{"mode":"public"}'
-        run.return_value.stderr = ""
+    @patch("substack_local.mcp.pulls.post_puller")
+    def test_public_post_pull_uses_anonymous_mode_and_ignored_directory(self, module):
+        module = module.return_value
+        module.load_config.return_value = {"publication": "https://example.substack.com"}
+        module.SyncEngine.return_value.sync.return_value = {"mode": "public", "errors": []}
         result = workflows.pull_public_posts("https://example.substack.com")
-        command = run.call_args.args[0]
         self.assertEqual(result["mode"], "public")
-        self.assertIn("--public", command)
-        self.assertIn(str(workflows.ROOT / "substack/public-posts/example.substack.com"), command)
-        self.assertNotIn("auth", command)
+        module.ApiClient.assert_called_once_with("https://example.substack.com", None)
+        self.assertEqual(module.SyncEngine.call_args.kwargs["public_only"], True)
+        self.assertEqual(module.resolve_output_dir.call_args.args[2], str(
+            workflows.ROOT / "substack/public-posts/example.substack.com"
+        ))
 
-    @patch("substack_local.mcp.pulls.subprocess.run")
-    def test_private_note_previews_are_opt_in(self, run):
-        run.return_value.returncode = 0
-        run.return_value.stdout = '{"count":1,"items":[{"id":"c-1","preview":"private body"}]}'
-        run.return_value.stderr = ""
+    @patch("substack_local.mcp.pulls.private_notes")
+    def test_private_note_previews_are_opt_in(self, module):
+        module = module.return_value
+        module.load_private_notes.return_value = [{"id": 1}]
+        module.note_category.return_value = "note-drafts"
+        module.note_body.return_value = "private body"
+        module.item_id.return_value = "1"
         self.assertNotIn("preview", workflows.find_note_copies()["items"][0])
         self.assertEqual(workflows.find_note_copies(include_preview=True)["items"][0]["preview"], "private body")
 
-    @patch("substack_local.mcp.pulls.subprocess.run")
-    def test_public_note_history_is_anonymous_and_profile_scoped(self, run):
-        run.return_value.returncode = 0
-        run.return_value.stdout = '{"complete":true}'
-        run.return_value.stderr = ""
+    @patch("substack_local.mcp.pulls.public_notes")
+    def test_public_note_history_is_anonymous_and_profile_scoped(self, module):
+        module = module.return_value
+        module.load_config.return_value = {"profile": "@prettyhostile"}
+        module.SyncEngine.return_value.sync.return_value = {"complete": True}
         workflows.pull_published_notes("@PrettyHostile")
-        command = run.call_args.args[0]
-        self.assertLess(command.index("public"), command.index("--config"))
-        self.assertIn(str(workflows.ROOT / "substack/published-notes/prettyhostile"), command)
+        module.ApiClient.assert_called_once_with()
+        self.assertEqual(module.resolve_output_dir.call_args.args[2], str(
+            workflows.ROOT / "substack/published-notes/prettyhostile"
+        ))
 
     def test_markdown_reader_stays_inside_backup(self):
         with tempfile.TemporaryDirectory() as root:

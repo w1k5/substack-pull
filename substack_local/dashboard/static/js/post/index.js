@@ -1,4 +1,4 @@
-import { $, fmt, pct, date, cell, number, section, loadingIndicator } from '../shared.js';
+import { $, fmt, pct, date, cell, section, loadingIndicator } from '../shared.js';
 import { renderPostTrajectory } from './trajectory.js';
 import { renderPostInsights } from './insights.js';
 export { clearNoteStatsRequests } from './notes.js';
@@ -26,16 +26,6 @@ function detailTable(headers, rows) {
   wrap.append(table);
   return wrap;
 }
-function comparison(actual, average) {
-  const a = number(actual),
-    b = number(average);
-  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return '—';
-  const ratio = a / b;
-  return ratio >= 3
-    ? `${ratio.toFixed(1)}× typical`
-    : `${a >= b ? '+' : ''}${Math.round((ratio - 1) * 100)}%`;
-}
-
 function linkLabel(value) {
   const label = String(value);
   if (label.startsWith('/i/')) return 'Image opened';
@@ -49,46 +39,33 @@ function renderPostDetail(post) {
     `Published ${date(post.date)} · lifetime totals · compared with ${fmt(post.comps.n_comp_posts)} similar posts`;
   const root = $('detail-content');
   root.replaceChildren();
-  const daily = [...(post.first_week || [])].sort((a, b) => Number(a.day_n) - Number(b.day_n));
-  const now = new Date(),
-    today = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-');
-  const complete = daily.filter((d) => !d.dt || d.dt.slice(0, 10) !== today);
-  const latest = complete.at(-1) || daily.at(-1);
-  const week = complete.findLast((row) => Number(row.day_n) >= 6);
-  if (week) {
+  const story = post.story || {};
+  const afterWeek = story.after_week || [];
+  if (afterWeek.length) {
     const panel = section('First week and later reach');
     panel.classList.add('afterlife-panel');
     const context = document.createElement('p');
     context.className = 'detail-context';
     context.textContent = 'Lifetime totals split at the end of day 7';
     panel.append(context);
-    for (const [label, first, lifetime] of [
-      ['Views', number(week.cumulative_views), number(post.reach?.views)],
-      ['Free signups', number(week.cumulative_signups), number(post.growth?.signups)],
-    ]) {
-      if (first == null || lifetime == null) continue;
-      const later = Math.max(0, lifetime - first);
+    for (const item of afterWeek) {
       const row = document.createElement('div');
       row.className = 'afterlife-row';
       const heading = document.createElement('div');
       heading.className = 'afterlife-heading';
       const name = document.createElement('strong');
-      name.textContent = label;
+      name.textContent = item.name;
       const amounts = document.createElement('span');
-      amounts.textContent = `${fmt(first)} first week · ${fmt(later)} later · ${fmt(lifetime)} lifetime`;
+      amounts.textContent = `${fmt(item.first)} first week · ${fmt(item.later)} later · ${fmt(item.lifetime)} lifetime`;
       heading.append(name, amounts);
       const track = document.createElement('div');
       track.className = 'afterlife-track';
       const early = document.createElement('i');
       early.className = 'afterlife-early';
-      early.style.width = `${lifetime ? (100 * first) / lifetime : 0}%`;
+      early.style.width = pct(item.first_share);
       const late = document.createElement('i');
       late.className = 'afterlife-late';
-      late.style.width = `${lifetime ? (100 * later) / lifetime : 0}%`;
+      late.style.width = pct(item.later_share);
       track.append(early, late);
       row.append(heading, track);
       panel.append(row);
@@ -99,22 +76,13 @@ function renderPostDetail(post) {
     panel.append(caveat);
     root.append(panel);
   }
-  if (latest) {
-    const day = Number(latest.day_n) + 1,
-      partial = !complete.length && daily.length > 0;
-    const views = number(latest.cumulative_views),
-      typicalViews = number(latest.comps?.avg_cumulative_views);
-    const signups = number(latest.cumulative_signups),
-      typicalSignups = number(latest.comps?.avg_cumulative_signups);
-    const rate = views > 0 && signups != null ? (signups / views) * 1000 : null,
-      typicalRate =
-        typicalViews > 0 && typicalSignups != null ? (typicalSignups / typicalViews) * 1000 : null;
-    const hasPartial = complete.length < daily.length;
+  if (story.performance) {
+    const performance = story.performance;
     const panel = section('Performance over time');
     panel.classList.add('performance-story');
     const label = document.createElement('p');
     label.className = 'detail-context';
-    label.textContent = `${partial ? 'Current day' : 'Last complete day'}: day ${day} of 7${hasPartial ? ' · current partial day shown below but excluded from this summary' : ''}`;
+    label.textContent = `${performance.current_day ? 'Current day' : 'Last complete day'}: day ${performance.day} of 7${performance.has_partial_day ? ' · current partial day shown below but excluded from this summary' : ''}`;
     panel.append(label);
     const summary = document.createElement('div');
     summary.className = 'performance-summary';
@@ -129,19 +97,19 @@ function renderPostDetail(post) {
       item.append(heading, amount, note);
       summary.append(item);
     };
-    statement('Views', fmt(views), `${comparison(views, typicalViews)} at the same age`);
+    statement('Views', fmt(performance.views), `${performance.views_vs_typical} at the same age`);
     statement(
       'Free signups',
-      fmt(signups),
-      `${comparison(signups, typicalSignups)} at the same age`,
+      fmt(performance.signups),
+      `${performance.signups_vs_typical} at the same age`,
     );
     statement(
       'Signup yield',
-      rate == null ? '—' : `${rate.toFixed(1)} / 1k views`,
-      `${comparison(rate, typicalRate)} at the same age`,
+      performance.signup_yield == null ? '—' : `${performance.signup_yield.toFixed(1)} / 1k views`,
+      `${performance.yield_vs_typical} at the same age`,
     );
     panel.append(summary);
-    if (daily.length > 1) panel.append(renderPostTrajectory(daily, post.notes || []));
+    if ((post.first_week || []).length > 1) panel.append(renderPostTrajectory(post.first_week, post.notes || []));
     root.append(panel);
   } else {
     const p = document.createElement('p');

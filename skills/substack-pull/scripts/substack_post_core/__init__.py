@@ -1,0 +1,1190 @@
+#!/usr/bin/env python3
+"""Read-only, incremental Substack backup CLI.
+
+Authenticated pulls use Substack's undocumented dashboard API. Public pulls use
+only anonymously accessible archive and post endpoints and never send a session
+cookie. Authentication is stored in the macOS Keychain; the session value is
+never written to the project directory.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from typing import Any, Callable, Iterable
+import urllib.error
+import urllib.parse
+import urllib.request
+
+
+APP_NAME = "substack-pull"
+READ_ONLY_POST_PATHS = frozenset({"/api/v1/publication/stats/growth/partial-timeseries"})
+KEYCHAIN_SERVICE = "com.local.substack-pull"
+DEFAULT_CONFIG = ".substack-pull.json"
+DEFAULT_OUTPUT = "substack"
+STATE_VERSION = 1
+POST_ARTIFACT_SUFFIXES = (".json", ".html", ".md")
+
+CATEGORY_ENDPOINTS = {
+    "drafts": (
+        "/api/v1/post_management/drafts",
+        "draft_updated_at",
+    ),
+    "scheduled": (
+        "/api/v1/post_management/scheduled",
+        "draft_updated_at",
+    ),
+    "published": (
+        "/api/v1/post_management/published",
+        "post_date",
+    ),
+}
+
+# Fields that can indicate an editorial change. Engagement and delivery stats
+# are intentionally excluded so they do not trigger body downloads.
+FINGERPRINT_FIELDS = (
+    "id",
+    "slug",
+    "type",
+    "title",
+    "subtitle",
+    "draft_title",
+    "draft_subtitle",
+    "draft_updated_at",
+    "updated_at",
+    "post_date",
+    "publish_date",
+    "published_at",
+    "scheduled_at",
+    "scheduled_release",
+    "scheduled_release_at",
+    "send_at",
+    "trigger_at",
+    "email_audience",
+    "post_audience",
+    "section_id",
+    "audience",
+)
+
+
+class PullError(RuntimeError):
+    """An expected, user-facing sync error."""
+
+
+def utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def fingerprint(item: dict[str, Any]) -> str:
+    editorial = {key: item.get(key) for key in FINGERPRINT_FIELDS if key in item}
+    return hashlib.sha256(canonical_json(editorial).encode("utf-8")).hexdigest()
+
+
+def normalize_publication(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise PullError("Publication URL cannot be empty.")
+    if "://" not in value:
+        value = "https://" + value
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+        raise PullError(f"Invalid publication URL: {value}")
+    if parsed.scheme != "https" and parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise PullError("Publication URL must use HTTPS.")
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+
+def host_for(base_url: str) -> str:
+    host = urllib.parse.urlparse(base_url).hostname
+    if not host:
+        raise PullError(f"Cannot determine hostname from {base_url}")
+    return host.lower()
+
+
+def require_substack_host(base_url: str) -> None:
+    host = host_for(base_url)
+    if host in {"127.0.0.1", "localhost"}:
+        return
+    if host != "substack.com" and not host.endswith(".substack.com"):
+        raise PullError(
+            "For safety, authentication is only sent to substack.com hosts. "
+            "Use your publication's canonical YOURNAME.substack.com URL, not its "
+            "custom domain."
+        )
+
+
+def atomic_write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as handle:
+        handle.write(text)
+        temp_name = handle.name
+    os.replace(temp_name, path)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as handle:
+        handle.write(text)
+        temp_name = handle.name
+    os.replace(temp_name, path)
+
+
+def read_json(path: Path, default: Any) -> Any:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            return json.load(handle)
+    except FileNotFoundError:
+        return default
+    except json.JSONDecodeError as exc:
+        raise PullError(f"Invalid JSON in {path}: {exc}") from exc
+
+
+def load_config(path: Path, publication_override: str | None) -> dict[str, Any]:
+    config = read_json(path, {})
+    if not isinstance(config, dict):
+        raise PullError(f"Configuration in {path} must be a JSON object.")
+    publication = publication_override or config.get("publication")
+    if not publication:
+        raise PullError(
+            f"No publication configured. Run './substack-pull auth --publication "
+            f"https://YOURNAME.substack.com' first."
+        )
+    config["publication"] = normalize_publication(str(publication))
+    # "output" was the original key. Continue reading it so existing configs
+    # migrate without forcing another authentication run.
+    config.setdefault("directory", config.get("output", DEFAULT_OUTPUT))
+    return config
+
+
+def save_config(path: Path, config: dict[str, Any]) -> None:
+    safe = {
+        "publication": normalize_publication(str(config["publication"])),
+        "directory": str(
+            config.get("directory", config.get("output", DEFAULT_OUTPUT))
+        ),
+    }
+    atomic_write_json(path, safe)
+
+
+class KeychainStore:
+    def __init__(self, service: str = KEYCHAIN_SERVICE):
+        self.service = service
+
+    def _require_macos(self) -> None:
+        if sys.platform != "darwin" or shutil.which("security") is None:
+            raise PullError("macOS Keychain is required, but 'security' is unavailable.")
+
+    def store_interactive(self, account: str) -> None:
+        self._require_macos()
+        print(
+            "Paste the Substack session cookie VALUE at the Keychain prompt "
+            "(Safari connect.sid or Chromium substack.sid). "
+            "Input is hidden."
+        )
+        command = [
+            "security",
+            "add-generic-password",
+            "-U",
+            "-a",
+            account,
+            "-s",
+            self.service,
+            "-l",
+            f"Substack Pull ({account})",
+            "-w",
+        ]
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0:
+            raise PullError("Keychain did not store the Substack session value.")
+
+    def get(self, account: str) -> str:
+        self._require_macos()
+        result = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-a",
+                account,
+                "-s",
+                self.service,
+                "-w",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise PullError(
+                f"No session is stored for {account}. Run './substack-pull auth' first."
+            )
+        token = result.stdout.rstrip("\r\n")
+        if not token:
+            raise PullError(f"The stored session for {account} is empty.")
+        return token
+
+    def exists(self, account: str) -> bool:
+        try:
+            self.get(account)
+            return True
+        except PullError:
+            return False
+
+
+class ApiClient:
+    def __init__(
+        self,
+        base_url: str,
+        session_token: str | None = None,
+        *,
+        timeout: float = 30.0,
+        request_delay: float = 0.25,
+        opener: Callable[..., Any] | None = None,
+    ):
+        self.base_url = normalize_publication(base_url)
+        if session_token is not None:
+            require_substack_host(self.base_url)
+        self.session_token = session_token
+        self.timeout = timeout
+        self.request_delay = max(0.0, request_delay)
+        self.opener = opener or urllib.request.urlopen
+        self._last_request_at = 0.0
+
+    def _throttle(self) -> None:
+        elapsed = time.monotonic() - self._last_request_at
+        remaining = self.request_delay - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+    @staticmethod
+    def _rate_limit_delay(exc: urllib.error.HTTPError, attempt: int) -> float:
+        header = exc.headers.get("Retry-After") if exc.headers else None
+        if header:
+            try:
+                seconds = float(header)
+            except ValueError:
+                try:
+                    target = parsedate_to_datetime(header)
+                    if target.tzinfo is None:
+                        target = target.replace(tzinfo=timezone.utc)
+                    seconds = (target - datetime.now(timezone.utc)).total_seconds()
+                except (TypeError, ValueError, OverflowError):
+                    seconds = 10.0 * (2**attempt)
+            if not math.isfinite(seconds):
+                seconds = 10.0 * (2**attempt)
+            if seconds > 120:
+                raise PullError(
+                    "Substack requested a long pause after rate limiting. Stop this "
+                    "operation and try again later."
+                ) from exc
+            return max(0.0, seconds)
+        return 10.0 * (2**attempt)
+
+    def get_json(self, path: str) -> Any:
+        return self._request_json(path, method="GET")
+
+    def post_json(self, path: str, payload: dict[str, Any]) -> Any:
+        """Send a JSON query to a read-only analytics endpoint."""
+        if path not in READ_ONLY_POST_PATHS:
+            raise PullError(f"POST query is not supported for {path}.")
+        return self._request_json(path, method="POST", payload=payload)
+
+    def _request_json(
+        self, path: str, *, method: str, payload: dict[str, Any] | None = None
+    ) -> Any:
+        if not path.startswith("/"):
+            raise PullError(f"API path must start with '/': {path}")
+        url = self.base_url + path
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) substack-pull/1",
+        }
+        if self.session_token is not None:
+            headers["Cookie"] = (
+                f"connect.sid={self.session_token}; "
+                f"substack.sid={self.session_token}"
+            )
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        last_error: Exception | None = None
+        for attempt in range(3):
+            self._throttle()
+            request = urllib.request.Request(url, data=body, headers=headers, method=method)
+            try:
+                with self.opener(request, timeout=self.timeout) as response:
+                    raw = response.read()
+                self._last_request_at = time.monotonic()
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise PullError(f"Substack returned non-JSON data for {path}.") from exc
+            except urllib.error.HTTPError as exc:
+                self._last_request_at = time.monotonic()
+                if exc.code in {401, 403}:
+                    if self.session_token is None:
+                        raise PullError(
+                            "Substack denied anonymous access to this public endpoint. "
+                            "The publication may be private, restricted, or unavailable."
+                        ) from exc
+                    else:
+                        raise PullError(
+                            "Substack rejected the stored session. Re-copy connect.sid "
+                            "from Safari or substack.sid from Chromium DevTools, then "
+                            "run './substack-pull auth' again."
+                        ) from exc
+                if exc.code == 429 or 500 <= exc.code < 600:
+                    last_error = exc
+                    if attempt < 2:
+                        delay = (self._rate_limit_delay(exc, attempt) if exc.code == 429
+                                 else 1.0 * (2**attempt))
+                        time.sleep(delay)
+                        continue
+                detail = exc.read(500).decode("utf-8", errors="replace")
+                raise PullError(
+                    f"Substack API request failed ({exc.code}) for {path}: {detail}"
+                ) from exc
+            except urllib.error.URLError as exc:
+                self._last_request_at = time.monotonic()
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1.0 * (2**attempt))
+                    continue
+        raise PullError(f"Substack API request failed for {path}: {last_error}")
+
+
+def query_path(path: str, params: dict[str, Any]) -> str:
+    return path + "?" + urllib.parse.urlencode(params)
+
+
+def paginate_posts(
+    api: ApiClient,
+    path: str,
+    order_by: str,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    offset = 0
+    collected: list[dict[str, Any]] = []
+    while True:
+        payload = api.get_json(
+            query_path(
+                path,
+                {
+                    "offset": offset,
+                    "limit": limit,
+                    "order_by": order_by,
+                    "order_direction": "desc",
+                },
+            )
+        )
+        if isinstance(payload, dict):
+            posts = payload.get("posts", [])
+            total = payload.get("total")
+        elif isinstance(payload, list):
+            posts = payload
+            total = None
+        else:
+            raise PullError(f"Unexpected response shape from {path}.")
+        if not isinstance(posts, list) or any(not isinstance(item, dict) for item in posts):
+            raise PullError(f"Unexpected posts list from {path}.")
+        collected.extend(posts)
+        offset += len(posts)
+        if not posts:
+            break
+        if isinstance(total, int) and offset >= total:
+            break
+        if len(posts) < limit:
+            break
+    return collected
+
+
+def paginate_public_posts(
+    api: ApiClient,
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List only posts exposed by a publication's anonymous public archive."""
+    offset = 0
+    collected: list[dict[str, Any]] = []
+    while True:
+        endpoint = query_path(
+            "/api/v1/archive",
+            {
+                "sort": "new",
+                "search": "",
+                "offset": offset,
+                "limit": limit,
+            },
+        )
+        payload = api.get_json(endpoint)
+        if isinstance(payload, dict):
+            posts = payload.get("posts", [])
+            total = payload.get("total")
+        elif isinstance(payload, list):
+            posts = payload
+            total = None
+        else:
+            raise PullError("Unexpected response shape from /api/v1/archive.")
+        if not isinstance(posts, list) or any(not isinstance(item, dict) for item in posts):
+            raise PullError("Unexpected posts list from /api/v1/archive.")
+        collected.extend(posts)
+        offset += len(posts)
+        if not posts:
+            break
+        if isinstance(total, int) and offset >= total:
+            break
+        if len(posts) < limit:
+            break
+    return collected
+
+
+def item_id(item: dict[str, Any]) -> str:
+    value = item.get("id") or item.get("post_id")
+    if value is None:
+        raise PullError("A Substack list item did not include an id.")
+    return str(value)
+
+
+from .content import (
+    _ReadableHTMLParser, _marked_text, find_html, find_readable, html_document,
+    html_to_markdown, item_subtitle, item_title, item_updated_at, readable_body,
+    render_prosemirror,
+)
+
+
+class SyncEngine:
+    def __init__(
+        self,
+        api: ApiClient,
+        output_dir: Path,
+        *,
+        page_limit: int = 50,
+        public_only: bool = False,
+        now: Callable[[], str] = utc_now,
+    ):
+        self.api = api
+        self.output_dir = output_dir
+        self.page_limit = page_limit
+        self.public_only = public_only
+        self.now = now
+        self.state_path = output_dir / ".sync" / "state.json"
+
+    def _load_state(self) -> dict[str, Any]:
+        state = read_json(
+            self.state_path,
+            {
+                "version": STATE_VERSION,
+                "publication": self.api.base_url,
+                "categories": {},
+            },
+        )
+        if state.get("version") != STATE_VERSION:
+            raise PullError(
+                f"Unsupported state version in {self.state_path}: {state.get('version')}"
+            )
+        if state.get("publication") != self.api.base_url:
+            raise PullError(
+                f"{self.output_dir} belongs to {state.get('publication')}, not "
+                f"{self.api.base_url}. Choose a different output directory."
+            )
+        state.setdefault("categories", {})
+        state.setdefault("archive", {})
+        return state
+
+    def _fetch_full(self, category: str, post_id: str) -> Any:
+        quoted = urllib.parse.quote(post_id, safe="")
+        if category == "published":
+            return self.api.get_json(f"/api/v1/posts/by-id/{quoted}")
+        content = self.api.get_json(f"/api/v1/drafts/{quoted}")
+        if category == "scheduled":
+            schedule = self.api.get_json(f"/api/v1/drafts/{quoted}/scheduled_release")
+            return {"draft": content, "scheduled_release": schedule}
+        return content
+
+    def _write_content(
+        self,
+        category: str,
+        post_id: str,
+        list_item: dict[str, Any],
+        content: Any,
+        synced_at: str,
+    ) -> str:
+        relative = Path(category) / f"{post_id}.json"
+        envelope = {
+            "schema_version": 1,
+            "category": category,
+            "synced_at": synced_at,
+            "source": list_item,
+            "content": content,
+        }
+        atomic_write_json(self.output_dir / relative, envelope)
+        found = find_html(content)
+        if found:
+            title, body = found
+            atomic_write_text(
+                self.output_dir / category / f"{post_id}.html",
+                html_document(title, body),
+            )
+        self._write_readable_companion(category, post_id, content)
+        return relative.as_posix()
+
+    def _write_readable_companion(
+        self,
+        category: str,
+        post_id: str,
+        content: Any,
+    ) -> Path | None:
+        readable = find_readable(content)
+        if readable:
+            title, body = readable
+            path = self.output_dir / category / f"{post_id}.md"
+            atomic_write_text(path, f"# {title}\n\n{body.lstrip()}")
+            return path
+        return None
+
+    def _remove_stale_category_copy(
+        self,
+        state: dict[str, Any],
+        *,
+        post_id: str,
+        old_category: str,
+    ) -> bool:
+        categories = state.get("categories", {})
+        old_entries = categories.get(old_category, {})
+        if not isinstance(old_entries, dict):
+            return False
+        old_entry = old_entries.get(post_id)
+        if not isinstance(old_entry, dict):
+            return False
+
+        category_dir = (self.output_dir / old_category).resolve()
+        candidates = {
+            (category_dir / f"{post_id}{suffix}").resolve()
+            for suffix in POST_ARTIFACT_SUFFIXES
+        }
+        relative_file = old_entry.get("file")
+        if relative_file:
+            manifest_path = (self.output_dir / str(relative_file)).resolve()
+            if (
+                manifest_path.parent == category_dir
+                and manifest_path.name == f"{post_id}.json"
+            ):
+                candidates.add(manifest_path)
+
+        for path in sorted(candidates):
+            # Category names are controlled by CATEGORY_ENDPOINTS, but keep the
+            # cleanup bounded even if an old manifest contains a bad path.
+            if path.parent != category_dir:
+                continue
+            try:
+                if path.is_file():
+                    path.unlink()
+            except OSError as exc:
+                raise PullError(
+                    f"Could not remove stale {old_category} copy for post "
+                    f"{post_id}: {exc}"
+                ) from exc
+
+        del old_entries[post_id]
+        return True
+
+    def _reconcile_category_location(
+        self,
+        state: dict[str, Any],
+        *,
+        post_id: str,
+        current_category: str,
+        remote_locations: dict[str, set[str]],
+    ) -> None:
+        # Public mode does not query private category indexes, so it cannot
+        # safely infer that a private draft or scheduled post changed category.
+        if self.public_only or remote_locations.get(post_id) != {current_category}:
+            return
+
+        for old_category in CATEGORY_ENDPOINTS:
+            if old_category == current_category:
+                continue
+            self._remove_stale_category_copy(
+                state,
+                post_id=post_id,
+                old_category=old_category,
+            )
+
+    def _archive_missing_post(
+        self,
+        state: dict[str, Any],
+        *,
+        category: str,
+        post_id: str,
+        entry: dict[str, Any],
+        archived_at: str,
+    ) -> None:
+        source_dir = (self.output_dir / category).resolve()
+        archive_dir = (self.output_dir / "archive" / category).resolve()
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        for suffix in POST_ARTIFACT_SUFFIXES:
+            source = (source_dir / f"{post_id}{suffix}").resolve()
+            destination = (archive_dir / f"{post_id}{suffix}").resolve()
+            if source.parent != source_dir or destination.parent != archive_dir:
+                continue
+            try:
+                if source.is_file():
+                    os.replace(source, destination)
+            except OSError as exc:
+                raise PullError(
+                    f"Could not archive missing {category} post {post_id}: {exc}"
+                ) from exc
+
+        archived_entry = dict(entry)
+        archived_entry.update(
+            {
+                "archived_at": archived_at,
+                "former_category": category,
+                "remote_status": "archived",
+                "file": (Path("archive") / category / f"{post_id}.json").as_posix(),
+            }
+        )
+        state.setdefault("archive", {}).setdefault(category, {})[post_id] = (
+            archived_entry
+        )
+        del state["categories"][category][post_id]
+
+    def sync(self, *, refresh_published: bool = False) -> dict[str, Any]:
+        state = self._load_state()
+        synced_at = self.now()
+        summary: dict[str, Any] = {
+            "publication": self.api.base_url,
+            "directory": str(self.output_dir.resolve()),
+            "mode": "public" if self.public_only else "authenticated",
+            "synced_at": synced_at,
+            "categories": {},
+            "errors": [],
+        }
+
+        # Fetch every index before changing the manifest. A list failure should
+        # not make untouched remote items appear missing.
+        if self.public_only:
+            indexes = {
+                "published": paginate_public_posts(self.api, limit=self.page_limit)
+            }
+        else:
+            indexes: dict[str, list[dict[str, Any]]] = {}
+            for category, (path, order_by) in CATEGORY_ENDPOINTS.items():
+                indexes[category] = paginate_posts(
+                    self.api, path, order_by, limit=self.page_limit
+                )
+
+        remote_locations: dict[str, set[str]] = {}
+        for category, items in indexes.items():
+            for list_item in items:
+                remote_locations.setdefault(item_id(list_item), set()).add(category)
+
+        for category, items in indexes.items():
+            category_state = state["categories"].setdefault(category, {})
+            seen: set[str] = set()
+            fetched = 0
+            fetched_items: list[dict[str, Any]] = []
+            readable_backfilled = 0
+            unchanged = 0
+            failures = 0
+            for list_item in items:
+                post_id = item_id(list_item)
+                seen.add(post_id)
+                current_fingerprint = fingerprint(list_item)
+                previous = category_state.get(post_id, {})
+                should_fetch = (
+                    not previous
+                    or previous.get("fingerprint") != current_fingerprint
+                    or (category == "published" and refresh_published)
+                    or not (self.output_dir / previous.get("file", "")).is_file()
+                )
+                if should_fetch:
+                    try:
+                        content = self._fetch_full(category, post_id)
+                        relative_file = self._write_content(
+                            category,
+                            post_id,
+                            list_item,
+                            content,
+                            synced_at,
+                        )
+                    except PullError as exc:
+                        failures += 1
+                        summary["errors"].append(
+                            {"category": category, "id": post_id, "error": str(exc)}
+                        )
+                        # Keep the old fingerprint so the next run retries.
+                        if previous:
+                            previous["last_seen_at"] = synced_at
+                            previous["remote_status"] = "present"
+                            previous.pop("missing_since", None)
+                        continue
+                    category_state[post_id] = {
+                        "fingerprint": current_fingerprint,
+                        "file": relative_file,
+                        "last_fetched_at": synced_at,
+                        "last_seen_at": synced_at,
+                        "remote_status": "present",
+                    }
+                    fetched += 1
+                    readable_file = self.output_dir / category / f"{post_id}.md"
+                    fetched_item: dict[str, Any] = {
+                        "id": post_id,
+                        "title": item_title(list_item),
+                        "updated_at": item_updated_at(list_item),
+                        "file": str((self.output_dir / relative_file).resolve()),
+                    }
+                    if readable_file.is_file():
+                        fetched_item["readable_file"] = str(readable_file.resolve())
+                    fetched_items.append(fetched_item)
+                else:
+                    previous["last_seen_at"] = synced_at
+                    previous["remote_status"] = "present"
+                    previous.pop("missing_since", None)
+                    markdown_path = self.output_dir / category / f"{post_id}.md"
+                    if not markdown_path.is_file():
+                        envelope = read_json(
+                            self.output_dir / str(previous.get("file", "")),
+                            None,
+                        )
+                        if isinstance(envelope, dict) and self._write_readable_companion(
+                            category,
+                            post_id,
+                            envelope.get("content"),
+                        ):
+                            readable_backfilled += 1
+                    unchanged += 1
+
+                self._reconcile_category_location(
+                    state,
+                    post_id=post_id,
+                    current_category=category,
+                    remote_locations=remote_locations,
+                )
+
+            missing = 0
+            archived = 0
+            for post_id, entry in list(category_state.items()):
+                if post_id not in seen:
+                    if post_id in remote_locations:
+                        # The destination category will remove this copy after a
+                        # successful fetch. Preserve it if that fetch fails.
+                        missing += 1
+                        entry["remote_status"] = "missing"
+                        entry.setdefault("missing_since", synced_at)
+                    else:
+                        self._archive_missing_post(
+                            state,
+                            category=category,
+                            post_id=post_id,
+                            entry=entry,
+                            archived_at=synced_at,
+                        )
+                        archived += 1
+
+            summary["categories"][category] = {
+                "remote": len(items),
+                "fetched": fetched,
+                "fetched_items": fetched_items,
+                "readable_backfilled": readable_backfilled,
+                "unchanged": unchanged,
+                "missing_local_preserved": missing,
+                "archived": archived,
+                "failures": failures,
+            }
+
+        # A transition may be discovered after its former category has already
+        # been summarized. Recalculate this value from the reconciled state so
+        # the report does not count moved posts as preserved missing posts.
+        for category, category_summary in summary["categories"].items():
+            entries = state["categories"].get(category, {})
+            category_summary["missing_local_preserved"] = sum(
+                1
+                for entry in entries.values()
+                if isinstance(entry, dict)
+                and entry.get("remote_status") == "missing"
+            )
+
+        state["last_sync_at"] = synced_at
+        atomic_write_json(self.state_path, state)
+        return summary
+
+
+def config_path_from(args: argparse.Namespace) -> Path:
+    return Path(args.config).expanduser().resolve()
+
+
+def resolve_output_dir(
+    config_path: Path,
+    config: dict[str, Any],
+    directory_override: str | None = None,
+) -> Path:
+    directory_value = directory_override or config.get("directory", DEFAULT_OUTPUT)
+    output_dir = Path(str(directory_value)).expanduser()
+    if not output_dir.is_absolute():
+        output_dir = config_path.parent / output_dir
+    return output_dir.resolve()
+
+
+def collect_local_posts(
+    output_dir: Path,
+    *,
+    category: str | None = None,
+    include_missing: bool = False,
+) -> list[dict[str, Any]]:
+    state_path = output_dir / ".sync" / "state.json"
+    state = read_json(state_path, None)
+    if state is None:
+        raise PullError(f"No sync state exists at {state_path}. Run pull first.")
+    categories = state.get("categories", {})
+    category_names = [category] if category else list(CATEGORY_ENDPOINTS)
+    posts: list[dict[str, Any]] = []
+    for category_name in category_names:
+        entries = categories.get(category_name, {})
+        if not isinstance(entries, dict):
+            continue
+        for post_id, entry in entries.items():
+            if not isinstance(entry, dict):
+                continue
+            remote_status = entry.get("remote_status", "present")
+            if remote_status == "missing" and not include_missing:
+                continue
+            relative_file = entry.get("file")
+            if not relative_file:
+                continue
+            file_path = (output_dir / str(relative_file)).resolve()
+            envelope = read_json(file_path, None)
+            if not isinstance(envelope, dict):
+                continue
+            source = envelope.get("source", {})
+            if not isinstance(source, dict):
+                source = {}
+            markdown_path = file_path.with_suffix(".md")
+            result: dict[str, Any] = {
+                "category": category_name,
+                "id": str(post_id),
+                "title": item_title(source),
+                "subtitle": item_subtitle(source),
+                "updated_at": item_updated_at(source) or entry.get("last_fetched_at"),
+                "remote_status": remote_status,
+                "file": str(file_path),
+            }
+            if markdown_path.is_file():
+                result["readable_file"] = str(markdown_path)
+            posts.append(result)
+    posts.sort(
+        key=lambda post: (str(post.get("updated_at") or ""), str(post.get("id") or "")),
+        reverse=True,
+    )
+    return posts
+
+
+def command_auth(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    existing = read_json(config_path, {})
+    publication_value = args.publication or existing.get("publication")
+    if not publication_value:
+        publication_value = input("Publication URL: ").strip()
+    publication = normalize_publication(str(publication_value))
+    directory = (
+        args.directory
+        or existing.get("directory")
+        or existing.get("output")
+        or DEFAULT_OUTPUT
+    )
+    save_config(config_path, {"publication": publication, "directory": directory})
+
+    account = host_for(publication)
+    keychain = KeychainStore()
+    keychain.store_interactive(account)
+
+    token = keychain.get(account)
+    api = ApiClient(publication, token, request_delay=args.request_delay)
+    api.get_json("/api/v1/drafts?limit=1")
+    print(f"Authentication verified for {publication}.")
+    print(f"Configuration saved to {config_path} (no secret stored there).")
+    return 0
+
+
+def command_sync(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    config = load_config(config_path, args.publication)
+    publication = config["publication"]
+    output_dir = resolve_output_dir(config_path, config, args.directory)
+
+    if args.page_limit < 1:
+        raise PullError("--page-limit must be at least 1.")
+    if args.public:
+        api = ApiClient(
+            publication,
+            request_delay=args.request_delay,
+            timeout=args.timeout,
+        )
+    else:
+        token = KeychainStore().get(host_for(publication))
+        api = ApiClient(
+            publication,
+            token,
+            request_delay=args.request_delay,
+            timeout=args.timeout,
+        )
+    engine = SyncEngine(
+        api,
+        output_dir,
+        page_limit=args.page_limit,
+        public_only=args.public,
+    )
+    summary = engine.sync(refresh_published=args.refresh_published)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if summary["errors"]:
+        return 1
+    return 0
+
+
+def command_status(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    config = load_config(config_path, args.publication)
+    output_dir = resolve_output_dir(config_path, config, args.directory)
+    state_path = output_dir / ".sync" / "state.json"
+    state = read_json(state_path, None)
+    if state is None:
+        raise PullError(f"No sync state exists at {state_path}. Run sync first.")
+    result = {
+        "publication": state.get("publication"),
+        "directory": str(output_dir),
+        "last_sync_at": state.get("last_sync_at"),
+        "categories": {},
+    }
+    for category, entries in state.get("categories", {}).items():
+        present = sum(1 for entry in entries.values() if entry.get("remote_status") == "present")
+        missing = sum(1 for entry in entries.values() if entry.get("remote_status") == "missing")
+        result["categories"][category] = {
+            "tracked": len(entries),
+            "present": present,
+            "missing_local_preserved": missing,
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_list(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    config = load_config(config_path, args.publication)
+    output_dir = resolve_output_dir(config_path, config, args.directory)
+    if args.limit < 1:
+        raise PullError("--limit must be at least 1.")
+    category = None if args.category == "all" else args.category
+    posts = collect_local_posts(
+        output_dir,
+        category=category,
+        include_missing=args.include_missing,
+    )
+    if args.query:
+        needle = args.query.casefold()
+        posts = [
+            post
+            for post in posts
+            if needle
+            in " ".join(
+                str(post.get(key) or "")
+                for key in ("title", "subtitle", "id", "category")
+            ).casefold()
+        ]
+    posts = posts[: args.limit]
+    result = {
+        "publication": config["publication"],
+        "directory": str(output_dir),
+        "query": args.query,
+        "count": len(posts),
+        "items": posts,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def command_configure(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    config = load_config(config_path, args.publication)
+    if args.directory:
+        config["directory"] = args.directory
+    save_config(config_path, config)
+    print(f"Publication: {config['publication']}")
+    print(f"Directory: {config['directory']}")
+    print(f"Configuration saved to {config_path} (no secret stored there).")
+    return 0
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    config_path = config_path_from(args)
+    report: dict[str, Any] = {
+        "python": sys.version.split()[0],
+        "platform": sys.platform,
+        "security_command": shutil.which("security") is not None,
+        "config_path": str(config_path),
+        "config_exists": config_path.is_file(),
+    }
+    healthy = sys.platform == "darwin" and report["security_command"]
+    if config_path.is_file():
+        try:
+            config = load_config(config_path, args.publication)
+            account = host_for(config["publication"])
+            report["publication"] = config["publication"]
+            output_dir = resolve_output_dir(config_path, config)
+            report["directory"] = str(output_dir)
+            report["sync_state_exists"] = (output_dir / ".sync" / "state.json").is_file()
+            report["keychain_session_present"] = KeychainStore().exists(account)
+            if not report["keychain_session_present"]:
+                healthy = False
+        except PullError as exc:
+            report["config_error"] = str(exc)
+            healthy = False
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if healthy else 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="substack-pull",
+        description="Read-only incremental backup of a Substack publication.",
+    )
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG,
+        help=f"configuration path (default: {DEFAULT_CONFIG})",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    auth = subparsers.add_parser("auth", help="store and verify a browser session")
+    auth.add_argument("--publication", help="publication URL or hostname")
+    auth.add_argument(
+        "-d",
+        "--directory",
+        "--output",
+        dest="directory",
+        help=f"content directory (default: {DEFAULT_OUTPUT})",
+    )
+    auth.add_argument("--request-delay", type=float, default=0.25)
+    auth.set_defaults(handler=command_auth)
+
+    def add_pull_arguments(command: argparse.ArgumentParser) -> None:
+        command.add_argument("--publication", help="override configured publication")
+        command.add_argument(
+            "-d",
+            "--directory",
+            "--output",
+            dest="directory",
+            help="override configured content directory for this pull",
+        )
+        command.add_argument(
+            "--public",
+            action="store_true",
+            help="pull only anonymously visible published posts; do not use a session",
+        )
+        command.add_argument("--refresh-published", action="store_true")
+        command.add_argument("--page-limit", type=int, default=50)
+        command.add_argument("--request-delay", type=float, default=0.25)
+        command.add_argument("--timeout", type=float, default=30.0)
+        command.set_defaults(handler=command_sync)
+
+    pull = subparsers.add_parser(
+        "pull", help="pull content and report exactly which posts changed"
+    )
+    add_pull_arguments(pull)
+
+    sync = subparsers.add_parser("sync", help="alias for pull")
+    add_pull_arguments(sync)
+
+    status = subparsers.add_parser("status", help="show local sync state")
+    status.add_argument("--publication", help="override configured publication")
+    status.add_argument(
+        "-d",
+        "--directory",
+        "--output",
+        dest="directory",
+        help="override configured content directory",
+    )
+    status.set_defaults(handler=command_status)
+
+    list_posts = subparsers.add_parser(
+        "list", help="find recent posts in the local backup"
+    )
+    list_posts.add_argument("--publication", help="override configured publication")
+    list_posts.add_argument(
+        "-d",
+        "--directory",
+        "--output",
+        dest="directory",
+        help="override configured content directory",
+    )
+    list_posts.add_argument("--query", help="case-insensitive title or ID search")
+    list_posts.add_argument(
+        "--category",
+        choices=("all", "drafts", "scheduled", "published"),
+        default="all",
+    )
+    list_posts.add_argument("--limit", type=int, default=20)
+    list_posts.add_argument("--include-missing", action="store_true")
+    list_posts.set_defaults(handler=command_list)
+
+    configure = subparsers.add_parser(
+        "configure", help="change publication or default content directory"
+    )
+    configure.add_argument("--publication", help="publication URL or hostname")
+    configure.add_argument(
+        "-d",
+        "--directory",
+        "--output",
+        dest="directory",
+        help="new default content directory",
+    )
+    configure.set_defaults(handler=command_configure)
+
+    doctor = subparsers.add_parser("doctor", help="check local prerequisites")
+    doctor.add_argument("--publication", help="override configured publication")
+    doctor.set_defaults(handler=command_doctor)
+
+    return parser
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = build_parser()
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
+    if not raw_args:
+        raw_args = ["pull"]
+    args = parser.parse_args(raw_args)
+    try:
+        return int(args.handler(args))
+    except PullError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("cancelled", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

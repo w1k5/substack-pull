@@ -29,7 +29,8 @@ const lenses = {
 
 let lens = 'responses';
 let query = '';
-let snapshot = { rows: [], total: 0, analyzed: false, failed: 0, loading: false, cohort: null, error: '', navigate: null };
+let selectedIds = [];
+let snapshot = { rows: [], total: 0, analyzed: false, failed: 0, loading: false, cohort: null, error: '' };
 
 function niceCeiling(value) {
   if (!Number.isFinite(value) || value <= 0) return 1;
@@ -38,30 +39,96 @@ function niceCeiling(value) {
   return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * magnitude;
 }
 
-function navigateToNote(row) {
-  snapshot.navigate(`/notes/${row.note.id}`);
+function showTooltip(row, outcome, event, point) {
+  const tooltip = $('note-map-tooltip');
+  tooltip.replaceChildren();
+  const title = document.createElement('strong');
+  title.textContent = row.note.title.length > 90 ? `${row.note.title.slice(0, 90)}…` : row.note.title;
+  const metric = document.createElement('span');
+  metric.textContent = `${row.pace.ratio.toFixed(2)}× typical reach · ${lenses[lens].format(outcome)} ${lenses[lens].axis.toLowerCase()}`;
+  const published = document.createElement('small');
+  published.textContent = `Published ${date(row.note.day)}`;
+  tooltip.append(title, metric, published);
+  tooltip.hidden = false;
+  const rect = $('note-map-plot').getBoundingClientRect();
+  const anchor = event?.clientX == null ? point.getBoundingClientRect() : { left: event.clientX, top: event.clientY };
+  tooltip.style.left = `${Math.max(8, Math.min(rect.width - 225, anchor.left - rect.left + 12))}px`;
+  tooltip.style.top = `${Math.max(8, anchor.top - rect.top - 76)}px`;
 }
 
-function showNote(row, outcome) {
-  const detail = $('note-map-detail');
-  detail.replaceChildren();
-  const eyebrow = document.createElement('span');
-  eyebrow.className = 'eyebrow';
-  eyebrow.textContent = 'SELECTED NOTE';
+function card(row) {
+  const root = document.createElement('article');
+  root.className = 'note-map-card';
   const title = document.createElement('strong');
+  title.className = 'note-map-card-copy';
   title.textContent = row.note.title;
-  const meta = document.createElement('small');
-  meta.textContent = `${date(row.note.day)} · ${fmt(row.impressions)} impressions to date`;
-  const pace = document.createElement('p');
-  pace.textContent = `${row.pace.ratio.toFixed(2)}× usual reach at ${row.pace.age}`;
-  const action = document.createElement('p');
-  action.textContent = `${lenses[lens].format(outcome)} ${lenses[lens].axis.toLowerCase()}`;
-  const open = document.createElement('button');
-  open.type = 'button';
-  open.className = 'note-map-open';
-  open.textContent = 'Open Note analysis →';
-  open.addEventListener('click', () => navigateToNote(row));
-  detail.append(eyebrow, title, meta, pace, action, open);
+  title.title = row.note.title;
+  const published = document.createElement('small');
+  published.textContent = `Published ${date(row.note.day)}`;
+  const metrics = document.createElement('div');
+  metrics.className = 'note-map-card-metrics';
+  const raw = lens === 'responses' ? [fmt(row.responses), 'responses']
+    : lens === 'visits' ? [fmt(row.visits), 'profile visits']
+    : lens === 'clicks' ? [fmt(row.clicks), 'link clicks']
+    : [fmt(row.unconnectedCount), `of ${fmt(row.audienceCount)} people`];
+  const items = [
+    [fmt(row.impressions), 'lifetime impressions'],
+    [row.pace.label, `reach at ${row.pace.age}`],
+    [lenses[lens].format(lenses[lens].value(row)), lenses[lens].axis.toLowerCase()],
+    raw,
+  ];
+  for (const [value, label] of items) {
+    const item = document.createElement('span');
+    const amount = document.createElement('b');
+    amount.textContent = value;
+    const caption = document.createElement('small');
+    caption.textContent = label;
+    item.append(amount, caption);
+    metrics.append(item);
+  }
+  root.append(title, published, metrics);
+  return root;
+}
+
+function syncSelection() {
+  document.querySelectorAll('#note-map-points .note-map-point').forEach((point) => {
+    const active = selectedIds.includes(point.dataset.noteId);
+    point.classList.toggle('selected', active);
+    point.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function renderSelection(rows) {
+  const root = $('note-map-comparison');
+  root.replaceChildren();
+  const selected = selectedIds.map((id) => rows.find((row) => String(row.note.id) === id)).filter(Boolean);
+  if (!selected.length) {
+    root.textContent = 'Select a dot to inspect a Note; select a second to compare them.';
+    return;
+  }
+  const heading = document.createElement('div');
+  heading.className = 'note-map-selection-heading';
+  const label = document.createElement('strong');
+  label.textContent = selected.length === 1 ? 'Selected Note' : 'Side by side';
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'refresh';
+  clear.textContent = 'Clear selection';
+  clear.addEventListener('click', () => {
+    selectedIds = [];
+    syncSelection();
+    renderSelection(rows);
+  });
+  heading.append(label, clear);
+  const cards = document.createElement('div');
+  cards.className = 'note-map-cards';
+  selected.forEach((row) => cards.append(card(row)));
+  root.append(heading, cards);
+  if (selected.length === 1) {
+    const hint = document.createElement('p');
+    hint.textContent = 'Select one more dot to compare these Notes.';
+    root.append(hint);
+  }
 }
 
 function addLine(root, direction, position, label, emphasized = false) {
@@ -92,8 +159,9 @@ function renderPlot() {
   });
 
   const definition = lenses[lens];
-  const plotted = rows.filter((row) => Number.isFinite(row.pace.ratio)
-    && row.pace.ratio > 0 && Number.isFinite(definition.value(row)));
+  const plottedIds = new Set(cohort?.[lens]?.plotted_ids || []);
+  const standoutIds = new Set(cohort?.[lens]?.standout_ids || []);
+  const plotted = rows.filter((row) => plottedIds.has(String(row.note.id)));
   const display = $('note-map-display');
   display.hidden = !plotted.length;
   const key = $('note-map-key');
@@ -115,6 +183,8 @@ function renderPlot() {
   if (!plotted.length) {
     $('note-map-grid').replaceChildren();
     $('note-map-points').replaceChildren();
+    $('note-map-tooltip').hidden = true;
+    $('note-map-comparison').replaceChildren();
     return;
   }
 
@@ -128,7 +198,7 @@ function renderPlot() {
   const x = (ratio) => 100 * (Math.log2(ratio) - minLog) / (maxLog - minLog);
   const outcomes = plotted.map(definition.value);
   const yMax = lens === 'unconnected' ? 1 : niceCeiling(Math.max(...outcomes));
-  const y = (value) => 100 * (1 - value / yMax);
+  const y = (value) => 95 - 90 * value / yMax;
   const middle = cohort?.[lens]?.median;
   for (let power = minLog; power <= maxLog; power++) {
     const ratio = 2 ** power;
@@ -140,27 +210,37 @@ function renderPlot() {
   }
   addLine(grid, 'horizontal', y(middle), null, true);
 
+  selectedIds = selectedIds.filter((id) => plotted.some((row) => String(row.note.id) === id));
   plotted.forEach((row) => {
     const outcome = definition.value(row);
     const point = document.createElement('button');
     point.type = 'button';
     point.className = 'note-map-point';
-    if (row.pace.ratio >= 1 && outcome >= middle) point.classList.add('standout');
+    point.dataset.noteId = String(row.note.id);
+    if (standoutIds.has(String(row.note.id))) point.classList.add('standout');
     if (query && !row.note.title.toLowerCase().includes(query)) point.classList.add('dimmed');
-    if (location.pathname === `/notes/${row.note.id}`) point.classList.add('selected');
     point.style.left = `${x(row.pace.ratio)}%`;
     point.style.top = `${y(outcome)}%`;
     point.setAttribute('aria-label',
       `${row.note.title}: ${row.pace.ratio.toFixed(2)} times typical reach, ${definition.format(outcome)} ${definition.axis.toLowerCase()}`);
-    point.title = row.note.title;
-    point.addEventListener('pointerenter', () => showNote(row, outcome));
-    point.addEventListener('focus', () => showNote(row, outcome));
-    point.addEventListener('click', () => navigateToNote(row));
+    point.addEventListener('pointermove', (event) => showTooltip(row, outcome, event, point));
+    point.addEventListener('pointerenter', (event) => showTooltip(row, outcome, event, point));
+    point.addEventListener('pointerleave', () => { $('note-map-tooltip').hidden = true; });
+    point.addEventListener('focus', () => showTooltip(row, outcome, null, point));
+    point.addEventListener('blur', () => { $('note-map-tooltip').hidden = true; });
+    point.addEventListener('click', () => {
+      const id = String(row.note.id);
+      selectedIds = selectedIds.includes(id)
+        ? selectedIds.filter((selected) => selected !== id)
+        : [...selectedIds.slice(-1), id];
+      syncSelection();
+      renderSelection(plotted);
+    });
     points.append(point);
   });
-  const selected = plotted.find((row) => location.pathname === `/notes/${row.note.id}`);
-  if (selected) showNote(selected, definition.value(selected));
-  else $('note-map-detail').textContent = 'Hover or focus a dot to see the Note. Select it to open the full analysis.';
+  $('note-map-tooltip').hidden = true;
+  syncSelection();
+  renderSelection(plotted);
   const standouts = cohort?.[lens]?.standouts ?? 0;
   summary.textContent = `${standouts} of ${plotted.length} plotted Notes reached above their usual pace and above this cohort’s median ${definition.label.toLowerCase()}. Inspect their wording for ideas to test again.`;
 }

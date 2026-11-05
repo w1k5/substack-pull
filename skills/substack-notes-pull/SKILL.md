@@ -5,19 +5,20 @@ description: Pull and inspect an account's draft and scheduled Substack Notes, c
 
 # Substack Notes Pull
 
-Use the local `substack-analytics-local` MCP tools when available for Note
-pulling, finding, reading, and planning. Use the bundled CLI for draft creation
-and scheduling, or when the MCP points at another workspace. Resolve
-`scripts/substack_notes_pull.py` relative to this file and use the workspace's
-absolute config path for CLI commands.
+Use the local `substack-analytics-local` MCP tools for all supported Note work.
+Call the MCP tools directly; do not invoke the bundled scripts when the MCP is
+available for the requested workspace and operation. Use the CLI fallback below
+only when the MCP is unavailable, points at another workspace, or cannot use a
+caller-chosen local directory. Resolve `scripts/substack_notes_pull.py` relative
+to this file and use the workspace's absolute config path for fallback commands.
 
 ## MCP workflow
 
 Call `workspace_info` once and verify its workspace. For private Notes, also
 verify its Note backup directory matches the requested local copy. For public
 Note history, use the MCP only when its per-profile directory is acceptable.
-If the MCP is unavailable or points elsewhere, use the CLI workflows below.
-Do not run both paths for the same pull.
+If the MCP is unavailable or points elsewhere, use the CLI fallback below. Do
+not run both paths for the same operation.
 
 - Call `pull_notes` to refresh draft and scheduled Notes. It also rebuilds the
   overview and runway. Use `find_note_copies(status=...)` to locate Notes;
@@ -26,19 +27,38 @@ Do not run both paths for the same pull.
   and sync time.
 - Call `note_schedule_runway(days=..., minimum_spacing=...)` to rebuild the
   visual from local files without a Substack request.
+- For a new text draft, call `preview_note_draft(text=...)` and show the exact
+  normalized body. Only after approval of that body, call
+  `create_note_draft(text=...)` with the approved text. The tool checks for an
+  existing identical draft, refreshes the local backup, and verifies the new
+  unpublished draft. After an uncertain result, pull and search for the exact
+  body before retrying.
+- For multiple text drafts, call `preview_note_drafts(texts=[...])` and show
+  every normalized body in order. After approval of that exact set, call
+  `create_note_drafts(texts=[...])` once with the same values. The batch accepts
+  1–20 distinct bodies, reads the remote draft list once before sequential POSTs,
+  and refreshes it once afterward to verify each result. Check every item's
+  `applied`, `duplicate`, or `uncertain` status. If `incomplete` is true, stop;
+  inspect the local and remote Notes before any retry. Never send the whole
+  batch again blindly. Do not run multiple batches in parallel.
+- For scheduling, call `preview_note_schedule(note_id=..., at=...)` and show the
+  Note ID, current schedule, proposed time, and time zone. Only after approval
+  of that Note and time, call `schedule_note(note_id=..., at=...)` with the same
+  values. A time without an offset uses the configured time zone. The tool
+  re-reads the Note, preserves its body and attachments, refreshes the local
+  backup and runway, and verifies the new schedule.
 - Only when the user explicitly requests published Note history, call
   `pull_published_notes(profile=...)` and then
   `find_published_notes(profile=..., sort_by=...)`. Each profile gets a separate
   ignored directory. Use the CLI for a caller-chosen history directory.
 
-The MCP uses this skill's existing puller and the same saved session as
-`substack-pull`. Draft creation and scheduling remain in the CLI preview and
-`--apply` workflow below. Never treat a local pull as approval to create or
-schedule a Note.
-If an MCP pull reports no session after a recent successful local pull, follow
+The MCP uses the same saved session as `substack-pull`. Never treat a local pull
+as approval to create or schedule a Note. If the draft or schedule MCP
+tools are missing, reconnect the MCP server before using the CLI fallback.
+If an MCP tool reports no session after a recent successful local pull, follow
 the Keychain-access recovery below before asking for new authentication.
 
-## Normal workflow
+## CLI fallback: private Note backup and planning
 
 Pull all draft and scheduled Notes:
 
@@ -80,7 +100,7 @@ python3 /absolute/path/to/scripts/substack_notes_pull.py \
   list --status all --limit 1000
 ```
 
-## Draft creation
+## CLI fallback: draft creation
 
 Create only a new standalone, text-only, unpublished, unscheduled Note draft.
 Substack's endpoint is:
@@ -113,17 +133,19 @@ approves that exact preview, repeat the same command with `--apply`:
 ./substack-notes-pull create-draft --file /absolute/path/to/note.txt --apply
 ```
 
-Before writing, the command refreshes every remote draft and scheduled Note. If
-the same body already exists, it reports the matching Note IDs and creates
-nothing. After a successful request, it refreshes the local backup and verifies
-the new Note's exact body, draft status, and absent schedule.
+Before writing, the CLI refreshes every remote draft and scheduled Note. If the
+same body already exists, it reports the matching Note IDs and creates nothing.
+After a successful request, it refreshes the local backup and verifies the new
+Note's exact body, draft status, and absent schedule.
 
 For a batch, preview every body and obtain explicit approval for that exact set.
-Then create the drafts sequentially. Stop on the first uncertain result; pull
-and search for the exact body before retrying. Do not create replies, restacks,
-attachments, scheduled drafts, or edits to existing drafts through this command.
+Use the MCP batch tools above when available. With the CLI fallback, create the
+drafts sequentially. Stop on the first uncertain result; pull and search for the
+exact body before retrying.
+Do not create replies, restacks, attachments, scheduled drafts, or edits to
+existing drafts through either path.
 
-## Schedule changes
+## CLI fallback: schedule changes
 
 Substack's editor updates both draft and scheduled Notes with:
 
@@ -142,16 +164,15 @@ Preview a change first. This fetches the current remote Note but does not write:
 ./substack-notes-pull schedule NOTE_ID --at "2026-10-30 09:30"
 ```
 
-A time without an offset uses the configured time zone. Only after the user has
-explicitly approved that Note and time, send the change with `--apply`:
+Only after the user has explicitly approved that Note and time, send the change
+with `--apply`:
 
 ```bash
 ./substack-notes-pull schedule NOTE_ID --at "2026-10-30 09:30" --apply
 ```
 
-The command refreshes the local Notes, overview, and runway after a successful
-request and verifies that Substack returned the requested timestamp. Never use
-`--apply` speculatively or for a batch the user has not approved.
+Never call `schedule_note` or use `--apply` speculatively or for a batch the user
+has not approved.
 
 ## Authentication
 
@@ -159,17 +180,18 @@ Reuse the session already stored by `substack-pull`. Both tools read the same
 Keychain item; never ask the user to authenticate twice. The Notes puller finds
 the publication host in the workspace's `.substack-pull.json` automatically.
 
-The CLI's “No reusable Substack session was found” error can also mean that
+The “No reusable Substack session was found” error can also mean that
 the execution sandbox blocked Keychain access. It does not establish that the
 user has not authenticated. Before asking them to authenticate again:
 
-1. Use the same absolute config path to check session presence:
+1. Call MCP `backup_status` and read `notes.keychain_session_present`. Do not
+   read or print the credential itself. If the MCP is unavailable or cannot
+   report that field, use the same absolute config path for the CLI fallback:
 
    ```bash
    ./substack-notes-pull --config /absolute/path/to/.substack-notes-pull.json status
    ```
 
-   Read `keychain_session_present`; do not read or print the credential itself.
    Use `status`, not `doctor` (the Notes CLI has no `doctor` command).
 2. If the sandbox reports no session, request normal execution escalation for
    that same status check outside the sandbox, where available. If the user
@@ -206,9 +228,11 @@ directory is ignored before pulling.
 
 ## Published Note history
 
-Only when the user explicitly asks for already-published Notes, prefix the
-command with `public` **before** `--config` and keep each profile's history in a
-separate directory:
+Only when the user explicitly asks for already-published Notes, call
+`pull_published_notes(profile=...)` and then
+`find_published_notes(profile=..., sort_by=...)`. Use the CLI fallback when the
+user requests a specific history directory. In that case, prefix the command
+with `public` **before** `--config` and keep each profile's history separate:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py public \
@@ -223,7 +247,7 @@ directory is ignored before pulling. A complete first pull reports
 `public pull --refresh` when older edits, removals, or current engagement
 counts matter.
 
-Rank the local history with the same profile and directory:
+For the CLI fallback, rank the local history with the same profile and directory:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_notes_pull.py public \
@@ -242,10 +266,11 @@ unavailable.
 
 ## Safety and recovery
 
-- Keep all operations read-only except explicit `create-draft --apply` and
-  `schedule --apply` commands. Never immediately publish, edit an existing Note
-  body, delete, reply, restack, react, follow, or change subscriber or account
-  settings.
+- Keep all operations read-only except an explicitly approved MCP
+  `create_note_draft`, `create_note_drafts`, or `schedule_note` call, or the
+  corresponding CLI `--apply` fallback. Never immediately publish, edit an
+  existing Note body, delete, reply, restack, react, follow, or change
+  subscriber or account settings.
 - Do not quote or summarize draft bodies unless the user asks.
 - Never delete local files when an item disappears remotely; preserve the
   backup and mark it missing in sync state.

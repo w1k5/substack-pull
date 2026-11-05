@@ -7,8 +7,13 @@
     <link rel="stylesheet" href="/css/shell.css" />
     <link rel="stylesheet" href="/css/overview.css" />
     <link rel="stylesheet" href="/css/post.css" />
+    <link rel="stylesheet" href="/css/post-trajectory.css" />
+    <link rel="stylesheet" href="/css/post-note-reach.css" />
+    <link rel="stylesheet" href="/css/loading.css" />
+    <link rel="stylesheet" href="/css/post-insights.css" />
     <link rel="stylesheet" href="/css/post-portfolio.css" />
     <link rel="stylesheet" href="/css/views.css" />
+    <link rel="stylesheet" href="/css/planner.css" />
   </head>
   <body>
     <div class="shell">
@@ -23,9 +28,10 @@
           <a class="side-link" data-route href="/posts"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Posts</a>
           <a class="side-link" data-route href="/discovery"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>Discovery</a>
           <a class="side-link" data-route href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5"/></svg>Notes</a>
+          <a class="side-link" data-route href="/planner"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M8 18h3"/></svg>Note planner</a>
         </nav>
         <div class="side-bottom">
-          <span class="live-dot"></span> Read-only · local<br /><small
+          <span class="live-dot"></span> Private · local<br /><small
             >Session stays in macOS Keychain</small
           >
         </div>
@@ -313,7 +319,7 @@
               <div class="panel-heading">
                 <div><div class="eyebrow">ACROSS NOTES</div><h2 id="note-map-title">Which Notes travel and move readers?</h2></div>
               </div>
-              <p class="note-map-lead">Each dot is a Note. Compare its reach with your usual Note at the same age, then choose the reader outcome you care about.</p>
+              <p class="note-map-lead">Each dot is a Note. Compare its reach with your usual Note at the same age, choose a reader outcome, then select up to two dots to compare them here.</p>
               <div class="note-map-toolbar">
                 <div id="note-map-lenses" class="note-map-lenses" aria-label="Compare Notes by reader outcome">
                   <button type="button" class="segment" data-map-lens="responses">Reader response</button>
@@ -333,10 +339,11 @@
                   <div id="note-map-plot" class="note-map-plot" role="group" aria-label="Note performance comparison">
                     <div id="note-map-grid"></div>
                     <div id="note-map-points"></div>
+                    <div id="note-map-tooltip" class="note-map-tooltip" hidden></div>
                   </div>
                   <div class="note-map-x-title">Reach vs your typical Note at the same age →</div>
                 </div>
-                <aside id="note-map-detail" class="note-map-detail" aria-live="polite"></aside>
+                <div id="note-map-comparison" class="note-map-comparison" aria-live="polite"></div>
               </div>
               <p id="note-map-summary" class="note-map-summary" hidden></p>
               <p id="note-map-search-note" class="footnote">Search Notes above to highlight a word or phrase here.</p>
@@ -365,12 +372,69 @@
                     <tbody id="note-compare-rows"></tbody>
                   </table>
                 </div>
+                <button type="button" class="refresh note-compare-more" id="note-compare-more" hidden></button>
                 <p class="footnote">Dash marks mean stats have not been loaded or the sample is too small. Rate and audience-share rankings require at least 100 impressions or audience members. Note stats are lifetime; pace uses Substack’s age-matched typical series. These numbers describe attention and response, not subscriber conversions from an individual Note.</p>
               </div>
             </section>
             <dialog class="panel note-detail-dialog" id="note-detail" aria-label="Selected Note details">
               <button type="button" class="refresh note-detail-close" id="note-detail-close" aria-label="Close Note details">Close</button>
               <div id="note-detail-content"></div>
+            </dialog>
+          </section>
+          <section class="view" id="view-planner" aria-labelledby="planner-title" hidden>
+            <div class="hero planner-hero">
+              <div><div class="eyebrow">NOTE PLANNER</div><h1 id="planner-title">Make room for the <em>next Note.</em></h1>
+                <p>See your scheduled Notes, write drafts, and choose a time. Nothing is published from this page.</p></div>
+            </div>
+            <div id="planner-notice" class="notice" role="alert" hidden></div>
+            <section class="panel planner-panel" aria-labelledby="planner-calendar-title">
+              <div class="panel-heading">
+                <div><div class="eyebrow">SCHEDULE</div><h2 id="planner-calendar-title">Note calendar</h2><p id="planner-subhead" class="detail-context">Loading your local Note plan…</p></div>
+                <button type="button" class="refresh" id="planner-refresh">↻ Sync Notes</button>
+              </div>
+              <div class="planner-toolbar">
+                <div class="planner-stats" aria-live="polite">
+                  <span><strong id="planner-scheduled-count">—</strong> scheduled in view</span>
+                  <span><strong id="planner-draft-count">—</strong> drafts ready</span>
+              <span><strong id="planner-open-count">—</strong> days with Notes</span>
+                </div>
+                <div class="planner-controls">
+                  <label>Show <select id="planner-days"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">180 days</option></select></label>
+                  <label>Spacing <select id="planner-spacing"><option value="2">2 days</option><option value="3" selected>3 days</option><option value="4">4 days</option></select></label>
+                </div>
+              </div>
+              <div id="planner-loading" class="loading-state" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Loading Notes…</span></div>
+              <div id="planner-calendar" class="planner-calendar" aria-label="Scheduled Notes by week"></div>
+              <div id="planner-day-detail" class="planner-day-detail" aria-live="polite"></div>
+              <p class="footnote">Outlined dates are openings with room around them at your selected spacing. Select a date to inspect its Notes or use it for a new schedule.</p>
+            </section>
+            <div class="planner-columns">
+              <section class="panel planner-drafts" aria-labelledby="planner-drafts-title">
+                <div class="panel-heading"><div><div class="eyebrow">BACKLOG</div><h2 id="planner-drafts-title">Unscheduled drafts</h2></div></div>
+                <div id="planner-draft-list" class="planner-draft-list"></div>
+              </section>
+              <div class="planner-actions">
+                <section class="panel" aria-labelledby="planner-compose-title">
+                  <div class="panel-heading"><div><div class="eyebrow">WRITE</div><h2 id="planner-compose-title">New Note draft</h2></div></div>
+                  <label class="planner-field" for="planner-text">Note text</label>
+                  <textarea id="planner-text" rows="7" maxlength="5000" placeholder="Write a Note to save as an unpublished draft…"></textarea>
+                  <div class="planner-form-footer"><span id="planner-char-count">0 / 5,000</span><button type="button" class="refresh planner-primary" id="planner-preview-draft">Preview draft</button></div>
+                </section>
+                <section class="panel" aria-labelledby="planner-schedule-title">
+                  <div class="panel-heading"><div><div class="eyebrow">PLACE</div><h2 id="planner-schedule-title">Schedule a Note</h2></div></div>
+                  <p id="planner-selected-note" class="planner-selected-note">Choose a draft or scheduled Note first.</p>
+                  <label class="planner-field" for="planner-at">Date and time</label>
+                  <input id="planner-at" type="datetime-local" />
+                  <div class="planner-form-footer"><span id="planner-timezone">—</span><button type="button" class="refresh planner-primary" id="planner-preview-schedule" disabled>Preview schedule</button></div>
+                </section>
+              </div>
+            </div>
+            <dialog id="planner-confirm" class="panel planner-confirm" aria-labelledby="planner-confirm-title">
+              <div class="eyebrow">REVIEW CHANGE</div>
+              <h2 id="planner-confirm-title">Confirm Note</h2>
+              <p id="planner-confirm-detail"></p>
+              <pre id="planner-confirm-body"></pre>
+              <div class="planner-confirm-actions"><button type="button" class="refresh" id="planner-cancel">Cancel</button><button type="button" class="refresh planner-primary" id="planner-apply">Create draft</button></div>
             </dialog>
           </section>
           <section class="view" id="view-post-detail" aria-labelledby="detail-title" hidden>

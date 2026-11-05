@@ -107,8 +107,12 @@ def summarize_note_cohort(rows: list[dict]) -> dict:
         result[lens] = {
             "median": middle,
             "plotted": len(plotted),
+            "plotted_ids": [str(row["id"]) for row in plotted],
             "standouts": sum(row["pace"]["ratio"] >= 1 and outcome(row) >= middle
                              for row in plotted) if middle is not None else 0,
+            "standout_ids": [str(row["id"]) for row in plotted
+                             if middle is not None and row["pace"]["ratio"] >= 1
+                             and outcome(row) >= middle],
             "ranked_ids": [row["id"] for row in ranked],
         }
     return result

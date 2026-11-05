@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "substack_pull.py"
-SPEC = importlib.util.spec_from_file_location("substack_pull", SCRIPT)
-assert SPEC and SPEC.loader
-substack_pull = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(substack_pull)
+SCRIPTS = Path(__file__).parents[1] / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+import substack_post_core as substack_pull  # noqa: E402
 
 
 class FakeApi:

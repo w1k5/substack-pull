@@ -2,25 +2,25 @@
 """Compatibility entrypoint for the bundled substack-notes-pull skill CLI."""
 
 from pathlib import Path
-import runpy
+import sys
 
 
-_SCRIPT = (
+_SCRIPTS = (
     Path(__file__).resolve().parent
     / "skills"
     / "substack-notes-pull"
     / "scripts"
-    / "substack_notes_pull.py"
 )
-_IMPLEMENTATION = runpy.run_path(str(_SCRIPT))
-globals().update(
-    {
-        name: value
-        for name, value in _IMPLEMENTATION.items()
-        if not name.startswith("__")
-    }
-)
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+import substack_public_core as _implementation
+
+globals().update({name: value for name, value in vars(_implementation).items()
+                  if not name.startswith("__")})
+if __name__ != "__main__" and __name__ in sys.modules:
+    sys.modules[__name__] = _implementation
 
 
 if __name__ == "__main__":
-    raise SystemExit(_IMPLEMENTATION["main"]())
+    raise SystemExit(_implementation.main())

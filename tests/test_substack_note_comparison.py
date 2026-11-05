@@ -86,3 +86,38 @@ class NoteComparisonTests(TestCase):
         self.assertEqual(cohort["total"], 2)
         self.assertEqual([row["id"] for row in cohort["rows"]], ["1"])
         self.assertEqual(cohort["unavailable_ids"], ["2"])
+
+    def test_completed_note_cohort_is_reused(self):
+        service = AnalyticsService(object(), object())
+        events = [{"type": "note", "id": "1", "day": "2026-11-01", "title": "First"}]
+        raw = stats("1", 1000, 1200, 600)
+        with patch.object(service, "dashboard", return_value={"publication_events": events}) as dashboard, \
+             patch.object(service, "note", return_value={**raw, "comparison": note_comparison_metrics(raw)}) as note:
+            first = service.note_cohort(30)
+            self.assertIs(first, service.note_cohort(30))
+            self.assertEqual(dashboard.call_count, 1)
+            self.assertEqual(note.call_count, 1)
+            self.assertEqual(first["lenses"]["responses"]["plotted_ids"], ["1"])
+
+    def test_retry_unavailable_rebuilds_cached_cohort(self):
+        service = AnalyticsService(object(), object())
+        events = [{"type": "note", "id": "1", "day": "2026-11-01", "title": "First"}]
+        raw = stats("1", 1000, 1200, 600)
+        calls = 0
+
+        def load(_note_id):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise ValueError("temporarily unavailable")
+            return {**raw, "comparison": note_comparison_metrics(raw)}
+
+        with patch.object(service, "dashboard", return_value={"publication_events": events}), \
+             patch.object(service, "note", side_effect=load):
+            first = service.note_cohort(30)
+            self.assertEqual(first["unavailable_ids"], ["1"])
+            self.assertIs(first, service.note_cohort(30))
+            retried = service.note_cohort(30, retry_unavailable=True)
+            self.assertEqual([row["id"] for row in retried["rows"]], ["1"])
+            self.assertEqual(calls, 2)
+            self.assertIs(retried, service.note_cohort(30))

@@ -24,30 +24,27 @@ function showCallout(id, label, headline, detail, path, action) {
   }
 }
 
-function priorDelta(current, previous, days) {
-  if (current == null || previous == null) return 'Previous period unavailable';
-  if (Number(previous) === 0) return Number(current) ? 'New compared with prior period' : 'No change';
-  const delta = ((Number(current) - Number(previous)) / Number(previous)) * 100;
-  return `${delta > 0 ? '+' : ''}${delta.toFixed(1)}% vs previous ${days} days · ${fmt(previous)} before`;
+function priorDelta(comparison, days) {
+  if (!comparison || comparison.status === 'unavailable') return 'Previous period unavailable';
+  if (comparison.status === 'new') return 'New compared with prior period';
+  if (comparison.status === 'unchanged') return 'No change';
+  const delta = comparison.percent;
+  return `${delta > 0 ? '+' : ''}${delta.toFixed(1)}% vs previous ${days} days · ${fmt(comparison.previous)} before`;
 }
 
 export function renderBriefing(data, navigate) {
-  const totals = data.totals || {}, previous = data.previous?.totals || {};
+  const totals = data.totals || {}, briefing = data.briefing || {};
   for (const key of ['views', 'visitors', 'subscribers']) {
     $(key).textContent = fmt(totals[key]);
-    $(`${key}-delta`).textContent = priorDelta(totals[key], previous[key], data.range.days);
+    $(`${key}-delta`).textContent = priorDelta(briefing.changes?.[key], data.range.days);
   }
   $('briefing-period').textContent =
     `${date(data.range.start)} – ${date(data.range.end)} · compared with the preceding ${data.range.days} days · today may be incomplete`;
-  const notes = (data.growth_sources || []).find(
-    (source) => source.parent === 'Substack' && source.name === 'Notes',
-  );
-  if (notes && Number(notes.subscribers) > 0 && Number(totals.subscribers) > 0) {
-    const share = Number(notes.subscribers) / Number(totals.subscribers);
+  if (briefing.notes_share > 0) {
     showCallout(
       'briefing-insight', 'A PATH TO NEW READERS',
-      `${fmt(notes.subscribers)} subscribers were attributed to Notes`,
-      `${pct(share)} of new subscribers in this period. Attribution describes a channel, not which individual Note caused a signup.`,
+      `${fmt(briefing.notes_attributed)} subscribers were attributed to Notes`,
+      `${pct(briefing.notes_share)} of new subscribers in this period. Attribution describes a channel, not which individual Note caused a signup.`,
       '/notes', 'Explore Notes →',
     );
   } else {
@@ -63,14 +60,10 @@ export function renderBriefing(data, navigate) {
 }
 
 export function renderDiscoveryInsight(data) {
-  const ecosystem = (data.growth_sources || []).find(
-    (source) => source.name === 'Substack' && !source.parent,
-  );
-  const total = Number(data.totals?.subscribers || 0);
-  if (ecosystem && total) {
+  if (data.briefing?.substack_share != null) {
     showCallout(
       'discovery-insight', 'SUBSCRIBER ATTRIBUTION',
-      `${pct(Number(ecosystem.subscribers || 0) / total)} of new subscribers were credited to Substack`,
+      `${pct(data.briefing.substack_share)} of new subscribers were credited to Substack`,
       'This parent source includes Notes and other Substack surfaces. Its children are a breakdown, not additional subscribers.',
     );
   } else {

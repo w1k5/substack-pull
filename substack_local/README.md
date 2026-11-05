@@ -2,16 +2,21 @@
 
 The dashboard and MCP server use one analytics service. The browser reaches it through
 the local dashboard HTTP server; AI clients reach it through MCP tools. Both analytics
-interfaces use the same normalization and cache. The standalone post and Note CLIs in `../skills/`
-continue to own backups, authentication setup, and Note scheduling, so each skill still
-works without this package.
+interfaces use the same normalization and cache. The standalone post and Note CLIs in
+`../skills/` remain usable without this package. Their command scripts are small entry
+points; the reusable code lives in importable packages beside them. `workflows/` imports
+those packages directly so the dashboard and MCP reuse the same functions without
+starting child processes.
 
 ```text
 Browser   → dashboard/server.py ──┐
                                   ├→ analytics/service.py → Substack
 AI client → mcp/analytics_tools.py ┘            └→ analytics/cache.py
 
-AI client → mcp/backup_tools.py → mcp/pulls.py → existing CLIs
+AI client → mcp/backup_tools.py → mcp/pulls.py ──┐
+                                                ├→ workflows/modules.py → bundled pullers
+AI client → mcp/note_writes.py ──────────────────┘
+Browser   → dashboard/planner API → workflows/notes.py → bundled Note functions
 ```
 
 The dashboard does not require an MCP process. Put reusable Substack requests and metric
@@ -22,23 +27,32 @@ definitions in `analytics/`; the two interfaces choose data and translate their 
 | Analytics request setup | `analytics/client.py` loads the puller's authenticated client and repository paths. |
 | Publication data | `analytics/publication.py` fetches traffic, sources, events, and the post index. |
 | Post and Note data | `analytics/post.py` and `analytics/note.py` shape individual performance responses. `analytics/note_comparison.py` calculates Note rates, medians, and rankings for both the Notes page and MCP. `analytics/note_shares.py` links explicit post attachments in the published Notes backup to posts. |
+| Derived comparisons | `analytics/derived.py` calculates publication deltas, signup rates, age-matched post summaries, attribution shares, and reader rates. `analytics/post_comparison.py` chooses the post cohort and its per-lens eligibility, medians, and standouts. |
 | Shared cache | `analytics/service.py` validates IDs and combines cached post, Note, and publication data with bounded in-memory fallbacks; `analytics/cache.py` persists and prunes five-minute publication snapshots, the published post index, completed first-week post outcomes, individual post analytics, and Note stats for the dashboard and MCP. |
-| MCP tools | `mcp/server.py` assembles the server; `mcp/registry.py` holds the server instance and annotations; `mcp/analytics_tools.py` registers read-only analytics; `mcp/backup_tools.py` registers backup and search operations through `mcp/pulls.py`. |
-| Dashboard HTTP | `dashboard/server.py` handles local API requests and serves a fixed list of browser files. |
+| MCP tools | `mcp/server.py` assembles the server; `mcp/registry.py` holds the server instance and annotations; `mcp/analytics_tools.py` registers read-only analytics; `mcp/backup_tools.py` registers backup and search operations through `mcp/pulls.py`; `mcp/note_writes.py` exposes Note drafts and scheduling. |
+| Shared pull workflows | `workflows/modules.py` imports the bundled post and Note packages once per process; `workflows/notes.py` supplies the calendar snapshot and Note actions to the dashboard. |
+| Dashboard HTTP | `dashboard/server.py` handles local API requests, protects Note action routes with same-origin checks, and serves a fixed list of browser files. |
 | Dashboard coordination | `dashboard/static/js/app.js` manages routes, data loading, and the date range. `dashboard/static/js/views/publication.js` renders the briefing and growth sources; `dashboard/static/js/views/tables.js` owns sorting, filtering, pagination, and CSV exports for source and post tables. |
 | Publication charts | `dashboard/static/js/timeline.js` draws publication views and event markers; `dashboard/static/js/source-trend.js` draws subscriber source history on Discovery. |
-| Notes and export UI | `dashboard/static/js/notes-page.js` renders individual Notes; `dashboard/static/js/notes-compare.js` loads and compares Note stats; `dashboard/static/js/notes-map.js` draws the outcome comparison on the Notes page. `dashboard/static/js/export.js` writes visible rows as CSV. |
+| Notes and export UI | `dashboard/static/js/notes-page.js` renders individual Notes; `dashboard/static/js/notes-compare.js` loads and compares Note stats, rendering the table in batches of 50; `dashboard/static/js/notes-map.js` draws the outcome comparison on the Notes page; `dashboard/static/js/planner.js` renders the Note calendar, draft backlog, and preview and confirm flows. `dashboard/static/js/export.js` writes the relevant filtered rows as CSV. |
 | Post UI | `dashboard/static/js/post/` contains the first-week portfolio comparison, detail view, trajectory, Note reach, and insights. |
-| Shared UI and styling | `dashboard/static/js/shared.js`, `dashboard/static/index.html`, and `dashboard/static/css/` (shell, overview, post, views). |
+| Shared UI and styling | `dashboard/static/js/shared.js` and `dashboard/static/index.html`; `dashboard/static/css/` separates shell, overview, post trajectory, Note reach, post insights, loading states, comparison, views, and planner styles. |
 
 The UI tokens, control behavior, and analytics terms are recorded in [dashboard/DESIGN.md](dashboard/DESIGN.md).
+
+The backend owns metric definitions and planning rules. The browser owns formatting,
+DOM updates, chart coordinates, visible-row sorting and filtering, and navigation.
+`analytics/service.py` retains completed comparison responses for five minutes within
+each process, in addition to its shared disk caches for fetched data. The dashboard
+renders only the active route, and post detail builds secondary source rows on demand.
 
 The root launchers (`../substack-analytics` and `../substack-analytics-mcp`) still use `../substack_analytics.py` and `../substack_analytics_mcp.py`. The old imports `substack_local.web`, `substack_local.mcp_server`, and `substack_local.pulls` are compatibility shims; new code should import from the directories above.
 
 ## Where to make changes
 
 - **New analytics field:** Fetch and normalize it in the matching `analytics/` file, then display it in the matching `dashboard/static/js/` file. Add an MCP response in `mcp/analytics_tools.py` when agents need the field.
-- **New backup or search tool:** Extend the appropriate CLI under `../skills/`, add its JSON adapter in `mcp/pulls.py`, then define its tool in `mcp/backup_tools.py`.
+- **New backup or search tool:** Extend `../skills/substack-pull/scripts/substack_post_core/` or `../skills/substack-notes-pull/scripts/substack_public_core/`, add its direct adapter in `mcp/pulls.py`, then define its tool in `mcp/backup_tools.py`.
+- **New Note draft or schedule action:** Keep the verified operation in `../skills/substack-notes-pull/scripts/substack_private_core/`, then expose it through `mcp/note_writes.py` or `workflows/notes.py` with distinct preview and apply steps.
 - **New dashboard panel:** Keep page orchestration in `js/app.js` or `js/post/index.js` and put feature rendering beside related code.
 
 Run the dashboard with `./substack-analytics` and the stdio MCP server with

@@ -113,10 +113,9 @@ export function renderPostTrajectory(rows, notes = []) {
           })
         : fmt(value);
     const select = (index) => {
-      const row = rows[index],
-        previous = index ? actual[index - 1] : 0;
-      const dailyActual = actual[index] - previous,
-        dailyTypical = typical[index] - (index ? typical[index - 1] : 0);
+      const row = rows[index];
+      const dailyActual = row[`daily_${metric}`],
+        dailyTypical = row[`typical_daily_${metric}`];
       readout.hidden = false;
       readout.replaceChildren();
       const heading = document.createElement('strong');

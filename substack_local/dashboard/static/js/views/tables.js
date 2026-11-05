@@ -16,32 +16,16 @@ const columns = {
     ['open_rate', 'Email opens'], ['engagement_rate', 'Engagement']],
 };
 
-const sourceSignups = (row) => row.free_signups == null && row.paid_signups == null
-  ? null : Number(row.free_signups || 0) + Number(row.paid_signups || 0);
-const sourceRate = (row) => sourceSignups(row) != null && Number(row.users) > 0
-  ? sourceSignups(row) / Number(row.users) : null;
-const postYield = (row) => Number(row.views) >= 1000
-  ? 1000 * Number(row.signups || 0) / Number(row.views) : null;
-
-function publicationDay(timestamp) {
-  if (!timestamp) return '';
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date(timestamp));
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
 function sortValue(section, row, key) {
   if (section === 'source') {
     if (key === 'name') return sourceLabel(row.name, 'traffic', row.category).name.toLowerCase();
-    if (key === 'signups') return sourceSignups(row);
-    if (key === 'rate') return sourceRate(row);
+    if (key === 'signups') return row.signups;
+    if (key === 'rate') return row.signup_rate;
   }
   if (section === 'post') {
     if (key === 'title') return (row.title || '').toLowerCase();
     if (key === 'date') return row.date ? new Date(row.date).getTime() : null;
-    if (key === 'yield') return postYield(row);
+    if (key === 'yield') return row.signup_yield;
   }
   return row[key] == null ? null : Number(row[key]);
 }
@@ -118,8 +102,8 @@ export function createTables({ getData, getPortfolio, navigate }) {
       cell(tr, source);
       cell(tr, fmt(row.views));
       cell(tr, fmt(row.users));
-      cell(tr, fmt(sourceSignups(row)));
-      cell(tr, pct(sourceRate(row)));
+      cell(tr, fmt(row.signups));
+      cell(tr, pct(row.signup_rate));
       body.append(tr);
     });
   }
@@ -128,7 +112,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
     const query = $('global-search').value.toLowerCase().trim();
     return (data.posts || []).filter((row) => {
       if (query && !row.title.toLowerCase().includes(query)) return false;
-      const day = publicationDay(row.date);
+      const day = row.publication_day || '';
       if ($('posts-in-period').checked && !(day >= data.range.start && day <= data.range.end)) return false;
       if ($('posts-min-views').checked && Number(row.views) < 1000) return false;
       return true;
@@ -160,7 +144,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
       cell(tr, date(row.date));
       cell(tr, fmt(row.views));
       cell(tr, fmt(row.signups));
-      cell(tr, postYield(row) == null ? '—' : postYield(row).toFixed(1));
+      cell(tr, row.signup_yield == null ? '—' : row.signup_yield.toFixed(1));
       cell(tr, fmt(row.shares));
       const email = document.createElement('span');
       email.className = 'email-cell';
@@ -235,7 +219,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
       ['Post', 'Published', 'Views', 'Signups', 'Signups per 1k views (1k+ only)',
         'Shares', 'Opens', 'Sent', 'Open rate', 'Engagement rate'],
       visiblePostRows.map((row) => [row.title, row.date, row.views, row.signups,
-        postYield(row), row.shares, row.opens, row.sent, row.open_rate, row.engagement_rate]));
+        row.signup_yield, row.shares, row.opens, row.sent, row.open_rate, row.engagement_rate]));
   });
 
   return {

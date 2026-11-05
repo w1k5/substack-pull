@@ -5,8 +5,9 @@ description: Pull, back up, find, and inspect any Substack publication's public 
 
 # Substack Pull
 
-Use the local `substack-analytics-local` MCP tools when they are available and
-point at the requested workspace. Otherwise use the bundled CLI. Both paths
+Use the local `substack-analytics-local` MCP tools for all supported post work.
+Call the MCP tools directly when they are available and point at the requested
+workspace; use the bundled CLI only for the fallback cases below. Both paths
 maintain the same local copy. The API is undocumented; keep every remote
 operation read-only and report endpoint failures plainly. Choose between these
 modes:
@@ -36,10 +37,11 @@ workflow below. Do not run both paths for the same pull.
   accepts `*.substack.com` URLs and keeps each publication in a separate
   ignored directory. Use the CLI for a custom public domain or a caller-chosen
   directory. Never send the saved session in public mode.
-- Current performance comparison: call
-  `pull_own_posts(refresh_published=true)` before reading local published
-  copies. The MCP's `post_performance` can add current aggregate analytics.
-  Check any `errors` or `incomplete` result before relying on a pull.
+- Current performance comparison: call `post_performance(post_id=...)` for the
+  relevant posts. It uses the shared analytics cache. Refresh the entire local
+  published backup with `pull_own_posts(refresh_published=true)` only when the
+  task needs current bodies or source stats for every published post. Check any
+  `errors` or `incomplete` result before relying on a pull.
 
 If an MCP pull reports a missing session despite a recent successful local
 pull, follow the Keychain-access recovery below before asking for new auth.
@@ -48,9 +50,9 @@ These MCP tools wrap the bundled puller; they do not implement a second sync
 algorithm. `list_posts` is an analytics ranking tool, not the local backup
 index. No MCP tool in this skill publishes, edits, or deletes posts.
 
-## Authenticated workflow
+## CLI fallback: authenticated posts
 
-For CLI fallback, resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
+Resolve `scripts/substack_pull.py` relative to this file. Run it with Python 3
 from the user's workspace and pass the workspace's absolute config path. When a
 configured `.substack-pull.json` is present, pull immediately; do not run
 `doctor` or ask setup questions on every use.
@@ -88,7 +90,7 @@ recoverable.
 `sync` remains an alias for `pull`. With the repository wrapper, running
 `./substack-pull` with no subcommand also pulls.
 
-## Public published-post workflow
+## CLI fallback: public posts
 
 For a public publication that the user does not own, pass `--public`, the
 publication URL, and a separate backup directory. Do this immediately; public
@@ -111,12 +113,17 @@ but it may contain only a preview when that is all the public endpoint returns.
 Use `--refresh-published` when the user requests a full reconciliation or a body
 edit is not detected from archive metadata. Normal public pulls are incremental.
 
-## Performance analysis
+## Current performance analysis
 
-When the user asks to compare post performance, predict how a draft may fare
-against past posts, or otherwise needs current views, reactions, comments,
-shares, restacks, or signups, run an authenticated pull with
-`--refresh-published` before analyzing the results:
+When the user asks for current views, reactions, comments, shares, restacks, or
+signups, use the MCP's `post_performance(post_id=...)` for the relevant posts.
+For a comparison across many posts, `post_portfolio` and `list_posts` can give
+cached aggregate metrics without refreshing every body. If the analysis needs
+the current source JSON or full text of every published post, call
+`pull_own_posts(refresh_published=true)` first.
+
+For the CLI fallback, run an authenticated pull with `--refresh-published` when
+those current source files are required:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_pull.py \
@@ -134,9 +141,10 @@ from any forecast.
 
 ## Finding writing
 
-When the user asks for a post, the newest version, or analysis of current
-writing, pull first in the matching public or authenticated mode. Then search
-the local index by title or post ID:
+When the user asks for a post, its newest version, or analysis of current
+writing, call `pull_own_posts` or `pull_public_posts` in the matching mode.
+Then call `find_post_copies` by title or ID, and `read_post_copy` for the
+selected body. For the CLI fallback, search the local index with:
 
 ```bash
 python3 /absolute/path/to/scripts/substack_pull.py \
@@ -154,7 +162,7 @@ plausible match or compare candidates.
 Downloaded drafts and scheduled posts are private. Read, quote, or summarize
 their contents only when the user asks about them.
 
-## First-time setup
+## CLI fallback: first-time setup
 
 This setup applies only to authenticated mode. If no usable config exists, run
 `doctor` once. Determine the canonical public `*.substack.com` publication URL
@@ -190,9 +198,9 @@ tracked `.gitignore`.
 
 ## Safety and recovery
 
-- Use only the bundled read-only commands: `auth`, `pull`, `sync`, `list`,
-  `status`, `configure`, and `doctor`. Public mode is `pull --public` or
-  `sync --public`.
+- Use the MCP's read-only post tools above. For the CLI fallback, use only
+  `auth`, `pull`, `sync`, `list`, `status`, `configure`, and `doctor`. Public mode
+  is `pull --public` or `sync --public`.
 - In public mode, never retrieve a Keychain session or send a `Cookie` header.
 - Never add publishing, scheduling, editing, deletion, subscriber, or settings
   requests.
@@ -205,7 +213,8 @@ tracked `.gitignore`.
   `auth` command again. Preserve the old Keychain item and local files.
 - On a publication/directory mismatch, choose a separate directory instead of
   overwriting another publication's manifest.
-- Use `pull --refresh-published` only when the user requests reconciliation,
-  current performance analysis, or a published edit appears absent; normal
-  pulls already detect new drafts, scheduling changes, and exposed editorial
-  changes, but not changing engagement or delivery stats.
+- Use `pull_own_posts(refresh_published=true)` or CLI `pull --refresh-published`
+  only when the user requests full reconciliation, current source stats for all
+  published posts, or a published edit appears absent. Normal pulls already
+  detect new drafts, scheduling changes, and exposed editorial changes, but
+  not changing engagement or delivery stats.

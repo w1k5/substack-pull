@@ -10,6 +10,7 @@ const lenses = {
   clicks: 'Link clicks per 1,000 impressions. This shows which Notes sent readers onward.',
   unconnected: 'Share of the Note’s audience that was not already connected to you. Audience counts are people, not impressions.',
 };
+const PAGE_SIZE = 50;
 
 let notes = [];
 let signature = '';
@@ -22,6 +23,7 @@ let loadError = '';
 let sort = { key: 'day', direction: 'desc' };
 let query = '';
 let selectedId = '';
+let visibleCount = PAGE_SIZE;
 let navigateTo;
 const measured = new Map();
 const failed = new Set();
@@ -106,7 +108,7 @@ function renderTable() {
       : 'No published Notes appear in this period. Try a longer period.';
     return;
   }
-  result.forEach((row) => {
+  result.slice(0, visibleCount).forEach((row) => {
     const tr = document.createElement('tr');
     const title = document.createElement('button');
     title.type = 'button';
@@ -132,6 +134,9 @@ function renderTable() {
       row.stats ? `${fmt(row.unconnectedCount)} of ${fmt(row.audienceCount)} people${row.unconnected == null ? ' · small sample' : ''}` : ''));
     body.append(tr);
   });
+  const more = $('note-compare-more');
+  more.hidden = result.length <= visibleCount;
+  more.textContent = `Show more Notes · ${Math.min(visibleCount, result.length)} of ${result.length} shown`;
   markSelected();
   scroller.scrollTop = scrollTop;
   scroller.scrollLeft = scrollLeft;
@@ -161,7 +166,7 @@ function render() {
 function renderMap() {
   renderNotesMap({
     rows: analyzed ? measuredRows() : [], total: notes.length,
-    analyzed, failed: failed.size, loading, cohort, error: loadError, navigate: navigateTo,
+    analyzed, failed: failed.size, loading, cohort, error: loadError,
   });
 }
 
@@ -176,6 +181,7 @@ export function renderNotesComparison(data, navigate, activeId) {
   const changed = sourceData !== data || signature !== nextSignature || query !== nextQuery;
   if (signature !== nextSignature) {
     signature = nextSignature;
+    visibleCount = PAGE_SIZE;
     generation++;
     analyzed = false;
     loading = false;
@@ -194,11 +200,12 @@ export function renderNotesComparison(data, navigate, activeId) {
 
 export function filterNotesComparison(value) {
   query = value.toLowerCase().trim();
+  visibleCount = PAGE_SIZE;
   renderControls();
   renderTable();
 }
 
-async function analyzeNotes() {
+async function analyzeNotes(retryUnavailable = false) {
   if (loading || !notes.length) return;
   loading = true;
   loadError = '';
@@ -207,7 +214,7 @@ async function analyzeNotes() {
   render();
   try {
     const days = sourceData?.range?.days || 90;
-    const response = await fetch(`/api/note-comparison?days=${days}`, { cache: 'no-store' });
+    const response = await fetch(`/api/note-comparison?days=${days}${retryUnavailable ? '&retry=1' : ''}`, { cache: 'no-store' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not analyze Notes.');
     if (generation !== currentGeneration) return;
@@ -228,11 +235,11 @@ async function analyzeNotes() {
 }
 
 export async function loadMoreNotesComparison() {
-  await analyzeNotes();
+  await analyzeNotes(false);
 }
 
 export async function retryNotesComparison() {
-  await analyzeNotes();
+  await analyzeNotes(true);
 }
 
 export function clearNotesComparison() {
@@ -258,6 +265,10 @@ export function updateComparedNote(stats) {
 
 export function setupNotesComparison() {
   setupNotesMap(loadMoreNotesComparison, retryNotesComparison);
+  $('note-compare-more').addEventListener('click', () => {
+    visibleCount += PAGE_SIZE;
+    renderTable();
+  });
   $('note-compare-export').addEventListener('click', () => {
     downloadCsv('substack-notes-comparison.csv',
       ['Published', 'Note', 'Note ID', 'Impressions', 'Pace vs typical',
@@ -278,6 +289,7 @@ export function setupNotesComparison() {
         ? sort.direction === 'desc' ? 'asc' : 'desc'
         : key === 'title' ? 'asc' : 'desc',
     };
+    visibleCount = PAGE_SIZE;
     render();
   });
 }

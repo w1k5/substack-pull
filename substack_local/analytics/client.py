@@ -5,7 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "substack-pull" / "scripts"))
-from substack_pull import (  # noqa: E402
+from substack_post_core import (  # noqa: E402
     ApiClient,
     KeychainStore,
     PullError,
