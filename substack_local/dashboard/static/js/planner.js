@@ -117,7 +117,7 @@ function renderCalendar() {
       if (count >= 3) button.classList.add('busy');
       if (openings.has(day)) button.classList.add('opening');
       if (selectedDay === day) button.classList.add('selected');
-      button.setAttribute('aria-label', `${longDate(day)}: ${count} scheduled Notes${openings.has(day) ? ', an open slot' : ''}`);
+      button.setAttribute('aria-label', `${longDate(day)}: ${count} scheduled ${count === 1 ? 'Note' : 'Notes'}${openings.has(day) ? ', an open slot' : ''}`);
       button.addEventListener('click', () => {
         selectedDay = day;
         $('planner-at').value = `${day}T09:00`;

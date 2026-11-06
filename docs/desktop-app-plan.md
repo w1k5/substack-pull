@@ -1,7 +1,7 @@
 # Desktop app plan: Substack analytics for writers
 
-**Status:** Mac sign-in proof of concept built; distribution plan remains open
-**Last reviewed:** November 5, 2026
+**Status:** Mac prototype and Windows beta source built; Windows runtime validation and distribution remain open
+**Last reviewed:** November 6, 2026
 **Audience:** Writers on macOS or Windows who may use Claude or ChatGPT
 
 ## Goal
@@ -35,7 +35,7 @@ The desktop app is the primary product. AI access is optional. The dashboard and
 | `substack-pull` and `substack-notes-pull` | Incremental backup and local search behavior | Extract reusable operations from CLI entry points; retain the CLIs for technical users. |
 | `substack/.analytics-cache/` | Short-term request cache | Keep it distinct from durable history; add schema migrations, retention, and a clear-data action. |
 
-Today the project requires macOS, Python, and Keychain. The Mac proof of concept opens a private Substack sign-in window, checks publication editor access, and shares the saved session with the dashboard, MCP, and CLIs. Manual cookie entry remains a developer fallback. The dashboard runs on `127.0.0.1`; the MCP server runs over local standard input/output. There is no consumer installer or Windows implementation yet. See the [current setup](../README.md) and [code map](../substack_local/README.md).
+The Mac proof of concept opens a private Substack sign-in window, checks publication editor access, and shares the saved session with the dashboard, MCP, and CLIs. The Windows beta source uses WebView2, Windows Credential Manager, and the same local Python engine; its build instructions are in [desktop/windows](../desktop/windows/README.md). Manual cookie entry remains a developer fallback. The dashboard runs on `127.0.0.1`; the MCP server runs over local standard input/output. The Windows build still needs a real Windows sign-in and packaging test, and neither platform has a consumer installer yet. See the [current setup](../README.md) and [code map](../substack_local/README.md).
 
 ### Mac sign-in proof of concept
 

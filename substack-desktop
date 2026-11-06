@@ -7,14 +7,16 @@ APP="$BUILD_DIR/Clearview.app"
 BINARY="$APP/Contents/MacOS/Clearview"
 SOURCE="$SCRIPT_DIR/desktop/macos/ClearviewApp.swift"
 PLIST="$SCRIPT_DIR/desktop/macos/Info.plist"
+ICON="$SCRIPT_DIR/desktop/assets/Clearview.icns"
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "This desktop beta currently runs on macOS." >&2
   exit 1
 fi
-if [ ! -x "$BINARY" ] || [ "$SOURCE" -nt "$BINARY" ] || [ "$PLIST" -nt "$BINARY" ]; then
-  mkdir -p "$APP/Contents/MacOS" "$BUILD_DIR/module-cache"
+if [ ! -x "$BINARY" ] || [ "$SOURCE" -nt "$BINARY" ] || [ "$PLIST" -nt "$BINARY" ] || [ "$ICON" -nt "$BINARY" ]; then
+  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$BUILD_DIR/module-cache"
   cp "$PLIST" "$APP/Contents/Info.plist"
+  cp "$ICON" "$APP/Contents/Resources/Clearview.icns"
   CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache" \
     SWIFT_MODULE_CACHE_PATH="$BUILD_DIR/module-cache" \
     xcrun swiftc -parse-as-library "$SOURCE" -o "$BINARY"

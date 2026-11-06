@@ -16,7 +16,7 @@ from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for,
 from .derived import dashboard_metrics, post_detail_metrics, post_index_metrics
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
-from .note_shares import post_note_shares, public_note_preview
+from .note_shares import post_note_shares, public_note_preview, public_note_text
 from .post import fetch_post, fetch_post_week, first_week_summary
 from .post_comparison import summarize_post_portfolio
 from .publication import fetch_dashboard, fetch_posts
@@ -297,6 +297,10 @@ class AnalyticsService:
                 if disk_value is not None:
                     self.note_cache.pop(note_id, None)
                     disk_value = {**disk_value, "comparison": note_comparison_metrics(disk_value)}
+                    if "full_text" not in disk_value:
+                        disk_value = {**disk_value, "full_text": public_note_text(
+                            ROOT / "substack" / "published-notes", note_id
+                        )}
                     if "preview" not in disk_value:
                         disk_value = {**disk_value, "preview": public_note_preview(
                             ROOT / "substack" / "published-notes", note_id
@@ -306,6 +310,10 @@ class AnalyticsService:
             if saved and not refresh:
                 return saved[1]
             value = note_stats(self.note_api, note_id)
+            if not value.get("full_text"):
+                value = {**value, "full_text": public_note_text(
+                    ROOT / "substack" / "published-notes", note_id
+                )}
             value = {**value, "comparison": note_comparison_metrics(value)}
             cached_on_disk = False
             if self.note_disk_cache:

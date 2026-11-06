@@ -4,6 +4,7 @@ from __future__ import annotations
 from email.utils import parsedate_to_datetime
 import json
 import math
+import getpass
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import urllib.parse
 import urllib.request
 
 from .common import KEYCHAIN_SERVICE, READ_ONLY_POST_PATHS, PullError
+from ...credentials import CredentialError, WindowsCredentialStore
 
 
 def normalize_publication(value: str) -> str:
@@ -55,6 +57,9 @@ class KeychainStore:
             raise PullError("macOS Keychain is required, but 'security' is unavailable.")
 
     def store_interactive(self, account: str) -> None:
+        if sys.platform == "win32":
+            self.save(account, getpass.getpass("Substack session cookie value: "))
+            return
         self._require_macos()
         print(
             "Paste the Substack session cookie VALUE at the Keychain prompt "
@@ -78,6 +83,14 @@ class KeychainStore:
             raise PullError("Keychain did not store the Substack session value.")
 
     def get(self, account: str) -> str:
+        if sys.platform == "win32":
+            try:
+                token = WindowsCredentialStore(self.service).lookup(account)
+            except CredentialError as exc:
+                raise PullError(str(exc)) from exc
+            if not token:
+                raise PullError(f"No session is stored for {account}. Connect Substack in Clearview.")
+            return token
         self._require_macos()
         result = subprocess.run(
             [
@@ -101,6 +114,14 @@ class KeychainStore:
         if not token:
             raise PullError(f"The stored session for {account} is empty.")
         return token
+
+    def save(self, account: str, token: str) -> None:
+        if sys.platform != "win32":
+            raise PullError("Desktop session saving is handled by macOS Keychain.")
+        try:
+            WindowsCredentialStore(self.service).save(account, token)
+        except CredentialError as exc:
+            raise PullError(str(exc)) from exc
 
     def exists(self, account: str) -> bool:
         try:

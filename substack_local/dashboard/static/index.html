@@ -13,9 +13,18 @@
     <link rel="stylesheet" href="/css/post-insights.css" />
     <link rel="stylesheet" href="/css/post-portfolio.css" />
     <link rel="stylesheet" href="/css/views.css" />
+    <link rel="stylesheet" href="/css/comparison-map.css" />
     <link rel="stylesheet" href="/css/planner.css" />
   </head>
-  <body>
+  <body class="boot-loading">
+    <div class="boot-screen" role="status" aria-live="polite">
+      <div class="boot-mark" aria-hidden="true">↗</div>
+      <div id="boot-spinner" class="spinner boot-spinner" aria-hidden="true"></div>
+      <p class="boot-kicker">CLEARVIEW</p>
+      <h1>Finding your clear view.</h1>
+      <p id="boot-message">Gathering your publication’s story…</p>
+      <button id="boot-retry" class="refresh" type="button" hidden>Try again</button>
+    </div>
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
@@ -32,7 +41,7 @@
         </nav>
         <div class="side-bottom">
           <span class="live-dot"></span> Private · local<br /><small
-            >Session stays in macOS Keychain</small
+            >Connection stays on this device</small
           >
         </div>
       </aside>
@@ -328,20 +337,22 @@
               <div class="panel-heading">
                 <div><div class="eyebrow">ACROSS NOTES</div><h2 id="note-map-title">Which Notes travel and move readers?</h2></div>
               </div>
-              <p class="note-map-lead">Each dot is a Note. Compare its reach with your usual Note at the same age, choose a reader outcome, then select up to two dots to compare them here.</p>
+              <p class="note-map-lead">See which Notes reached further than usual and how readers responded.</p>
               <div class="note-map-toolbar">
-                <div id="note-map-lenses" class="note-map-lenses" aria-label="Compare Notes by reader outcome">
-                  <button type="button" class="segment" data-map-lens="responses">Reader response</button>
-                  <button type="button" class="segment" data-map-lens="visits">Profile curiosity</button>
-                  <button type="button" class="segment" data-map-lens="clicks">Onward clicks</button>
-                  <button type="button" class="segment" data-map-lens="unconnected">New audience</button>
+                <div class="note-map-outcome">
+                  <span id="note-map-outcome-label">Compare by</span>
+                  <div id="note-map-lenses" class="note-map-lenses" role="group" aria-labelledby="note-map-outcome-label">
+                    <button type="button" class="segment" data-map-lens="responses">Responses</button>
+                    <button type="button" class="segment" data-map-lens="visits">Profile visits</button>
+                    <button type="button" class="segment" data-map-lens="clicks">Link clicks</button>
+                    <button type="button" class="segment" data-map-lens="unconnected">Unconnected audience</button>
+                  </div>
                 </div>
-                <button type="button" class="refresh" id="note-map-analyze">Analyze Notes</button>
                 <button type="button" class="refresh" id="note-map-retry" hidden>Retry unavailable</button>
               </div>
-              <div id="note-map-progress" class="loading-state note-map-progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Analyzing Notes…</span></div>
+              <div id="note-map-progress" class="loading-state note-map-progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Comparing Notes…</span></div>
               <p id="note-map-key" class="note-map-key" hidden></p>
-              <p id="note-map-empty" class="empty-state">Analyze Notes to compare their performance.</p>
+              <p id="note-map-empty" class="empty-state" hidden></p>
               <div id="note-map-display" class="note-map-display" hidden>
                 <div class="note-map-visual">
                   <div id="note-map-y-title" class="note-map-y-title"></div>
@@ -352,21 +363,20 @@
                   </div>
                   <div class="note-map-x-title">Reach vs your typical Note at the same age →</div>
                 </div>
-                <div id="note-map-comparison" class="note-map-comparison" aria-live="polite"></div>
+                <aside id="note-map-comparison" class="note-map-comparison" aria-label="Selected Note comparison" aria-live="polite"></aside>
               </div>
               <p id="note-map-summary" class="note-map-summary" hidden></p>
-              <p id="note-map-search-note" class="footnote">Search Notes above to highlight a word or phrase here.</p>
-              <p class="footnote">Reader rates need at least 100 impressions; audience share needs at least 100 people. Note reach is age matched, while actions and audience are lifetime totals. The chart shows patterns to investigate, not what caused them.</p>
+              <p id="note-map-search-note" class="footnote" hidden></p>
+              <details class="note-map-method"><summary>How to read this chart</summary><p>Horizontal position compares reach with your usual Note at the same age. Responses combine likes, replies, shares, and restacks. Reader actions and audience are lifetime totals. Rates require at least 100 impressions; audience share requires at least 100 people. These patterns suggest what to investigate, not what caused them.</p></details>
             </section>
             <section class="panel note-compare-panel" id="note-comparison" aria-labelledby="note-comparison-title">
               <div class="panel-heading">
                 <div><div class="eyebrow">EXACT FIGURES</div><h2 id="note-comparison-title">Compare Notes</h2><p id="note-compare-count" class="note-compare-count"></p></div>
                 <button type="button" class="refresh" id="note-compare-export" disabled>Export CSV</button>
               </div>
-              <p class="note-compare-lead">Browse every Note here. Select one to inspect its reach, or analyze all Notes to compare exact figures. Click a column heading to sort.</p>
+              <p class="note-compare-lead">Sort by any column, then select a Note to inspect its reach.</p>
               <p id="note-compare-guide" class="note-compare-guide"></p>
               <p id="note-compare-empty" class="empty-state" hidden></p>
-              <div id="note-compare-loading" class="loading-state" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Loading Note comparisons…</span></div>
               <div id="note-compare-results">
                 <div class="table-scroll note-compare-scroll" id="note-compare-scroll">
                   <table id="note-compare-table" class="note-compare-table">
@@ -470,7 +480,7 @@
           </section>
           </section>
           <footer>
-            Data from your authenticated Substack dashboard · Updated on demand · Local to this Mac
+            Data from your authenticated Substack dashboard · Updated on demand · Local to this device
           </footer>
         </div>
       </main>

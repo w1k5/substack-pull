@@ -10,8 +10,8 @@ from html import unescape
 from pathlib import Path
 
 
-def note_preview(note: dict) -> str:
-    """Prefer the Note's own text, then the quoted selection of a shared post."""
+def note_text(note: dict) -> str:
+    """Plain text of a Note, preserving paragraph breaks for reading."""
     body = note.get("body") or note.get("text") or ""
     if not body:
         for attachment in note.get("attachments") or []:
@@ -21,12 +21,19 @@ def note_preview(note: dict) -> str:
             body = selection.get("text") or attachment.get("quoted_text") or ""
             if body:
                 break
-    plain = re.sub(r"<[^>]+>", " ", str(body))
-    return " ".join(unescape(plain).split())[:180]
+    plain = re.sub(r"<br\s*/?>|</p>", "\n", str(body), flags=re.IGNORECASE)
+    plain = unescape(re.sub(r"<[^>]+>", " ", plain)).replace("\r\n", "\n")
+    return "\n".join(re.sub(r"[ \t]+", " ", line).strip()
+                     for line in plain.split("\n")).strip()
 
 
-def public_note_preview(backup_root: Path, note_id: str) -> str:
-    """Read a Note preview from any locally backed-up public profile."""
+def note_preview(note: dict) -> str:
+    """A compact excerpt for cards and lists."""
+    return " ".join(note_text(note).split())[:180]
+
+
+def public_note_text(backup_root: Path, note_id: str) -> str:
+    """Read a full Note from a local published Notes backup, when available."""
     if not backup_root.is_dir():
         return ""
     for path in backup_root.glob(f"*/notes/{note_id}.json"):
@@ -36,8 +43,13 @@ def public_note_preview(backup_root: Path, note_id: str) -> str:
             continue
         note = item.get("note") or {}
         if isinstance(note, dict) and str(note.get("id")) == note_id:
-            return note_preview(note)
+            return note_text(note)
     return ""
+
+
+def public_note_preview(backup_root: Path, note_id: str) -> str:
+    """Read a Note preview from any locally backed-up public profile."""
+    return " ".join(public_note_text(backup_root, note_id).split())[:180]
 
 
 def post_note_shares(backup_root: Path, post_id: str) -> dict:

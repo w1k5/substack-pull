@@ -8,6 +8,37 @@
   font-size: 13px;
   font-weight: 600;
 }
+body.boot-loading .shell { display: none; }
+.boot-screen { display: none; }
+body.boot-loading .boot-screen {
+  min-height: 100vh;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: radial-gradient(circle at 50% 43%, #f5f9ec 0, #f5f6f2 58%);
+}
+.boot-mark {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background: #d9edab;
+  color: #12352e;
+  font-size: 39px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 8px 25px rgba(36, 84, 72, 0.1);
+}
+.boot-spinner { margin: 33px 0 20px; width: 29px; height: 29px; }
+.boot-kicker { margin: 0; color: #668772; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; }
+.boot-screen h1 { margin: 10px 0 8px; font-size: clamp(25px, 4vw, 34px); letter-spacing: -0.05em; }
+.boot-screen p:last-of-type { margin: 0; color: #60776b; font-size: 14px; }
+.boot-screen .refresh { margin-top: 22px; }
+.boot-screen .refresh[hidden] { display: none; }
 .loading-state[hidden],
 .spinner[hidden] {
   display: none;
@@ -71,12 +102,9 @@
 }
 .metric .panel-spinner.loading-state {
   inset: 42px 1px 1px;
-  background: #fff;
+  background: inherit;
   font-size: 11px;
   gap: 8px;
-}
-.metric.accent .panel-spinner.loading-state {
-  background: #e9f1e1;
 }
 .metric .panel-spinner .spinner {
   width: 18px;

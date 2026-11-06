@@ -292,12 +292,71 @@ private struct SignInWebView: NSViewRepresentable {
 
 private struct DashboardWebView: NSViewRepresentable {
     let url: URL
+    func makeCoordinator() -> Coordinator { Coordinator(dashboardURL: url) }
+
     func makeNSView(context: Context) -> WKWebView {
-        let view = WKWebView()
+        let config = WKWebViewConfiguration()
+        config.userContentController.addUserScript(WKUserScript(
+            source: """
+                if (document.documentElement) {
+                    document.documentElement.classList.add('mac-desktop');
+                } else {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        document.documentElement.classList.add('mac-desktop');
+                    }, { once: true });
+                }
+                """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        let view = WKWebView(frame: .zero, configuration: config)
+        view.navigationDelegate = context.coordinator
+        view.uiDelegate = context.coordinator
         view.load(URLRequest(url: url))
         return view
     }
     func updateNSView(_ view: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        let dashboardURL: URL
+
+        init(dashboardURL: URL) { self.dashboardURL = dashboardURL }
+
+        private func isDashboard(_ url: URL) -> Bool {
+            url.scheme == dashboardURL.scheme && url.host == dashboardURL.host
+                && url.port == dashboardURL.port
+        }
+
+        private func openExternally(_ url: URL) {
+            guard url.scheme == "https" || url.scheme == "http" else { return }
+            NSWorkspace.shared.open(url)
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            guard let destination = action.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            if isDashboard(destination) || action.targetFrame == nil {
+                decisionHandler(.allow)
+                return
+            }
+            if action.navigationType == .linkActivated { openExternally(destination) }
+            decisionHandler(.cancel)
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                     for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            guard let destination = action.request.url else { return nil }
+            if isDashboard(destination) {
+                webView.load(action.request)
+            } else if action.navigationType == .linkActivated {
+                openExternally(destination)
+            }
+            return nil
+        }
+    }
 }
 
 private struct ContentView: View {
@@ -342,18 +401,45 @@ private struct ContentView: View {
                     }
                     SignInWebView(onSession: model.receivedSession)
                 }
+                .padding(.top, 30)
             case .dashboard:
                 if let url = model.dashboardURL {
                     DashboardWebView(url: url)
-                        .toolbar {
-                            Button("Reconnect Substack") { model.beginSignIn() }
-                        }
                 }
             }
         }
         .frame(minWidth: 920, minHeight: 620)
+        .ignoresSafeArea(edges: .top)
         .task { model.load() }
     }
+}
+
+private final class FullWindowHostingView<Content: View>: NSHostingView<Content> {
+    override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
+    override var safeAreaRect: NSRect { bounds }
+}
+
+private func installMenus(delegate: ClearviewDelegate) {
+    let mainMenu = NSMenu()
+    let appItem = NSMenuItem()
+    let appMenu = NSMenu(title: "Clearview")
+    let reconnect = NSMenuItem(title: "Reconnect Substack…", action: #selector(ClearviewDelegate.reconnectSubstack(_:)), keyEquivalent: "R")
+    reconnect.target = delegate
+    appMenu.addItem(reconnect)
+    appMenu.addItem(.separator())
+    appMenu.addItem(withTitle: "Quit Clearview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    appItem.submenu = appMenu
+    mainMenu.addItem(appItem)
+
+    let editItem = NSMenuItem()
+    let editMenu = NSMenu(title: "Edit")
+    editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    editItem.submenu = editMenu
+    mainMenu.addItem(editItem)
+    NSApplication.shared.mainMenu = mainMenu
 }
 
 @main
@@ -361,19 +447,26 @@ struct ClearviewApp {
     @MainActor static func main() {
         let application = NSApplication.shared
         application.setActivationPolicy(.regular)
+        if let iconURL = Bundle.main.url(forResource: "Clearview", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            application.applicationIconImage = icon
+        }
         let model = AppModel()
         let delegate = ClearviewDelegate(model: model)
+        installMenus(delegate: delegate)
         application.delegate = delegate
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Clearview"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.center()
         window.delegate = delegate
-        window.contentView = NSHostingView(rootView: ContentView(model: model))
+        window.contentView = FullWindowHostingView(rootView: ContentView(model: model))
         window.makeKeyAndOrderFront(nil)
         application.activate(ignoringOtherApps: true)
         application.run()
@@ -385,6 +478,7 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
 
     init(model: AppModel) { self.model = model }
 
+    @MainActor @objc func reconnectSubstack(_ sender: Any?) { model.beginSignIn() }
     func windowWillClose(_ notification: Notification) { NSApplication.shared.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) { model.stop() }
 }

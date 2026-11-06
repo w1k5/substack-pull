@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import getpass
 from typing import Any
 import urllib.parse
 
@@ -13,6 +14,7 @@ from .constants import (DEFAULT_OUTPUT, KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_ACCOUN
                         LEGACY_KEYCHAIN_SERVICE, SUBSTACK_PULL_CONFIG)
 from .files import atomic_write_json, load_private_notes, read_json
 from .model import PrivateNotesError, load_zone, local_zone_name, note_category
+from ...credentials import CredentialError, WindowsCredentialStore
 
 
 class KeychainStore:
@@ -24,6 +26,14 @@ class KeychainStore:
             raise PrivateNotesError("macOS Keychain is required, but 'security' is unavailable.")
 
     def store_interactive(self, account: str) -> None:
+        if sys.platform == "win32":
+            try:
+                WindowsCredentialStore(self.service).save(
+                    account, getpass.getpass("Substack session cookie value: ")
+                )
+            except CredentialError as exc:
+                raise PrivateNotesError(str(exc)) from exc
+            return
         self._require_macos()
         print(
             "Paste the Substack session cookie VALUE at the Keychain prompt "
@@ -48,6 +58,11 @@ class KeychainStore:
             raise PrivateNotesError("Keychain did not store the Substack session value.")
 
     def lookup(self, account: str) -> str | None:
+        if sys.platform == "win32":
+            try:
+                return WindowsCredentialStore(self.service).lookup(account)
+            except CredentialError as exc:
+                raise PrivateNotesError(str(exc)) from exc
         self._require_macos()
         result = subprocess.run(
             ["security", "find-generic-password", "-a", account, "-s", self.service, "-w"],

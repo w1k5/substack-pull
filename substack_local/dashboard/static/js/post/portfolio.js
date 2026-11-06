@@ -1,4 +1,5 @@
 import { $, date, fmt, pct, loadingIndicator } from '../shared.js';
+import { comparisonMetrics, comparisonSelectionHeading } from '../comparison-elements.js';
 
 const MIN_FIRST_WEEK_VIEWS = 100;
 const MIN_LIFETIME_VIEWS = 1000;
@@ -110,6 +111,10 @@ function yScale(values) {
 
 function showTooltip(row, event, point) {
   const tooltip = $('post-map-tooltip');
+  if (selectedIds.includes(row.id)) {
+    tooltip.hidden = true;
+    return;
+  }
   tooltip.replaceChildren();
   const title = document.createElement('strong');
   title.textContent = row.title;
@@ -136,8 +141,6 @@ function card(row, comparison) {
   const published = document.createElement('small');
   published.textContent = date(row.date);
   heading.append(title, published);
-  const metrics = document.createElement('div');
-  metrics.className = 'post-map-card-metrics';
   const common = [[fmt(xValue(row)), `${lifetimeMode() ? 'lifetime' : 'first-week'} views · ${comparison.reach_multiple[String(row.id)].toFixed(1)}× median`]];
   const details = mode === 'staying' ? [
     [fmt(row.launch_views), 'day-one views'],
@@ -159,15 +162,7 @@ function card(row, comparison) {
     [`${row.later_multiple.toFixed(1)}×`, 'later / first week'],
     [fmt(row.lifetime_views), 'lifetime views'],
   ];
-  for (const [value, label] of [...common, ...details]) {
-    const item = document.createElement('span');
-    const amount = document.createElement('b');
-    amount.textContent = value;
-    const caption = document.createElement('small');
-    caption.textContent = label;
-    item.append(amount, caption);
-    metrics.append(item);
-  }
+  const metrics = comparisonMetrics('post-map-card-metrics', [...common, ...details]);
   const open = document.createElement('a');
   open.href = `/posts/${encodeURIComponent(row.id)}`;
   open.dataset.route = '';
@@ -194,8 +189,6 @@ function compactCard(row, comparison) {
   title.textContent = row.title;
   const context = document.createElement('small');
   context.textContent = `${date(row.date)} · ${comparison.reach_multiple[String(row.id)].toFixed(1)}× median reach`;
-  const metrics = document.createElement('div');
-  metrics.className = 'post-map-mini-metrics';
   const count = mode === 'staying' ? row.later_week_views : mode === 'yield' ? row.signups
     : mode === 'sharing' ? row.lifetime_shares : mode === 'tail' ? row.later_views
       : row[`lifetime_${mode}`];
@@ -203,19 +196,11 @@ function compactCard(row, comparison) {
     : mode === 'yield' ? 'Signups' : mode === 'sharing' ? 'Shares' : mode;
   const outcome = mode === 'tail' ? `${row.later_multiple.toFixed(1)}×`
     : MODES[mode].format(MODES[mode].value(row));
-  for (const [value, label] of [
+  const metrics = comparisonMetrics('post-map-mini-metrics', [
     [fmt(xValue(row)), lifetimeMode() ? 'Views' : 'Week 1 views'],
     [fmt(count), countLabel],
     [outcome, mode === 'staying' ? 'Later share' : mode === 'tail' ? 'Later / week 1' : 'Per 1k views'],
-  ]) {
-    const item = document.createElement('span');
-    const amount = document.createElement('b');
-    amount.textContent = value;
-    const caption = document.createElement('small');
-    caption.textContent = label;
-    item.append(amount, caption);
-    metrics.append(item);
-  }
+  ]);
   root.append(title, context, metrics);
   return root;
 }
@@ -226,7 +211,7 @@ function renderSelection(rows, comparison) {
   const selected = selectedIds.map((id) => rows.find((row) => row.id === id)).filter(Boolean);
   if (!selected.length) {
     const heading = document.createElement('strong');
-    heading.textContent = 'Read the map';
+    heading.textContent = 'Choose a post';
     const guide = document.createElement('p');
     guide.textContent = 'Farther right means more views. Higher means more of the outcome on the vertical axis. Dashed lines mark cohort medians.';
     const action = document.createElement('p');
@@ -234,16 +219,10 @@ function renderSelection(rows, comparison) {
     root.append(heading, guide, action);
     return;
   }
-  const heading = document.createElement('div');
-  heading.className = 'post-map-selection-heading';
-  const label = document.createElement('strong');
-  label.textContent = selected.length === 1 ? 'Selected post' : 'Side by side';
-  const clear = document.createElement('button');
-  clear.type = 'button';
-  clear.className = 'refresh';
-  clear.textContent = 'Clear selection';
-  clear.addEventListener('click', () => { selectedIds = []; renderPostPortfolio(snapshot); });
-  heading.append(label, clear);
+  const heading = comparisonSelectionHeading('post-map-selection-heading', 'post', selected.length, () => {
+    selectedIds = [];
+    renderPostPortfolio(snapshot);
+  });
   const cards = document.createElement('div');
   cards.className = 'post-map-cards';
   selected.forEach((row) => cards.append(selected.length === 2

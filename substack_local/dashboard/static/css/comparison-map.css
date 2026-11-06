@@ -1,0 +1,110 @@
+/* Shared Posts and Notes comparison pattern. Keep view-specific scales and labels in their own files. */
+:is(.post-map-workspace, .note-map-display) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: var(--space-6);
+  align-items: start;
+}
+:is(.post-map-visual, .note-map-visual) { min-width: 0; padding: 2px 12px 0 52px; }
+:is(.post-map-y-title, .note-map-y-title, .post-map-x-title, .note-map-x-title) {
+  color: #597365;
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+:is(.post-map-y-title, .note-map-y-title) { margin: 0 0 11px -52px; }
+:is(.post-map-x-title, .note-map-x-title) { margin: 30px 0 0; text-align: center; }
+:is(.post-map-plot, .note-map-plot) {
+  position: relative;
+  min-width: 0;
+  height: 325px;
+  border-left: 1px solid #bacbbd;
+  border-bottom: 1px solid #bacbbd;
+}
+:is(#post-map-grid, #post-map-points, #note-map-grid, #note-map-points) { position: absolute; inset: 0; pointer-events: none; }
+:is(.post-map-tick, .note-map-tick) { position: absolute; color: #82988a; font-size: var(--text-xs); white-space: nowrap; pointer-events: none; }
+:is(.post-map-tick, .note-map-tick).vertical { bottom: -24px; transform: translateX(-50%); }
+:is(.post-map-tick, .note-map-tick).horizontal { left: -9px; transform: translate(-100%, -50%); }
+:is(.post-map-point, .note-map-point) {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+}
+:is(.post-map-point, .note-map-point):is(:hover, :focus-visible, .selected) {
+  z-index: 3;
+  box-shadow: 0 0 0 3px #d5ebdc, 0 0 0 5px #2f8060;
+}
+:is(.post-map-tooltip, .note-map-tooltip) {
+  position: absolute;
+  z-index: 4;
+  width: 205px;
+  padding: 8px 10px;
+  border: 1px solid #d3dfd4;
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: #2e4738;
+  box-shadow: 0 5px 18px rgba(20, 54, 42, .12);
+  pointer-events: none;
+  font-size: var(--text-caption);
+}
+:is(.post-map-tooltip, .note-map-tooltip) :is(strong, span, small) { display: block; }
+:is(.post-map-tooltip, .note-map-tooltip) strong { line-height: 1.3; margin-bottom: 3px; }
+:is(.post-map-tooltip, .note-map-tooltip) span { color: #687e70; }
+:is(.post-map-tooltip, .note-map-tooltip) small { margin-top: 4px; color: #82958a; }
+:is(.post-map-side, .note-map-comparison) {
+  min-width: 0;
+  height: 365px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #dce7da;
+  border-radius: var(--radius-control);
+  background: #f7faf5;
+  color: #687e70;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+:is(.post-map-comparison, .note-map-comparison) > strong { color: #284d3a; font-size: 13px; }
+:is(.post-map-comparison, .note-map-comparison) > p { margin: 10px 0 0; }
+:is(.post-map-selection-heading, .note-map-selection-heading) {
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: 6px;
+  background: #f7faf5;
+  color: #2e4738;
+}
+:is(.post-map-selection-heading, .note-map-selection-heading) .refresh { padding: 5px 9px; font-size: var(--text-caption); }
+:is(.post-map-cards, .note-map-cards) { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+:is(.post-map-mini, .note-map-mini) {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e3e9e1;
+  border-radius: var(--radius-control);
+  background: #fff;
+}
+:is(.post-map-mini-metrics, .note-map-mini-metrics) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 9px;
+}
+:is(.post-map-mini-metrics, .note-map-mini-metrics) :is(b, small) { display: block; }
+:is(.post-map-mini-metrics, .note-map-mini-metrics) b { color: #2e4738; font-size: 15px; }
+:is(.post-map-mini-metrics, .note-map-mini-metrics) small { color: #829388; font-size: var(--text-xs); line-height: 1.3; }
+@media (max-width: 1100px) {
+  :is(.post-map-workspace, .note-map-display) { grid-template-columns: 1fr; gap: 18px; }
+  :is(.post-map-side, .note-map-comparison) { height: auto; max-height: 320px; }
+}
+@media (max-width: 700px) {
+  .post-map-visual { padding-right: 0; }
+  .post-map-plot { height: 250px; }
+}

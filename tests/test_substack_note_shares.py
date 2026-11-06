@@ -6,11 +6,29 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from substack_local.analytics.note_shares import post_note_shares
+from substack_local.analytics.note import note_stats
+from substack_local.analytics.note_shares import note_preview, note_text, post_note_shares
 from substack_local.analytics.service import AnalyticsService
 
 
 class PostNoteSharesTests(TestCase):
+    def test_full_note_text_and_short_preview(self):
+        body = "A first paragraph.\n\n" + "A second paragraph with more words. " * 10
+        note = {"id": "c-11", "body": body}
+        self.assertEqual(note_text(note), body.strip())
+        self.assertEqual(len(note_preview(note)), 180)
+
+        class Api:
+            def get_json(self, path):
+                self.path = path
+                return {"cards": [{"cardId": "note", "note": {"note": note}}]}
+
+        api = Api()
+        result = note_stats(api, "11")
+        self.assertEqual(api.path, "/api/v1/note_stats/c-11")
+        self.assertEqual(result["full_text"], body.strip())
+        self.assertEqual(result["preview"], note_preview(note))
+
     def test_only_authored_post_attachments_match(self):
         with TemporaryDirectory() as directory:
             profile = Path(directory) / "published-notes" / "writer"

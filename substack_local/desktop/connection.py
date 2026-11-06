@@ -15,6 +15,7 @@ from ..pullers.posts import ApiClient, KeychainStore, PullError
 from ..pullers.posts.api import host_for, normalize_publication
 from ..pullers.posts.common import DEFAULT_OUTPUT
 from ..pullers.posts.storage import read_json, save_config
+from ..paths import data_root
 
 
 def publication_url(value: str) -> str:
@@ -58,9 +59,9 @@ def current_publication(config_path: Path) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("current", "verify", "configure"))
+    parser.add_argument("action", choices=("current", "verify", "configure", "connect"))
     parser.add_argument("--publication")
-    parser.add_argument("--config", type=Path, default=Path(".substack-pull.json"))
+    parser.add_argument("--config", type=Path, default=data_root() / ".substack-pull.json")
     args = parser.parse_args()
     try:
         if args.action == "current":
@@ -69,10 +70,14 @@ def main() -> int:
                 "publication": publication,
                 "connected": bool(publication and KeychainStore().exists(host_for(publication))),
             }
-        elif args.action == "verify":
+        elif args.action in {"verify", "connect"}:
             if not args.publication:
                 raise PullError("Enter your publication address.")
-            result = verify(args.publication, sys.stdin.read().rstrip("\r\n"))
+            token = sys.stdin.read().rstrip("\r\n")
+            result = verify(args.publication, token)
+            if args.action == "connect":
+                KeychainStore().save(result["account"], token)
+                configure(args.config, result["publication"])
         else:
             if not args.publication:
                 raise PullError("Enter your publication address.")

@@ -19,6 +19,8 @@ Browser   → dashboard/planner API → workflows/notes.py → pullers/private_n
 CLI       → skills/*/scripts/ → pullers/
 Mac app   → desktop/connection.py → pullers/posts/ + macOS Keychain
           → dashboard/server.py
+Windows app → desktop/connection.py → Windows Credential Manager
+            → dashboard/server.py
 ```
 
 The dashboard does not require an MCP process. Put reusable Substack requests and metric
@@ -40,7 +42,7 @@ definitions in `analytics/`; the two interfaces choose data and translate their 
 | Publication charts | `dashboard/static/js/timeline.js` draws publication views and event markers; `dashboard/static/js/source-trend.js` draws subscriber source history on Discovery. |
 | Notes and export UI | `dashboard/static/js/notes-page.js` renders individual Notes; `dashboard/static/js/notes-compare.js` loads and compares Note stats, rendering the table in batches of 50; `dashboard/static/js/notes-map.js` draws the outcome comparison on the Notes page; `dashboard/static/js/planner.js` renders the Note calendar, draft backlog, and preview and confirm flows. `dashboard/static/js/export.js` writes the relevant filtered rows as CSV. |
 | Post UI | `dashboard/static/js/post/` contains the first-week portfolio comparison, detail view, trajectory, Note reach, and insights. |
-| Shared UI and styling | `dashboard/static/js/shared.js` and `dashboard/static/index.html`; `dashboard/static/css/` separates shell, overview, post trajectory, Note reach, post insights, loading states, comparison, views, and planner styles. |
+| Shared UI and styling | `dashboard/static/js/shared.js` holds general DOM helpers; `dashboard/static/js/comparison-elements.js` builds the Posts and Notes selection cards; `dashboard/static/css/comparison-map.css` owns their common layout. `dashboard/static/index.html` assembles the views and stylesheets. Other CSS files stay scoped to the shell or a feature. |
 
 The UI tokens, control behavior, and analytics terms are recorded in [dashboard/DESIGN.md](dashboard/DESIGN.md).
 

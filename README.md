@@ -7,7 +7,8 @@ planning. The CLI remains available for setup and manual use.
 
 | What you want to do | Start here |
 | --- | --- |
-| Connect your Substack account on this Mac | [Desktop sign-in prototype](#desktop-sign-in-prototype) |
+| Connect your Substack account on a Mac | [Desktop sign-in prototype](#desktop-sign-in-prototype) |
+| Build the Windows beta | [Windows beta build](desktop/windows/README.md) |
 | Work with analytics, backups, drafts, or schedules in Codex | [Set up the MCP server](#mcp-server-for-codex) |
 | Explore the visual dashboard and Note planner | Run `./substack-analytics` |
 | Run a manual post or Note backup | Run `./substack-pull pull` or `./substack-notes-pull pull` |
@@ -20,15 +21,17 @@ For the Mac and Windows release path, see the [desktop app plan](docs/desktop-ap
 
 ## Requirements
 
-- macOS for authenticated tools and the dashboard.
+- macOS for the source-checkout authenticated tools and dashboard. The packaged
+  Windows beta uses Windows Credential Manager; see its [build guide](desktop/windows/README.md).
 - Python 3.10 or newer for the CLIs and dashboard; Python 3.11 or newer for the
   MCP registration command, which uses `tomllib`.
 - For your own publication: a browser signed in to a Substack account that can edit it.
 - For the MCP server only: the Python package in `requirements-analytics-mcp.txt`.
 
-The CLIs and dashboard need no third-party Python packages. The unauthenticated public
-post and Note pullers do not need a Substack login or macOS Keychain; their Python
-scripts can also run on other operating systems.
+The macOS source-checkout CLIs and dashboard need no third-party Python packages.
+The Windows beta bundle includes its own Python runtime, time-zone data, and local
+MCP dependencies. The unauthenticated public post and Note pullers do not need a
+Substack login or OS credential store.
 
 ## Desktop sign-in prototype
 
@@ -37,10 +40,11 @@ Clearview app. Enter your `name.substack.com` publication address, select **Conn
 Substack**, and sign in on Substack's page with your usual email code or password. The
 app checks access to that publication, saves the session in macOS Keychain, and opens
 the dashboard. The same saved connection is used by the CLI and MCP tools. Use
-**Reconnect Substack** in the app if the session expires.
+**Clearview → Reconnect Substack…** in the Mac menu if the session expires.
 
-This is a developer-run beta prototype, not an installer for other writers. It needs
-Xcode command line tools and Python 3.10 or newer, and currently runs only on macOS.
+This is a developer-run Mac beta prototype, not an installer for other writers. It needs
+Xcode command line tools and Python 3.10 or newer. A separate [Windows beta
+build](desktop/windows/README.md) uses the same data engine and dashboard.
 The sign-in window uses a private WebKit session; the publication settings file stores
 the address and backup directory, never the session value. It handles one publication
 at a time. The app does not publish posts or Notes during sign-in.

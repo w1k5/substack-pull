@@ -20,6 +20,11 @@ Use one page heading, a short explanation, then panels with a small eyebrow and 
 descriptive heading. Supporting definitions belong in a footnote or disclosure near
 the number they explain. Keep chart labels and units visible.
 
+`static/css/comparison-map.css` owns the shared Posts and Notes dot-plot layout,
+selection pane, tooltip, and compact cards. Keep each measure's scale and meaning in
+its view-specific stylesheet. `static/js/comparison-elements.js` supplies the common
+selection heading and metric tiles; use it when adding another comparison view.
+
 ## Controls
 
 - `.refresh` is the outlined action style for refresh, export, and external-open
@@ -31,6 +36,10 @@ the number they explain. Keep chart labels and units visible.
   sorts ascending; numeric measures first sort descending. Null values go last.
 - Loading uses the shared spinner and a named status. Disabled controls have a
   disabled cursor; visible keyboard focus uses the shared focus ring.
+- In a comparison map, the first selected dot reveals its details in the right pane.
+  A second dot shows two compact cards there; **Clear selection** returns to the
+  guidance. On narrow windows, the pane follows the plot. Selected dots do not show
+  a duplicate hover tooltip.
 - Export buttons say **Export CSV**. They export the rows matching the current
   filters, or the measured cohort on the Notes comparison page, regardless of table
   pagination. Explain any blank fields beside the table.
@@ -51,9 +60,14 @@ the number they explain. Keep chart labels and units visible.
   table and individual Note totals are lifetime values. Mark that scope near each comparison.
 - **Refresh publication** updates publication-period data. **Refresh post** and
   **Refresh Note** update their selected detail. Notes comparison loads its cohort
-  on demand in batches. Never present a Note's activity as proof that it caused a
-  post spike or an individual subscriber conversion.
+  automatically and can retry unavailable stats. Never present a Note's activity as
+  proof that it caused a post spike or an individual subscriber conversion.
+
+Use sentence case for action labels and capitalize **Note** when referring to the
+Substack format. Cross-platform copy says **device**; name macOS or Windows only in
+platform-specific instructions.
 
 When adding a screen, compare it against Briefing, Posts, Discovery, Notes, and the
 detail pages for wording, control states, spacing, empty/loading/error states, and
-keyboard navigation.
+keyboard navigation. Run `python3 -m unittest tests.test_substack_dashboard` to
+catch stylesheets or browser modules omitted from the local server's asset list.

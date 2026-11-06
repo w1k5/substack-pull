@@ -6,3 +6,6 @@
 __pycache__/
 *.py[cod]
 /desktop/macos/.build/
+/desktop/windows/.build/
+/desktop/windows/bin/
+/desktop/windows/obj/

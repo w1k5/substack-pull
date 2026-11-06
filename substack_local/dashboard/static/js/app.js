@@ -61,7 +61,7 @@ function renderRoute() {
   document.title = `${titles[route.view]} · Clearview`;
   if (route.view === 'planner') renderPlannerRoute();
   if (!data) {
-    setEmptyPanelsLoading(publicationLoading);
+    setEmptyPanelsLoading(publicationLoading && !document.body.classList.contains('boot-loading'));
     return;
   }
   if (route.view === 'briefing') renderBriefing(data, navigate);
@@ -164,9 +164,14 @@ async function load(force = false) {
   const priorData = data;
   loadingDifferentPeriod = !!(data && data.range.days !== days);
   publicationLoading = true;
+  if (!data) {
+    $('boot-message').textContent = 'Gathering your publication’s story…';
+    $('boot-spinner').hidden = false;
+    $('boot-retry').hidden = true;
+  }
   $('refresh').disabled = true;
   $('header-spinner').hidden = false;
-  setEmptyPanelsLoading(!data || loadingDifferentPeriod);
+  setEmptyPanelsLoading(!!data && loadingDifferentPeriod);
   $('overview').setAttribute('aria-busy', 'true');
   $('updated').textContent = !data ? 'Loading publication data…'
     : loadingDifferentPeriod ? 'Loading selected period…'
@@ -194,6 +199,8 @@ async function load(force = false) {
     publicationLoading = false;
     activePostId = undefined;
     tables.resetPages();
+    // Charts measure their container during render, so reveal the shell first.
+    document.body.classList.remove('boot-loading');
     render();
     renderSearchResults();
   } catch (error) {
@@ -205,11 +212,15 @@ async function load(force = false) {
       renderRoute();
     }
     const failedDays = days;
-    showLoadError(
-      `${priorData ? 'Could not update' : 'Could not load'} publication data: ${error.message}`
-        + (priorData ? ' The last loaded data is still shown.' : ''),
-      () => { $('range').value = String(failedDays); load(force); },
-    );
+    const retry = () => { $('range').value = String(failedDays); load(force); };
+    if (priorData) {
+      showLoadError(`Could not update publication data: ${error.message} The last loaded data is still shown.`, retry);
+    } else {
+      $('boot-message').textContent = `Could not load publication data: ${error.message}`;
+      $('boot-spinner').hidden = true;
+      $('boot-retry').hidden = false;
+      $('boot-retry').onclick = retry;
+    }
     $('updated').textContent = priorData ? updatedLabel(priorData) : 'Data unavailable';
   } finally {
     if (request === loadRequest) {
@@ -260,6 +271,7 @@ setupNotesComparison();
 setupPostPortfolio();
 setupNoteDetail(navigate);
 setupPlanner();
+if (currentRoute().view === 'planner') document.body.classList.remove('boot-loading');
 renderRoute();
 $('range').addEventListener('change', () => load());
 $('refresh').addEventListener('click', () => load(true));

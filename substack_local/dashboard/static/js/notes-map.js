@@ -1,26 +1,28 @@
 import { $, date, fmt, pct } from './shared.js';
+import { notePreview } from './note-preview.js';
+import { comparisonMetrics, comparisonSelectionHeading } from './comparison-elements.js';
 
 const lenses = {
   responses: {
-    label: 'Reader response',
+    label: 'Responses',
     axis: 'Responses per 1,000 impressions',
     value: (row) => row.responseRate,
     format: (value) => value.toFixed(1),
   },
   visits: {
-    label: 'Profile curiosity',
+    label: 'Profile visits',
     axis: 'Profile visits per 1,000 impressions',
     value: (row) => row.visitRate,
     format: (value) => value.toFixed(1),
   },
   clicks: {
-    label: 'Onward clicks',
+    label: 'Link clicks',
     axis: 'Link clicks per 1,000 impressions',
     value: (row) => row.clickRate,
     format: (value) => value.toFixed(1),
   },
   unconnected: {
-    label: 'New audience',
+    label: 'Unconnected audience',
     axis: 'Unconnected share of audience',
     value: (row) => row.unconnected,
     format: pct,
@@ -41,6 +43,10 @@ function niceCeiling(value) {
 
 function showTooltip(row, outcome, event, point) {
   const tooltip = $('note-map-tooltip');
+  if (selectedIds.includes(String(row.note.id))) {
+    tooltip.hidden = true;
+    return;
+  }
   tooltip.replaceChildren();
   const title = document.createElement('strong');
   title.textContent = row.note.title.length > 90 ? `${row.note.title.slice(0, 90)}…` : row.note.title;
@@ -61,12 +67,24 @@ function card(row) {
   root.className = 'note-map-card';
   const title = document.createElement('strong');
   title.className = 'note-map-card-copy';
-  title.textContent = row.note.title;
-  title.title = row.note.title;
+  title.id = `note-map-copy-${row.note.id}`;
+  const fullText = String(row.note.title || '');
+  const preview = notePreview(fullText, 160);
+  title.textContent = preview.text;
+  const expand = document.createElement('button');
+  expand.type = 'button';
+  expand.className = 'note-map-card-expand';
+  expand.textContent = 'Show full Note';
+  expand.setAttribute('aria-controls', title.id);
+  expand.setAttribute('aria-expanded', 'false');
+  expand.addEventListener('click', () => {
+    const expanded = expand.getAttribute('aria-expanded') !== 'true';
+    title.textContent = expanded ? fullText : preview.text;
+    expand.textContent = expanded ? 'Show less' : 'Show full Note';
+    expand.setAttribute('aria-expanded', String(expanded));
+  });
   const published = document.createElement('small');
   published.textContent = `Published ${date(row.note.day)}`;
-  const metrics = document.createElement('div');
-  metrics.className = 'note-map-card-metrics';
   const raw = lens === 'responses' ? [fmt(row.responses), 'responses']
     : lens === 'visits' ? [fmt(row.visits), 'profile visits']
     : lens === 'clicks' ? [fmt(row.clicks), 'link clicks']
@@ -77,16 +95,30 @@ function card(row) {
     [lenses[lens].format(lenses[lens].value(row)), lenses[lens].axis.toLowerCase()],
     raw,
   ];
-  for (const [value, label] of items) {
-    const item = document.createElement('span');
-    const amount = document.createElement('b');
-    amount.textContent = value;
-    const caption = document.createElement('small');
-    caption.textContent = label;
-    item.append(amount, caption);
-    metrics.append(item);
-  }
-  root.append(title, published, metrics);
+  const metrics = comparisonMetrics('note-map-card-metrics', items);
+  root.append(title);
+  if (preview.truncated) root.append(expand);
+  root.append(published, metrics);
+  return root;
+}
+
+function compactCard(row) {
+  const root = document.createElement('article');
+  root.className = 'note-map-mini';
+  const title = document.createElement('strong');
+  title.textContent = notePreview(row.note.title, 80).text;
+  const context = document.createElement('small');
+  context.textContent = `${date(row.note.day)} · ${row.pace.label} reach`;
+  const counts = lens === 'responses' ? [row.responses, 'Responses']
+    : lens === 'visits' ? [row.visits, 'Visits']
+      : lens === 'clicks' ? [row.clicks, 'Clicks']
+        : [row.unconnectedCount, 'Unconnected'];
+  const metrics = comparisonMetrics('note-map-mini-metrics', [
+    [fmt(row.impressions), 'Impressions'],
+    [fmt(counts[0]), counts[1]],
+    [lenses[lens].format(lenses[lens].value(row)), lens === 'unconnected' ? 'Audience share' : 'Per 1k'],
+  ]);
+  root.append(title, context, metrics);
   return root;
 }
 
@@ -103,26 +135,21 @@ function renderSelection(rows) {
   root.replaceChildren();
   const selected = selectedIds.map((id) => rows.find((row) => String(row.note.id) === id)).filter(Boolean);
   if (!selected.length) {
-    root.textContent = 'Select a dot to inspect a Note; select a second to compare them.';
+    const heading = document.createElement('strong');
+    heading.textContent = 'Choose a Note';
+    const guide = document.createElement('p');
+    guide.textContent = 'Select a dot to inspect its numbers here, then another to compare.';
+    root.append(heading, guide);
     return;
   }
-  const heading = document.createElement('div');
-  heading.className = 'note-map-selection-heading';
-  const label = document.createElement('strong');
-  label.textContent = selected.length === 1 ? 'Selected Note' : 'Side by side';
-  const clear = document.createElement('button');
-  clear.type = 'button';
-  clear.className = 'refresh';
-  clear.textContent = 'Clear selection';
-  clear.addEventListener('click', () => {
+  const heading = comparisonSelectionHeading('note-map-selection-heading', 'Note', selected.length, () => {
     selectedIds = [];
     syncSelection();
     renderSelection(rows);
   });
-  heading.append(label, clear);
   const cards = document.createElement('div');
   cards.className = 'note-map-cards';
-  selected.forEach((row) => cards.append(card(row)));
+  selected.forEach((row) => cards.append(selected.length === 2 ? compactCard(row) : card(row)));
   root.append(heading, cards);
   if (selected.length === 1) {
     const hint = document.createElement('p');
@@ -146,12 +173,12 @@ function addLine(root, direction, position, label, emphasized = false) {
 
 function renderPlot() {
   const { rows, total, analyzed, failed, loading, cohort, error } = snapshot;
-  $('note-map-progress').hidden = !loading;
-  const analyze = $('note-map-analyze');
-  analyze.hidden = !total || analyzed;
-  analyze.disabled = loading;
-  analyze.textContent = error ? 'Retry analysis' : 'Analyze Notes';
-  $('note-map-retry').hidden = !failed || loading;
+  const progress = $('note-map-progress');
+  progress.hidden = !loading;
+  progress.classList.toggle('with-results', !!rows.length);
+  const retry = $('note-map-retry');
+  retry.hidden = (!failed && !error) || loading;
+  retry.textContent = error ? 'Try again' : 'Retry missing stats';
   document.querySelectorAll('[data-map-lens]').forEach((button) => {
     const active = button.dataset.mapLens === lens;
     button.classList.toggle('active', active);
@@ -166,20 +193,21 @@ function renderPlot() {
   display.hidden = !plotted.length;
   const key = $('note-map-key');
   key.hidden = !plotted.length;
-  key.textContent = `Dashed guides: 1× typical reach and this cohort’s median ${definition.label.toLowerCase()}. Green dots clear both.`;
-  $('note-map-empty').hidden = !!plotted.length || loading;
+  key.textContent = `Dashed lines mark usual reach and the median ${definition.label.toLowerCase()}. Green dots are above both.`;
+  $('note-map-empty').hidden = !!plotted.length || loading || (!analyzed && !error && !!total);
   $('note-map-empty').textContent = !total
     ? 'No published Notes appear in this period. Choose a longer period.'
-    : error || (!analyzed
-      ? 'Analyze Notes to see how reach relates to reader outcomes.'
-      : 'No measured Notes have enough data for this outcome. Try another lens or retry unavailable Notes.');
+    : error ? `Could not compare Notes: ${error}`
+      : !analyzed ? ''
+        : 'No Notes have enough data for this measure. Try another outcome.';
   const summary = $('note-map-summary');
   summary.hidden = plotted.length < 5;
   const searchNote = $('note-map-search-note');
   const matches = plotted.filter((row) => row.note.title.toLowerCase().includes(query));
+  searchNote.hidden = !query || !plotted.length;
   searchNote.textContent = query
     ? `${matches.length} of ${plotted.length} plotted Notes match “${query}”. Other Notes stay visible for context.`
-    : 'Search Notes above to highlight a word or phrase here.';
+    : '';
   if (!plotted.length) {
     $('note-map-grid').replaceChildren();
     $('note-map-points').replaceChildren();
@@ -235,6 +263,7 @@ function renderPlot() {
         : [...selectedIds.slice(-1), id];
       syncSelection();
       renderSelection(plotted);
+      $('note-map-tooltip').hidden = true;
     });
     points.append(point);
   });
@@ -242,7 +271,7 @@ function renderPlot() {
   syncSelection();
   renderSelection(plotted);
   const standouts = cohort?.[lens]?.standouts ?? 0;
-  summary.textContent = `${standouts} of ${plotted.length} plotted Notes reached above their usual pace and above this cohort’s median ${definition.label.toLowerCase()}. Inspect their wording for ideas to test again.`;
+  summary.textContent = `${standouts} of ${plotted.length} Notes exceeded both benchmarks. Select one to inspect its wording and results.`;
 }
 
 export function renderNotesMap(state) {
@@ -257,8 +286,7 @@ export function setNoteMapQuery(value) {
   renderPlot();
 }
 
-export function setupNotesMap(analyze, retry) {
-  $('note-map-analyze').addEventListener('click', analyze);
+export function setupNotesMap(retry) {
   $('note-map-retry').addEventListener('click', retry);
   $('note-map-lenses').addEventListener('click', (event) => {
     const selected = event.target.closest('[data-map-lens]')?.dataset.mapLens;

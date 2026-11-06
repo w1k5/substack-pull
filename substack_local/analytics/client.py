@@ -1,8 +1,8 @@
 """Shared authenticated Substack client and repository paths."""
 
-from pathlib import Path
+from ..paths import data_root
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = data_root()
 from ..pullers.posts import (
     ApiClient,
     KeychainStore,

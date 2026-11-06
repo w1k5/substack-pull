@@ -51,6 +51,9 @@ body {
   top: 0;
   height: 100vh;
 }
+html.mac-desktop .sidebar {
+  padding-top: 64px;
+}
 .brand {
   display: flex;
   align-items: center;

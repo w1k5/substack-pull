@@ -2,12 +2,13 @@
 
 import json
 from http.server import ThreadingHTTPServer
+import re
 import threading
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from substack_local.dashboard.server import DashboardHandler, STATIC_FILES
+from substack_local.dashboard.server import DashboardHandler, STATIC, STATIC_FILES
 
 
 class StubAnalytics:
@@ -69,6 +70,16 @@ class DashboardRoutesTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["Content-Type"], content_type)
                 self.assertTrue(response.read())
+
+    def test_every_linked_stylesheet_and_local_module_is_declared(self):
+        index = (STATIC / "index.html").read_text()
+        for route in re.findall(r'href="(/css/[^"]+)"|src="(/js/[^"]+)"', index):
+            self.assertIn(next(filter(None, route)), STATIC_FILES)
+        for module in (STATIC / "js").rglob("*.js"):
+            for imported in re.findall(r"from ['\"](\.[^'\"]+)['\"]", module.read_text()):
+                target = (module.parent / imported).resolve()
+                route = "/" + target.relative_to(STATIC).as_posix()
+                self.assertIn(route, STATIC_FILES, f"{module.name} imports {imported}")
 
     def test_dashboard_and_detail_api_routes(self):
         for route, expected in (

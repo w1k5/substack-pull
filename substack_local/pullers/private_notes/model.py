@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -34,6 +35,12 @@ def local_zone_name() -> str:
             return configured
         except ZoneInfoNotFoundError:
             pass
+    if sys.platform == "win32":
+        try:
+            from tzlocal import get_localzone_name
+            return get_localzone_name()
+        except (ImportError, LookupError):
+            return "UTC"
     localtime = Path("/etc/localtime")
     try:
         resolved = localtime.resolve()

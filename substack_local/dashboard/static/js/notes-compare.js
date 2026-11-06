@@ -1,6 +1,7 @@
 import { $, date, fmt, pct, cell } from './shared.js';
 import { downloadCsv } from './export.js';
 import { renderNotesMap, setupNotesMap } from './notes-map.js';
+import { notePreview } from './note-preview.js';
 
 const lenses = {
   day: 'Newest Notes first. Choose a metric column to rank them by performance.',
@@ -113,7 +114,7 @@ function renderTable() {
     const title = document.createElement('button');
     title.type = 'button';
     title.className = 'note-compare-link';
-    title.textContent = row.note.title;
+    title.textContent = notePreview(row.note.title, 110).text;
     title.dataset.noteId = String(row.note.id);
     title.addEventListener('click', () => navigateTo(`/notes/${row.note.id}`));
     const noteCell = document.createElement('span');
@@ -123,7 +124,8 @@ function renderTable() {
     noteCell.append(title, exposure);
     cell(tr, noteCell);
     cell(tr, metric(row.stats ? row.pace.label : '—',
-      row.stats ? `${fmt(row.pace.actual)} vs ${fmt(row.pace.typical)} at ${row.pace.age}` : 'Load stats to compare'));
+      row.stats ? `${fmt(row.pace.actual)} vs ${fmt(row.pace.typical)} at ${row.pace.age}`
+        : loading ? 'Comparing…' : analyzed ? 'Unavailable' : ''));
     cell(tr, metric(row.visitRate == null ? '—' : row.visitRate.toFixed(1),
       row.stats ? `${fmt(row.visits)} visits${row.visitRate == null ? ' · small sample' : ''}` : ''));
     cell(tr, metric(row.responseRate == null ? '—' : row.responseRate.toFixed(1),
@@ -156,8 +158,7 @@ function renderControls() {
 }
 
 function render() {
-  $('note-compare-count').textContent = `${notes.length} Notes published in this period`;
-  $('note-compare-loading').hidden = !loading || measured.size > 0;
+  $('note-compare-count').textContent = `${notes.length} Notes published in this period${loading ? ' · comparing performance…' : ''}`;
   renderControls();
   renderTable();
   renderMap();
@@ -176,10 +177,11 @@ export function renderNotesComparison(data, navigate, activeId) {
   const nextNotes = (data.publication_events || [])
     .filter((event) => event.type === 'note' && /^\d+$/.test(String(event.id)))
     .sort((a, b) => b.day.localeCompare(a.day) || Number(b.id) - Number(a.id));
-  const nextSignature = nextNotes.map((note) => note.id).join(',');
+  const nextSignature = `${data.range?.days}:${nextNotes.map((note) => note.id).join(',')}`;
   const nextQuery = $('global-search').value.toLowerCase().trim();
   const changed = sourceData !== data || signature !== nextSignature || query !== nextQuery;
-  if (signature !== nextSignature) {
+  const newCohort = signature !== nextSignature;
+  if (newCohort) {
     signature = nextSignature;
     visibleCount = PAGE_SIZE;
     generation++;
@@ -196,6 +198,7 @@ export function renderNotesComparison(data, navigate, activeId) {
   query = nextQuery;
   if (changed) render();
   else markSelected();
+  if (newCohort && notes.length) analyzeNotes();
 }
 
 export function filterNotesComparison(value) {
@@ -234,16 +237,14 @@ async function analyzeNotes(retryUnavailable = false) {
   render();
 }
 
-export async function loadMoreNotesComparison() {
-  await analyzeNotes(false);
-}
-
 export async function retryNotesComparison() {
   await analyzeNotes(true);
 }
 
 export function clearNotesComparison() {
   generation++;
+  signature = '';
+  sourceData = undefined;
   analyzed = false;
   loading = false;
   cohort = null;
@@ -264,7 +265,7 @@ export function updateComparedNote(stats) {
 }
 
 export function setupNotesComparison() {
-  setupNotesMap(loadMoreNotesComparison, retryNotesComparison);
+  setupNotesMap(retryNotesComparison);
   $('note-compare-more').addEventListener('click', () => {
     visibleCount += PAGE_SIZE;
     renderTable();
