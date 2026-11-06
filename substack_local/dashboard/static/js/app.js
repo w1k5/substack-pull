@@ -18,10 +18,14 @@ let postPortfolio = null;
 let postPortfolioError = null;
 let postPortfolioLoading = false;
 let postPortfolioRequest = 0;
+let publicationLoading = false;
+let loadingDifferentPeriod = false;
+
+const updatedLabel = (snapshot) =>
+  `Updated ${new Date(snapshot.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 
 function render() {
-  $('updated').textContent =
-    `Updated ${new Date(data.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  $('updated').textContent = updatedLabel(data);
   renderRoute();
 }
 function currentRoute() {
@@ -56,7 +60,10 @@ function renderRoute() {
   };
   document.title = `${titles[route.view]} · Clearview`;
   if (route.view === 'planner') renderPlannerRoute();
-  if (!data) return;
+  if (!data) {
+    setEmptyPanelsLoading(publicationLoading);
+    return;
+  }
   if (route.view === 'briefing') renderBriefing(data, navigate);
   if (route.view === 'posts') {
     tables.renderPosts();
@@ -81,6 +88,7 @@ function renderRoute() {
       $('detail-content').replaceChildren(emptyMessage('This post is not in the published post list.'));
     }
   }
+  setEmptyPanelsLoading(publicationLoading && loadingDifferentPeriod);
 }
 const isNoteLibraryPath = (path) => /^\/notes(?:\/\d+)?$/.test(path);
 function navigate(path) {
@@ -124,59 +132,89 @@ function renderSearchResults() {
   results.hidden = false;
 }
 function setEmptyPanelsLoading(loading) {
+  document.querySelectorAll('.panel-spinner').forEach((spinner) => spinner.remove());
+  document.querySelectorAll('.empty-loading').forEach((panel) => panel.classList.remove('empty-loading'));
+  if (!loading || currentRoute().view === 'planner') return;
   document.querySelectorAll(
-    '.view:not([hidden]) .metric,.view:not([hidden]) .trend,.view:not([hidden]) .panel',
+    '.view:not([hidden]) .metric,.view:not([hidden]) .panel,.view:not([hidden]) .insight-callout',
   ).forEach((panel) => {
-    const existing = panel.querySelector(':scope > .panel-spinner');
-    if (loading && !existing) {
-      const indicator = loadingIndicator('Loading…');
-      indicator.classList.add('panel-spinner');
-      indicator.setAttribute('role', 'presentation');
-      panel.classList.add('empty-loading');
-      panel.append(indicator);
-    } else if (!loading) {
-      existing?.remove();
-      panel.classList.remove('empty-loading');
-    }
+    const indicator = loadingIndicator('Loading…');
+    indicator.classList.add('panel-spinner');
+    indicator.setAttribute('role', 'presentation');
+    panel.classList.add('empty-loading');
+    panel.append(indicator);
   });
 }
+
+function showLoadError(message, retry) {
+  const detail = document.createElement('span');
+  detail.textContent = message;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'refresh';
+  button.textContent = 'Try again';
+  button.addEventListener('click', retry);
+  $('notice').replaceChildren(detail, button);
+  $('notice').hidden = false;
+}
+
 async function load(force = false) {
   const request = ++loadRequest;
-  if (force) {
-    clearNoteStatsRequests();
-    clearNotePageStats();
-    clearNotesComparison();
-    postPortfolioRequest++;
-    postPortfolio = null;
-    postPortfolioError = null;
-    postPortfolioLoading = false;
-  }
+  const days = Number($('range').value);
+  const priorData = data;
+  loadingDifferentPeriod = !!(data && data.range.days !== days);
+  publicationLoading = true;
   $('refresh').disabled = true;
   $('header-spinner').hidden = false;
-  setEmptyPanelsLoading(!data);
+  setEmptyPanelsLoading(!data || loadingDifferentPeriod);
   $('overview').setAttribute('aria-busy', 'true');
-  $('updated').textContent = 'Loading live data…';
+  $('updated').textContent = !data ? 'Loading publication data…'
+    : loadingDifferentPeriod ? 'Loading selected period…'
+      : `${updatedLabel(data)} · refreshing…`;
   $('notice').hidden = true;
   try {
     const response = await fetch(
-      `/api/dashboard?days=${$('range').value}${force ? '&refresh=1' : ''}`,
+      `/api/dashboard?days=${days}${force ? '&refresh=1' : ''}`,
       { cache: 'no-store' },
     );
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Could not load analytics');
     if (request !== loadRequest) return;
+    if (force) {
+      clearNoteStatsRequests();
+      clearNotePageStats();
+      clearNotesComparison();
+      postPortfolioRequest++;
+      postPortfolio = null;
+      postPortfolioError = null;
+      postPortfolioLoading = false;
+    }
     data = payload;
+    loadingDifferentPeriod = false;
+    publicationLoading = false;
     activePostId = undefined;
     tables.resetPages();
     render();
     renderSearchResults();
   } catch (error) {
     if (request !== loadRequest) return;
-    $('notice').textContent = `Could not refresh: ${error.message}`;
-    $('notice').hidden = false;
-    $('updated').textContent = 'Refresh failed';
+    const changingPeriod = loadingDifferentPeriod;
+    loadingDifferentPeriod = false;
+    if (priorData && changingPeriod) {
+      $('range').value = String(priorData.range.days);
+      renderRoute();
+    }
+    const failedDays = days;
+    showLoadError(
+      `${priorData ? 'Could not update' : 'Could not load'} publication data: ${error.message}`
+        + (priorData ? ' The last loaded data is still shown.' : ''),
+      () => { $('range').value = String(failedDays); load(force); },
+    );
+    $('updated').textContent = priorData ? updatedLabel(priorData) : 'Data unavailable';
   } finally {
     if (request === loadRequest) {
+      publicationLoading = false;
+      loadingDifferentPeriod = false;
       $('refresh').disabled = false;
       $('header-spinner').hidden = true;
       setEmptyPanelsLoading(false);

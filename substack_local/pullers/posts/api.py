@@ -207,9 +207,7 @@ class ApiClient:
                         ) from exc
                     else:
                         raise PullError(
-                            "Substack rejected the stored session. Re-copy the value of "
-                            "connect.sid or substack.sid from your browser, then "
-                            "run './substack-pull auth' again."
+                            "Substack rejected the saved session. Reconnect your account."
                         ) from exc
                 if exc.code == 429 or 500 <= exc.code < 600:
                     last_error = exc

@@ -96,8 +96,7 @@ class PrivateApiClient:
                 self._last_request_at = time.monotonic()
                 if exc.code in {401, 403}:
                     raise PrivateNotesError(
-                        "The Notes session was rejected or expired. Run "
-                        "'./substack-pull auth' again."
+                        "The Notes session was rejected or expired. Reconnect your account."
                     ) from exc
                 if exc.code == 429 or 500 <= exc.code < 600:
                     last_error = exc
@@ -160,8 +159,7 @@ class PrivateApiClient:
             self._last_request_at = time.monotonic()
             if exc.code in {401, 403}:
                 raise PrivateNotesError(
-                    "The Notes session was rejected or expired. Run "
-                    "'./substack-pull auth' again."
+                    "The Notes session was rejected or expired. Reconnect your account."
                 ) from exc
             detail = exc.read(500).decode("utf-8", errors="replace")
             if 500 <= exc.code < 600:

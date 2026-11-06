@@ -1,7 +1,7 @@
 # Desktop app plan: Substack analytics for writers
 
-**Status:** Planning document, not an implementation commitment
-**Last reviewed:** November 3, 2026
+**Status:** Mac sign-in proof of concept built; distribution plan remains open
+**Last reviewed:** November 5, 2026
 **Audience:** Writers on macOS or Windows who may use Claude or ChatGPT
 
 ## Goal
@@ -35,7 +35,11 @@ The desktop app is the primary product. AI access is optional. The dashboard and
 | `substack-pull` and `substack-notes-pull` | Incremental backup and local search behavior | Extract reusable operations from CLI entry points; retain the CLIs for technical users. |
 | `substack/.analytics-cache/` | Short-term request cache | Keep it distinct from durable history; add schema migrations, retention, and a clear-data action. |
 
-Today the project requires macOS, Python, a manually supplied Substack browser session, and Keychain. The dashboard runs on `127.0.0.1`; the MCP server runs over local standard input/output. None is yet a consumer desktop installer or a Windows implementation. See the [current setup](../README.md) and [code map](../substack_local/README.md).
+Today the project requires macOS, Python, and Keychain. The Mac proof of concept opens a private Substack sign-in window, checks publication editor access, and shares the saved session with the dashboard, MCP, and CLIs. Manual cookie entry remains a developer fallback. The dashboard runs on `127.0.0.1`; the MCP server runs over local standard input/output. There is no consumer installer or Windows implementation yet. See the [current setup](../README.md) and [code map](../substack_local/README.md).
+
+### Mac sign-in proof of concept
+
+`./substack-desktop` builds and opens the native Mac window from this checkout. A writer enters their publication address and clicks **Connect Substack**. Substack's sign-in page runs in an isolated WebKit session. Once signed in, the app verifies editor access through the existing shared client, puts the resulting session in macOS Keychain, and opens the local dashboard. Reconnection uses the same flow. This validates the user experience and shared credential contract; it is not a signed installer or a public access route. An actual email-code login, Keychain renewal, and session expiry still need end-to-end testing before a beta is handed to others.
 
 ## Mac and Windows design
 
@@ -79,6 +83,16 @@ The app should disclose that data returned by an MCP tool or exported to an assi
 ## Data-access release gate
 
 The current analytics client uses Substack's authenticated, undocumented network requests. Substack's [Terms of Use](https://substack.com/tos) restrict crawling and scraping, so broad distribution of automatic refresh on those requests requires a deliberate access and policy decision. This is the main release constraint, not the desktop shell.
+
+As of November 5, 2026, the documented routes cover different parts of the product:
+
+| Route | Sign-in experience | Coverage gap for Clearview |
+| --- | --- | --- |
+| [Official Substack AI connector](https://support.substack.com/hc/en-us/articles/50834026608916-How-to-connect-Substack-to-your-AI-Assistant) | Substack sign-in and an access approval screen | Requires a Bestseller publication admin; read-only publication data; excludes Notes activity and Note posting. |
+| [Substack export](https://support.substack.com/hc/en-us/articles/360037466012-How-do-I-export-my-posts) | Writer downloads an export | No established live sync route; confirm the exact analytics and Note fields before designing import. |
+| Current browser-session client | Private in-app sign-in prototype | Uses undocumented analytics calls and a full browser session; permission and allowed request volume are unresolved for distribution. |
+
+Next access work: inventory every dashboard field against the export and official connector; ask Substack whether a supported, writer-authorized route can provide post analytics, Note analytics, draft creation, and scheduling, with explicit storage and refresh limits. A [request brief](substack-access-request.md) is ready for review; it has not been sent. Do not enable the session-based automatic sync for a broad release until that answer and the product scope are settled.
 
 Investigate these routes in order:
 

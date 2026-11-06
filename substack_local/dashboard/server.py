@@ -182,7 +182,7 @@ def main():
     DashboardHandler.service = AnalyticsService.from_saved_session()
     DashboardHandler.planner = NotePlanner()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), DashboardHandler)
-    print(f"Substack analytics: http://127.0.0.1:{args.port}", flush=True)
+    print(f"Substack analytics: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

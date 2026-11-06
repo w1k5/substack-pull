@@ -1,4 +1,9 @@
 .notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 14px 17px;
   border-radius: 10px;
   background: #fff5e3;
@@ -6,6 +11,9 @@
   margin: 0 0 20px;
   font-size: 13px;
 }
+.notice[hidden] { display: none; }
+.notice span { min-width: 0; overflow-wrap: anywhere; }
+.notice .refresh { flex: none; }
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -1,4 +1,4 @@
-import { $ } from './shared.js';
+import { $, loadingIndicator, emptyMessage } from './shared.js';
 
 let snapshot;
 let loading = false;
@@ -45,8 +45,15 @@ async function loadPlanner(refresh = false) {
   if (loading) return;
   loading = true;
   notice();
+  const hadSnapshot = !!snapshot;
+  $('planner-loading').classList.toggle('loading-inline', hadSnapshot);
+  $('planner-loading').querySelector('span:last-child').textContent = refresh
+    ? 'Syncing Notes…' : hadSnapshot ? 'Updating calendar…' : 'Loading Note plan…';
   $('planner-loading').hidden = false;
+  if (!hadSnapshot) $('planner-draft-list').replaceChildren(loadingIndicator('Loading drafts…'));
   $('planner-refresh').disabled = true;
+  $('planner-days').disabled = true;
+  $('planner-spacing').disabled = true;
   try {
     const days = $('planner-days').value;
     const spacing = $('planner-spacing').value;
@@ -56,10 +63,13 @@ async function loadPlanner(refresh = false) {
     renderPlanner();
   } catch (error) {
     notice(`Could not load the Note plan: ${error.message}`);
+    if (!snapshot) $('planner-draft-list').replaceChildren(emptyMessage('Notes are unavailable. Sync Notes to try again.'));
   } finally {
     loading = false;
     $('planner-loading').hidden = true;
     $('planner-refresh').disabled = false;
+    $('planner-days').disabled = false;
+    $('planner-spacing').disabled = false;
   }
 }
 

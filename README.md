@@ -7,7 +7,7 @@ planning. The CLI remains available for setup and manual use.
 
 | What you want to do | Start here |
 | --- | --- |
-| Connect your Substack account | [First-time setup](#first-time-setup-for-your-own-publication) |
+| Connect your Substack account on this Mac | [Desktop sign-in prototype](#desktop-sign-in-prototype) |
 | Work with analytics, backups, drafts, or schedules in Codex | [Set up the MCP server](#mcp-server-for-codex) |
 | Explore the visual dashboard and Note planner | Run `./substack-analytics` |
 | Run a manual post or Note backup | Run `./substack-pull pull` or `./substack-notes-pull pull` |
@@ -16,7 +16,7 @@ The post puller and analytics views read Substack data. The Notes CLI, MCP Note 
 and dashboard Note planner can also create a draft or change a schedule after a preview
 and confirmation step. They do not publish immediately.
 
-For a possible no-code Mac and Windows app, see the [desktop app plan](docs/desktop-app-plan.md).
+For the Mac and Windows release path, see the [desktop app plan](docs/desktop-app-plan.md).
 
 ## Requirements
 
@@ -30,7 +30,26 @@ The CLIs and dashboard need no third-party Python packages. The unauthenticated 
 post and Note pullers do not need a Substack login or macOS Keychain; their Python
 scripts can also run on other operating systems.
 
-## First-time setup for your own publication
+## Desktop sign-in prototype
+
+On macOS, run `./substack-desktop` from this checkout. It builds and opens a small
+Clearview app. Enter your `name.substack.com` publication address, select **Connect
+Substack**, and sign in on Substack's page with your usual email code or password. The
+app checks access to that publication, saves the session in macOS Keychain, and opens
+the dashboard. The same saved connection is used by the CLI and MCP tools. Use
+**Reconnect Substack** in the app if the session expires.
+
+This is a developer-run beta prototype, not an installer for other writers. It needs
+Xcode command line tools and Python 3.10 or newer, and currently runs only on macOS.
+The sign-in window uses a private WebKit session; the publication settings file stores
+the address and backup directory, never the session value. It handles one publication
+at a time. The app does not publish posts or Notes during sign-in.
+
+The normal browser dashboard remains available with `./substack-analytics` after
+connecting in the app. The access route for a broadly distributed Mac and Windows app
+is still under review; see the [desktop app plan](docs/desktop-app-plan.md).
+
+## Developer fallback: manual session setup
 
 1. In Safari or a Chromium-based browser, sign in to Substack.
 2. Open the browser's developer tools and find the Substack session cookie:
@@ -121,7 +140,7 @@ browser:
 ./substack-analytics
 ```
 
-The dashboard uses the publication and session from the first-time setup. It listens
+The dashboard uses the publication and session from the app or developer setup. It listens
 only on `127.0.0.1`; the session stays in Keychain and is not sent to the page. Keep the
 terminal open while using the dashboard, then stop it with Control-C. This command does
 not install a background service.

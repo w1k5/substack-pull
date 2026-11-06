@@ -17,6 +17,8 @@ AI client → mcp/backup_tools.py → workflows/backups.py ──┐
 AI client → mcp/note_writes.py ──────────────────┘
 Browser   → dashboard/planner API → workflows/notes.py → pullers/private_notes/
 CLI       → skills/*/scripts/ → pullers/
+Mac app   → desktop/connection.py → pullers/posts/ + macOS Keychain
+          → dashboard/server.py
 ```
 
 The dashboard does not require an MCP process. Put reusable Substack requests and metric
@@ -33,6 +35,7 @@ definitions in `analytics/`; the two interfaces choose data and translate their 
 | Shared pullers | `pullers/posts/`, `pullers/private_notes/`, and `pullers/public_notes/` own requests, sync, local files, and CLI commands. Their package `__init__.py` files preserve the previous imports. |
 | Shared workflows | `workflows/modules.py` selects the pullers and workspace paths; `workflows/backups.py` handles backup searches and sync; `workflows/notes.py` supplies the calendar snapshot and Note actions to the dashboard. |
 | Dashboard HTTP | `dashboard/server.py` handles local API requests, protects Note action routes with same-origin checks, and serves a fixed list of browser files. |
+| Mac desktop sign-in | `../desktop/macos/ClearviewApp.swift` owns the native sign-in and dashboard window; `desktop/connection.py` verifies publication access and saves the shared publication configuration. The app saves the session in macOS Keychain under the service already used by the CLI and MCP. |
 | Dashboard coordination | `dashboard/static/js/app.js` manages routes, data loading, and the date range. `dashboard/static/js/views/publication.js` renders the briefing and growth sources; `dashboard/static/js/views/tables.js` owns sorting, filtering, pagination, and CSV exports for source and post tables. |
 | Publication charts | `dashboard/static/js/timeline.js` draws publication views and event markers; `dashboard/static/js/source-trend.js` draws subscriber source history on Discovery. |
 | Notes and export UI | `dashboard/static/js/notes-page.js` renders individual Notes; `dashboard/static/js/notes-compare.js` loads and compares Note stats, rendering the table in batches of 50; `dashboard/static/js/notes-map.js` draws the outcome comparison on the Notes page; `dashboard/static/js/planner.js` renders the Note calendar, draft backlog, and preview and confirm flows. `dashboard/static/js/export.js` writes the relevant filtered rows as CSV. |

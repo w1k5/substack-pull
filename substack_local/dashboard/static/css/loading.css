@@ -15,6 +15,16 @@
 .post-detail .loading-state {
   min-height: 180px;
 }
+.loading-state.loading-inline {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 4px 0 16px;
+}
+.loading-state.loading-inline .spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
 .spinner {
   display: inline-block;
   width: 24px;
@@ -41,11 +51,15 @@
   }
 }
 .panel.empty-loading,
-.metric.empty-loading {
+.metric.empty-loading,
+.insight-callout.empty-loading {
   position: relative;
 }
 .panel.empty-loading {
   min-height: 240px;
+}
+.insight-callout.empty-loading {
+  min-height: 92px;
 }
 .panel-spinner.loading-state {
   position: absolute;
@@ -68,4 +82,9 @@
   width: 18px;
   height: 18px;
   border-width: 2px;
+}
+.insight-callout .panel-spinner.loading-state {
+  inset: 0;
+  background: transparent;
+  border-radius: inherit;
 }
