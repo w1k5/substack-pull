@@ -1,4 +1,4 @@
-"""MCP tools for local post and Note backups through the existing CLIs."""
+"""MCP tools for local post and Note backups through shared workflows."""
 
 from __future__ import annotations
 

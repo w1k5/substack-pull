@@ -58,7 +58,7 @@ class KeychainStore:
         self._require_macos()
         print(
             "Paste the Substack session cookie VALUE at the Keychain prompt "
-            "(Safari connect.sid or Chromium substack.sid). "
+            "(connect.sid or substack.sid). "
             "Input is hidden."
         )
         command = [
@@ -207,8 +207,8 @@ class ApiClient:
                         ) from exc
                     else:
                         raise PullError(
-                            "Substack rejected the stored session. Re-copy connect.sid "
-                            "from Safari or substack.sid from Chromium DevTools, then "
+                            "Substack rejected the stored session. Re-copy the value of "
+                            "connect.sid or substack.sid from your browser, then "
                             "run './substack-pull auth' again."
                         ) from exc
                 if exc.code == 429 or 500 <= exc.code < 600:

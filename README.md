@@ -1,14 +1,16 @@
 # Substack Pull
 
 Local tools for backing up Substack posts and Notes, exploring publication analytics,
-and giving Codex access to the same data through MCP.
+and giving Codex access to the same data through MCP. For your own publication,
+authenticate once; then MCP is the normal path for pulling, searching, reading, and
+planning. The CLI remains available for setup and manual use.
 
-| What you want to do                                                     | Command                                        |
-| ----------------------------------------------------------------------- | ---------------------------------------------- |
-| Back up your publication's drafts, scheduled posts, and published posts | `./substack-pull pull`                         |
-| Back up draft and scheduled Notes                                       | `./substack-notes-pull pull`                   |
-| Explore analytics and plan Note drafts and schedules                     | `./substack-analytics`                         |
-| Use analytics and backups from Codex                                    | Set up the [MCP server](#mcp-server-for-codex) |
+| What you want to do | Start here |
+| --- | --- |
+| Connect your Substack account | [First-time setup](#first-time-setup-for-your-own-publication) |
+| Work with analytics, backups, drafts, or schedules in Codex | [Set up the MCP server](#mcp-server-for-codex) |
+| Explore the visual dashboard and Note planner | Run `./substack-analytics` |
+| Run a manual post or Note backup | Run `./substack-pull pull` or `./substack-notes-pull pull` |
 
 The post puller and analytics views read Substack data. The Notes CLI, MCP Note tools,
 and dashboard Note planner can also create a draft or change a schedule after a preview
@@ -18,22 +20,26 @@ For a possible no-code Mac and Windows app, see the [desktop app plan](docs/desk
 
 ## Requirements
 
-- macOS and Python 3.10 or newer.
+- macOS for authenticated tools and the dashboard.
+- Python 3.10 or newer for the CLIs and dashboard; Python 3.11 or newer for the
+  MCP registration command, which uses `tomllib`.
 - For your own publication: a browser signed in to a Substack account that can edit it.
 - For the MCP server only: the Python package in `requirements-analytics-mcp.txt`.
 
-The CLIs and dashboard need no third-party Python packages. Public post and public Note
-backups do not need a Substack login.
+The CLIs and dashboard need no third-party Python packages. The unauthenticated public
+post and Note pullers do not need a Substack login or macOS Keychain; their Python
+scripts can also run on other operating systems.
 
 ## First-time setup for your own publication
 
 1. In Safari or a Chromium-based browser, sign in to Substack.
 2. Open the browser's developer tools and find the Substack session cookie:
-   - **Safari:** Developer → Show Web Inspector → Storage → Cookies → `substack.com` →
-     `connect.sid`. Enable developer features in Safari Settings → Advanced if the
-     Developer menu is hidden.
+   - **Safari:** Develop → Show Web Inspector → Storage → Cookies → `substack.com`.
+     If the Develop menu is hidden, enable **Show features for web developers** in
+     Safari Settings → Advanced ([Apple's guide](https://support.apple.com/en-qa/guide/safari/sfri20948/mac)).
    - **Chrome, Edge, Brave, or Chromium:** DevTools → Application → Storage → Cookies →
-     the Substack origin → `substack.sid`.
+     the Substack origin ([Chrome's guide](https://developer.chrome.com/docs/devtools/application/cookies)).
+   Look for `connect.sid` or `substack.sid`; the name can differ by browser session.
 3. Copy only the cookie's **Value**. Treat it like a password.
 4. From this repository, run:
 
@@ -77,15 +83,16 @@ Posts are saved under the ignored `substack/` directory:
 
 ```text
 substack/
-├── drafts/          # JSON and readable Markdown; HTML when available
+├── drafts/          # JSON; readable Markdown and HTML when available
 ├── scheduled/
 ├── published/
 ├── archive/         # local copies of posts no longer listed remotely
 └── .sync/state.json # sync state
 ```
 
-JSON preserves the returned post data; Markdown is the readable copy. A post that
-disappears from Substack's indexes is moved to `archive/`, not deleted locally.
+JSON preserves the returned post data; Markdown is generated when its body can be
+rendered. A post that disappears from Substack's indexes is moved to `archive/`, not
+deleted locally.
 
 To back up another publication's public posts without using your session:
 
@@ -121,7 +128,7 @@ not install a background service.
 
 ### Views and time ranges
 
-Use the sidebar to move between four writer-focused views:
+Use the sidebar to move between five writer-focused views:
 
 | View | What it answers |
 | --- | --- |
@@ -137,13 +144,14 @@ Substack. **Sync Notes** refreshes that backup on demand. Select a date to inspe
 scheduled Notes, choose a draft, then preview and confirm a future schedule. You can
 also write and preview a new draft before saving it. The calendar marks days that have
 room at the selected spacing; those are planning suggestions, not automatic schedules.
-All Note times use the publication timezone shown on the page. The planner does not
+All Note times use the configured Notes time zone shown on the page. The planner does not
 publish a Note immediately or edit an existing Note's text.
 
 Search posts and Notes from the header. The activity selector offers 7, 30, 90, 180, or
-365 days. It controls publication traffic, discovery, and the Notes list. Post metrics
-and individual Note reach are lifetime totals; the **Published in selected period**
-filter narrows posts by publication date. The Briefing compares equal-length current
+365 days. It controls publication traffic, discovery, and the Notes list. Published post
+index metrics and individual Note reach are lifetime totals; the Posts chart also
+offers first-week comparisons. The **Published in selected period** filter narrows
+posts by publication date. The Briefing compares equal-length current
 and preceding periods. Today may be incomplete.
 
 ### Reading the charts and tables
@@ -170,9 +178,10 @@ batches when the published index refreshes, then reused from the 15-minute cache
 A post's Distribution section identifies Notes that explicitly attached that post and
 shows the Note's lifetime link clicks. Those clicks are Note interactions, not
 attributed post views or subscriber conversions. The link comes from the local
-published Notes backup; update it with
-`./substack-notes-pull public pull --profile @yourhandle --directory substack/published-notes/yourhandle`
-for your profile. Source labels expand Substack's ambiguous terms, including
+published Notes backup; refresh it with MCP `pull_published_notes(profile="@yourhandle")`.
+The CLI equivalent is
+`./substack-notes-pull public pull --profile @yourhandle --directory substack/published-notes/yourhandle`.
+Source labels expand Substack's ambiguous terms, including
 Direct (which can include unidentified visits) and Direct to App (an external link
 opened in the app with an unidentified origin).
 
@@ -242,7 +251,7 @@ analytics endpoints are undocumented and may change.
 ## MCP server for Codex
 
 The MCP server and dashboard call the same analytics service and shared disk cache;
-the browser does not need the MCP server running. MCP calls the bundled post and Note
+the browser does not need the MCP server running. MCP calls the shared post and Note
 puller functions directly in its own Python process, without starting CLI subprocesses.
 The dashboard planner and MCP Note actions use the same Note draft and scheduling
 functions. MCP runs over local standard input/output and has no network listener. Pull
@@ -285,14 +294,23 @@ See [`mcp.json`](mcp.json) for the stdio launch configuration.
 The skill instructions and compatibility commands live in `skills/`. Their shared
 implementation lives in `substack_local/pullers/`, so use the skills from a full
 checkout of this repository. Installing either skill directory alone does not
-include the puller code. The MCP tools are the normal path for supported work.
+include the puller code. In a fresh checkout, make both skills discoverable to Codex
+by running from the repository root:
+
+```sh
+mkdir -p .agents/skills
+ln -s ../../skills/substack-pull .agents/skills/substack-pull
+ln -s ../../skills/substack-notes-pull .agents/skills/substack-notes-pull
+```
+
+The MCP tools are the normal path for supported work.
 
 The skill instructions are here:
 
 - [Post pull skill](skills/substack-pull/SKILL.md)
 - [Notes pull skill](skills/substack-notes-pull/SKILL.md)
 
-Each person saves their own Substack session in their own Keychain. Installing a skill
+Each person saves their own Substack session in their own Keychain. Using the skills
 does not share credentials or publication content.
 
 ## Code and tests
