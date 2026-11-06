@@ -4,6 +4,8 @@ import { sourceLabel } from '../source-labels.js';
 import { renderPostPortfolio } from '../post/portfolio.js';
 
 const PAGE_SIZE = 20;
+const POST_NARROW = window.matchMedia('(max-width: 720px)');
+const pageSize = (section) => section === 'post' && POST_NARROW.matches ? 10 : PAGE_SIZE;
 const sortState = {
   source: { key: 'views', direction: 'desc' },
   post: { key: 'signups', direction: 'desc' },
@@ -12,8 +14,8 @@ const columns = {
   source: [['name', 'Source'], ['views', 'Views'], ['users', 'Users'],
     ['signups', 'Signups'], ['rate', 'Signup rate']],
   post: [['title', 'Post'], ['date', 'Date'], ['views', 'Views'],
-    ['signups', 'Signups'], ['yield', 'Signup yield'], ['shares', 'Shares'],
-    ['open_rate', 'Email opens'], ['engagement_rate', 'Engagement']],
+    ['signups', 'Signups'], ['yield', 'Signup yield'], ['likes', 'Likes'],
+    ['comments', 'Comments'], ['restacks', 'Restacks']],
 };
 
 function sortValue(section, row, key) {
@@ -55,12 +57,13 @@ export function createTables({ getData, getPortfolio, navigate }) {
   function renderPagination(section, count, rerender) {
     const root = $(`${section}-pagination`);
     root.replaceChildren();
-    const pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+    const size = pageSize(section);
+    const pages = Math.max(1, Math.ceil(count / size));
     page[section] = Math.min(page[section], pages);
     if (pages === 1) return;
     const label = document.createElement('span');
-    const start = (page[section] - 1) * PAGE_SIZE + 1;
-    label.textContent = `${start}–${Math.min(count, start + PAGE_SIZE - 1)} of ${count}`;
+    const start = (page[section] - 1) * size + 1;
+    label.textContent = `${start}–${Math.min(count, start + size - 1)} of ${count}`;
     const button = (text, direction) => {
       const element = document.createElement('button');
       element.type = 'button';
@@ -130,10 +133,11 @@ export function createTables({ getData, getPortfolio, navigate }) {
     body.replaceChildren();
     renderPagination('post', visiblePostRows.length, renderPosts);
     if (!visiblePostRows.length) {
-      emptyTable(body, 8, 'No posts match these filters.');
+      emptyTable(body, columns.post.length, 'No posts match these filters.');
       return;
     }
-    visiblePostRows.slice((page.post - 1) * PAGE_SIZE, page.post * PAGE_SIZE).forEach((row) => {
+    const size = pageSize('post');
+    visiblePostRows.slice((page.post - 1) * size, page.post * size).forEach((row) => {
       const tr = document.createElement('tr');
       const button = document.createElement('button');
       button.type = 'button';
@@ -145,16 +149,9 @@ export function createTables({ getData, getPortfolio, navigate }) {
       cell(tr, fmt(row.views));
       cell(tr, fmt(row.signups));
       cell(tr, row.signup_yield == null ? '—' : row.signup_yield.toFixed(1));
-      cell(tr, fmt(row.shares));
-      const email = document.createElement('span');
-      email.className = 'email-cell';
-      const rate = document.createElement('strong');
-      rate.textContent = pct(row.open_rate);
-      const count = document.createElement('small');
-      count.textContent = `${fmt(row.opens)} / ${fmt(row.sent)}`;
-      email.append(rate, count);
-      cell(tr, email);
-      cell(tr, pct(row.engagement_rate));
+      for (const name of ['likes', 'comments', 'restacks'])
+        cell(tr, row[name] == null ? '—' : fmt(row[name]));
+      tr.querySelectorAll('td').forEach((td, index) => { td.dataset.label = columns.post[index][1]; });
       body.append(tr);
     });
   }
@@ -205,6 +202,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
   $('source-search').addEventListener('input', () => { page.source = 1; renderSources(); });
   for (const id of ['posts-in-period', 'posts-min-views'])
     $(id).addEventListener('change', () => { page.post = 1; renderPosts(); });
+  POST_NARROW.addEventListener('change', () => { page.post = 1; renderPosts(); });
   $('export-sources').addEventListener('click', () => {
     const data = getData();
     if (!data) return;
@@ -217,9 +215,10 @@ export function createTables({ getData, getPortfolio, navigate }) {
     if (!getData()) return;
     downloadCsv('substack-posts-visible-lifetime.csv',
       ['Post', 'Published', 'Views', 'Signups', 'Signups per 1k views (1k+ only)',
-        'Shares', 'Opens', 'Sent', 'Open rate', 'Engagement rate'],
+        'Likes', 'Comments', 'Restacks', 'Share actions', 'Opens', 'Sent', 'Open rate', 'Engagement rate'],
       visiblePostRows.map((row) => [row.title, row.date, row.views, row.signups,
-        row.signup_yield, row.shares, row.opens, row.sent, row.open_rate, row.engagement_rate]));
+        row.signup_yield, row.likes, row.comments, row.restacks, row.shares,
+        row.opens, row.sent, row.open_rate, row.engagement_rate]));
   });
 
   return {

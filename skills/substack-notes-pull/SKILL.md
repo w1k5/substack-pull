@@ -11,6 +11,8 @@ available for the requested workspace and operation. Use the CLI fallback below
 only when the MCP is unavailable, points at another workspace, or cannot use a
 caller-chosen local directory. Resolve `scripts/substack_notes_pull.py` relative
 to this file and use the workspace's absolute config path for fallback commands.
+The CLI fallback requires the full repository checkout because its script uses
+the shared implementation in `substack_local/pullers/`.
 
 ## MCP workflow
 
@@ -22,9 +24,9 @@ not run both paths for the same operation.
 
 - Call `pull_notes` to refresh draft and scheduled Notes. It also rebuilds the
   overview and runway. Use `find_note_copies(status=...)` to locate Notes;
-  previews are hidden by default. Call `read_note_copy(note_id=...)` only when
-  the user asks to inspect a Note's body. `backup_status` reports local counts
-  and sync time.
+  previews are hidden by default. Follow `next_offset` when more results are
+  needed. Call `read_note_copy(note_id=...)` only when the user asks to inspect
+  a Note's body. `backup_status` reports local counts and sync time.
 - Call `note_schedule_runway(days=..., minimum_spacing=...)` to rebuild the
   visual from local files without a Substack request.
 - For a new text draft, call `preview_note_draft(text=...)` and show the exact
@@ -49,12 +51,17 @@ not run both paths for the same operation.
   backup and runway, and verifies the new schedule.
 - Only when the user explicitly requests published Note history, call
   `pull_published_notes(profile=...)` and then
-  `find_published_notes(profile=..., sort_by=...)`. Each profile gets a separate
-  ignored directory. Use the CLI for a caller-chosen history directory.
+  `find_published_notes(profile=..., sort_by=...)`. Search results omit full
+  bodies; use `include_preview=true` only when snippets help, and
+  `read_published_note(profile=..., note_id=...)` for one complete local copy.
+  `published_notes_status(profile=...)` reports its sync and crawl state.
+  Follow `next_offset` for more results; use `include_missing=true` only to
+  inspect copies preserved after a remote Note disappeared. Each profile gets
+  a separate ignored directory. Use the CLI for a caller-chosen history directory.
 
 The MCP uses the same saved session as `substack-pull`. Never treat a local pull
-as approval to create or schedule a Note. If the draft or schedule MCP
-tools are missing, reconnect the MCP server before using the CLI fallback.
+as approval to create or schedule a Note. If an expected MCP tool is missing,
+reconnect the MCP server before using the CLI fallback.
 If an MCP tool reports no session after a recent successful local pull, follow
 the Keychain-access recovery below before asking for new authentication.
 
@@ -230,7 +237,8 @@ directory is ignored before pulling.
 
 Only when the user explicitly asks for already-published Notes, call
 `pull_published_notes(profile=...)` and then
-`find_published_notes(profile=..., sort_by=...)`. Use the CLI fallback when the
+`find_published_notes(profile=..., sort_by=...)`. Call `read_published_note` to
+inspect one Note's full text. Use the CLI fallback when the
 user requests a specific history directory. In that case, prefix the command
 with `public` **before** `--config` and keep each profile's history separate:
 

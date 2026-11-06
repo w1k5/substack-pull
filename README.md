@@ -148,13 +148,24 @@ and preceding periods. Today may be incomplete.
 
 ### Reading the charts and tables
 
-The Posts chart has four views: **Staying power** compares first-week reach with the
+The Posts chart compares several outcomes: **Staying power** compares first-week reach with the
 share earned on days 2–7; **Subscriber yield** compares first-week signups per 1,000
-views; **Reader sharing** compares recorded shares per 1,000 lifetime views; and
+views; **Reader sharing** compares recorded share actions per 1,000 lifetime views;
+**Reader response** compares likes, comments, or restacks per 1,000 lifetime views; and
 **Later discovery** shows how many additional views accumulated after week one.
-The first two use equal seven-day windows. The latter two use lifetime totals, so
+The first two use equal seven-day windows. The others use lifetime totals, so
 check publication dates when comparing older and newer posts. The post portfolio and
 MCP `post_portfolio` tool share these figures.
+
+The Posts table shows lifetime likes, comments, and restacks as separate sortable
+columns. Share actions remain in the Reader sharing chart, post story, and CSV export.
+On narrow screens, those columns become labeled post cards with direct sort controls
+and 10 posts per page. Selecting two chart dots shows compact comparisons beside the
+chart on wider screens.
+Likes and comments come from the authenticated
+published post index. Restacks come from paginated public archive results and may be
+unavailable for a post that is absent from that archive. The archive is fetched in
+batches when the published index refreshes, then reused from the 15-minute cache.
 
 A post's Distribution section identifies Notes that explicitly attached that post and
 shows the Note's lifetime link clicks. Those clicks are Note interactions, not
@@ -261,18 +272,20 @@ creation and Note scheduling through the same verified operations as the Notes C
 multiple drafts, the MCP batch tools use one preflight read and one final verification
 sync instead of repeating both for every Note.
 Neither operation publishes a Note immediately or edits an existing Note body.
+Backup searches return at most 100 items per call and include `total` and `next_offset`
+for paging. Draft and scheduled Note previews are optional; published Note search omits
+full bodies so `read_published_note` can retrieve just the Note you need.
+`published_notes_status` reports a public profile's local crawl state. Post and public
+Note searches can include locally preserved copies no longer present remotely.
 
 See [`mcp.json`](mcp.json) for the stdio launch configuration.
 
 ## Use as Codex skills
 
-The post and Note skills include their own CLIs and can be installed without cloning
-this repository. In Codex, ask the skill installer:
-
-```text
-Use $skill-installer to install https://github.com/w1k5/substack-pull/tree/main/skills/substack-pull
-Use $skill-installer to install https://github.com/w1k5/substack-pull/tree/main/skills/substack-notes-pull
-```
+The skill instructions and compatibility commands live in `skills/`. Their shared
+implementation lives in `substack_local/pullers/`, so use the skills from a full
+checkout of this repository. Installing either skill directory alone does not
+include the puller code. The MCP tools are the normal path for supported work.
 
 The skill instructions are here:
 
@@ -285,9 +298,9 @@ does not share credentials or publication content.
 ## Code and tests
 
 The user-facing commands are at the repository root. Post and Note puller
-implementations are in `skills/substack-pull/scripts/` and
-`skills/substack-notes-pull/scripts/`. The dashboard and MCP implementation are mapped
-in the [local code guide](substack_local/README.md).
+implementations are in `substack_local/pullers/`; the skill scripts forward to
+them. The dashboard and MCP implementation are mapped in the
+[local code guide](substack_local/README.md).
 
 The tests use local fixtures and do not contact Substack or read Keychain:
 

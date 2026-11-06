@@ -50,7 +50,12 @@ def post_index_metrics(rows: list[dict]) -> list[dict]:
             day = datetime.fromisoformat(published.replace("Z", "+00:00")).astimezone(ZONE).date().isoformat()
         except (AttributeError, ValueError):
             day = None
-        result.append({**row, "publication_day": day,
+        rates = {}
+        for name in ("likes", "comments", "restacks", "shares"):
+            count = number(row.get(name))
+            rates[f"{name}_per_1k"] = (1000 * count / views if views is not None and views >= 1000
+                                        and count is not None and count >= 0 else None)
+        result.append({**row, "publication_day": day, **rates,
                        "signup_yield": 1000 * signups / views if views is not None and views >= 1000 else None})
     return result
 
@@ -159,6 +164,7 @@ def post_detail_metrics(post: dict, *, today=None) -> dict:
                         if number(value) is not None and lifetime_views and lifetime_views > 0 else None)
                  for name, value in (("likes", engagement.get("likes")),
                                      ("comments", engagement.get("comments")),
+                                     ("restacks", engagement.get("restacks")),
                                      ("shares", reach.get("shares")))}
     return {**post, "first_week": daily,
             "story": {"after_week": after_week, "performance": performance},

@@ -234,7 +234,7 @@
           <section class="view" id="view-posts" aria-labelledby="posts-title" hidden>
             <div class="hero">
               <div><div class="eyebrow">POST PORTFOLIO</div><h1 id="posts-title">What did your writing <em>do?</em></h1>
-                <p>Compare how posts launch, attract subscribers, get shared, and keep finding readers.</p></div>
+                <p>Compare how posts launch, attract subscribers, draw responses, get shared, and keep finding readers.</p></div>
             </div>
             <section class="panel post-map-panel" id="post-map" aria-labelledby="post-map-title">
               <div class="panel-heading">
@@ -249,23 +249,32 @@
                 <button type="button" class="segment" data-post-map="staying">Staying power</button>
                 <button type="button" class="segment" data-post-map="yield">Subscriber yield</button>
                 <button type="button" class="segment" data-post-map="sharing">Reader sharing</button>
+                <button type="button" class="segment" data-post-map="response">Reader response</button>
                 <button type="button" class="segment" data-post-map="tail">Later discovery</button>
               </div>
+              <div class="segment-row post-response-metrics" id="post-response-metrics" aria-label="Choose a reader response" hidden>
+                <button type="button" class="segment" data-post-response="likes">Likes</button>
+                <button type="button" class="segment" data-post-response="comments">Comments</button>
+                <button type="button" class="segment" data-post-response="restacks">Restacks</button>
+              </div>
               <p class="detail-context" id="post-map-status">Loading post comparison…</p>
-              <p class="post-map-key" id="post-map-key" hidden></p>
+              <div class="post-map-key" id="post-map-key" hidden></div>
               <div id="post-map-loading"></div>
               <button type="button" class="refresh" id="post-map-retry" hidden>Retry comparison</button>
-              <div class="post-map-visual" id="post-map-visual" hidden>
-                <div class="post-map-y-title" id="post-map-y-title">Days 2–7 share of first-week views</div>
-                <div class="post-map-plot" id="post-map-plot">
-                  <div id="post-map-grid"></div>
-                  <div id="post-map-points"></div>
-                  <div class="post-map-tooltip" id="post-map-tooltip" hidden></div>
+              <div class="post-map-workspace" id="post-map-workspace" hidden>
+                <div class="post-map-visual" id="post-map-visual">
+                  <div class="post-map-y-title" id="post-map-y-title">Days 2–7 share of first-week views</div>
+                  <div class="post-map-plot" id="post-map-plot">
+                    <div id="post-map-grid"></div>
+                    <div id="post-map-points"></div>
+                    <div class="post-map-tooltip" id="post-map-tooltip" hidden></div>
+                  </div>
+                  <div class="post-map-x-title" id="post-map-x-title">First-week views · log scale</div>
                 </div>
-                <div class="post-map-x-title" id="post-map-x-title">First-week views · log scale</div>
+                <aside class="post-map-side" aria-label="Selected post comparison">
+                  <div class="post-map-comparison" id="post-map-comparison"></div>
+                </aside>
               </div>
-              <div class="post-map-later" id="post-map-later" hidden></div>
-              <div class="post-map-comparison" id="post-map-comparison"></div>
               <p class="footnote" id="post-map-footnote">Guides show cohort medians. Posts need seven complete days and at least 100 first-week views. Views are not unique readers.</p>
             </section>
           <section class="panel posts-panel" id="posts">
@@ -281,6 +290,7 @@
               <label><input id="posts-min-views" type="checkbox" /> At least 1,000 views</label>
               <button type="button" class="refresh" id="export-posts" disabled>Export CSV</button>
             </div>
+            <p class="table-scroll-hint">Tap a metric to sort posts.</p>
             <div class="table-scroll">
               <table>
                 <thead>
@@ -290,9 +300,9 @@
                     <th>Views</th>
                     <th>Signups</th>
                     <th title="Signups per 1,000 views">Signup yield</th>
-                    <th>Shares</th>
-                    <th>Email opens</th>
-                    <th>Engagement</th>
+                    <th>Likes</th>
+                    <th>Comments</th>
+                    <th>Restacks</th>
                   </tr>
                 </thead>
                 <tbody id="post-table"></tbody>
@@ -300,9 +310,8 @@
             </div>
             <div id="post-pagination" class="table-pagination"></div>
             <p class="footnote">
-              Post metrics are lifetime totals. Signup yield is signups per 1,000 views and appears
-              for posts with at least 1,000 views. Open rates include their send counts so small lists do not appear more certain
-              than they are.
+              Post metrics are lifetime totals. Signup yield appears for posts with at least 1,000 views.
+              Restacks come from the public archive; an unavailable count appears as —. Share actions remain in the Reader sharing view, post story, and CSV export.
             </p>
           </section>
           </section>
@@ -410,7 +419,7 @@
             </section>
             <div class="planner-columns">
               <section class="panel planner-drafts" aria-labelledby="planner-drafts-title">
-                <div class="panel-heading"><div><div class="eyebrow">BACKLOG</div><h2 id="planner-drafts-title">Unscheduled drafts</h2></div></div>
+                <div class="panel-heading"><div><div class="eyebrow">BACKLOG</div><h2 id="planner-drafts-title">Unscheduled drafts</h2><p class="detail-context">Scroll through full drafts, then select one to schedule.</p></div></div>
                 <div id="planner-draft-list" class="planner-draft-list"></div>
               </section>
               <div class="planner-actions">

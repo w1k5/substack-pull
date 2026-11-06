@@ -160,6 +160,7 @@ function renderDayDetail(map = eventMap()) {
 
 function renderDrafts() {
   const list = $('planner-draft-list');
+  const scrollTop = list.scrollTop;
   list.replaceChildren();
   if (!snapshot.drafts.length) {
     list.append(node('p', 'empty-state', 'No unscheduled drafts yet. Write one to begin.'));
@@ -169,10 +170,12 @@ function renderDrafts() {
     const button = node('button', 'planner-draft');
     button.type = 'button';
     if (draft.id === selectedNoteId) button.classList.add('selected');
-    button.append(node('small', '', `Note ${draft.id}`), node('span', '', draft.preview || 'Attachment-only Note'));
-    button.addEventListener('click', () => selectNote(draft.id, draft.preview || 'Attachment-only Note'));
+    const text = draft.text || draft.preview || 'Attachment-only Note';
+    button.append(node('small', '', `Note ${draft.id}`), node('span', '', text));
+    button.addEventListener('click', () => selectNote(draft.id, text));
     list.append(button);
   }
+  list.scrollTop = scrollTop;
 }
 
 function renderPlanner() {

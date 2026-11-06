@@ -14,11 +14,12 @@ def summarize_post_portfolio(rows: list[dict]) -> dict:
         groups[(row.get("post_type"), row.get("audience"))].append(row)
     cohort = max(groups.values(), key=len, default=[])
     lenses = {}
-    for mode in ("staying", "yield", "sharing", "tail"):
-        x_field = "lifetime_views" if mode == "sharing" else "views"
+    for mode in ("staying", "yield", "sharing", "likes", "comments", "restacks", "tail"):
+        x_field = "lifetime_views" if mode in {"sharing", "likes", "comments", "restacks"} else "views"
         y_field = {"staying": "later_week_share", "yield": "signup_yield",
-                   "sharing": "share_rate", "tail": "later_views"}[mode]
-        minimum = 1000 if mode == "sharing" else 100
+                   "sharing": "share_rate", "likes": "likes_rate", "comments": "comments_rate",
+                   "restacks": "restacks_rate", "tail": "later_views"}[mode]
+        minimum = 1000 if x_field == "lifetime_views" else 100
         eligible = [row for row in cohort if (number(row.get(x_field)) or 0) >= minimum
                     and number(row.get(y_field)) is not None and number(row[y_field]) >= 0]
         middle_x = median(number(row[x_field]) for row in eligible) if eligible else None
@@ -38,6 +39,9 @@ def summarize_post_portfolio(rows: list[dict]) -> dict:
         elif mode == "sharing":
             insight = ("Reader sharing", f"The median comparable post earned {middle_y:.1f} recorded shares "
                        "per 1,000 lifetime views. Open high-rate posts to inspect their distribution.") if eligible else None
+        elif mode in {"likes", "comments", "restacks"}:
+            insight = ("Reader response", f"The median comparable post received {middle_y:.1f} {mode} "
+                       "per 1,000 lifetime views. Compare counts and publication dates before drawing conclusions.") if eligible else None
         else:
             delayed = max(eligible, key=lambda row: number(row.get("later_multiple")) or 0, default=None)
             insight = ("Later discovery", f"{delayed['title']} has {delayed['later_views']:,} views after its "

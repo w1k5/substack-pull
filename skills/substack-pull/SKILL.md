@@ -12,6 +12,9 @@ maintain the same local copy. The API is undocumented; keep every remote
 operation read-only and report endpoint failures plainly. Choose between these
 modes:
 
+The CLI fallback requires the full repository checkout: its script forwards to
+the shared implementation in `substack_local/pullers/`.
+
 - For another publication's anonymously visible posts, use public mode. It never
   reads or sends a session cookie and syncs only the public archive.
 - For a publication the user owns or edits, use authenticated mode to include
@@ -31,7 +34,9 @@ workflow below. Do not run both paths for the same pull.
 
 - Own publication: call `pull_own_posts` first. Use
   `find_post_copies` to locate titles or IDs, then `read_post_copy` only when
-  the post body is needed. `backup_status` shows the last local sync.
+  the post body is needed. Follow `next_offset` to page through a large backup;
+  pass `include_missing=true` only to inspect a preserved copy absent remotely.
+  `backup_status` shows the last local sync.
 - Other public publication: call `pull_public_posts(publication_url=...)`, then
   pass the same URL to `find_post_copies` or `read_post_copy`. This MCP path
   accepts `*.substack.com` URLs and keeps each publication in a separate
@@ -46,7 +51,7 @@ workflow below. Do not run both paths for the same pull.
 If an MCP pull reports a missing session despite a recent successful local
 pull, follow the Keychain-access recovery below before asking for new auth.
 
-These MCP tools wrap the bundled puller; they do not implement a second sync
+These MCP tools use the shared puller; they do not implement a second sync
 algorithm. `list_posts` is an analytics ranking tool, not the local backup
 index. No MCP tool in this skill publishes, edits, or deletes posts.
 

@@ -15,10 +15,13 @@ class DerivedMetricsTests(TestCase):
             "growth_sources": [{"name": "Substack", "subscribers": 8, "parent": None},
                                {"name": "Notes", "subscribers": 3, "parent": "Substack"}],
             "traffic_sources": [{"users": 20, "free_signups": 2, "paid_signups": 1}],
-            "posts": [{"id": "1", "date": "2026-11-04T02:00:00Z", "views": 1000, "signups": 2}],
+            "posts": [{"id": "1", "date": "2026-11-04T02:00:00Z", "views": 1000,
+                       "signups": 2, "likes": 25, "comments": 5, "restacks": 4, "shares": 10}],
         })
         self.assertEqual(data["posts"][0]["publication_day"], "2026-11-03")
         self.assertEqual(data["posts"][0]["signup_yield"], 2)
+        self.assertEqual(data["posts"][0]["likes_per_1k"], 25)
+        self.assertEqual(data["posts"][0]["restacks_per_1k"], 4)
         self.assertEqual(data["traffic_sources"][0]["signup_rate"], .15)
         self.assertEqual(data["briefing"]["changes"]["views"]["percent"], 20)
         self.assertEqual(data["briefing"]["changes"]["visitors"]["status"], "new")
@@ -38,7 +41,7 @@ class DerivedMetricsTests(TestCase):
                 {"source": "B", "views": 10, "signups": 1, "subscribes": 0, "percent_of_total_views": .1},
             ], "devices": [{"device_type": "Mobile", "views": 75},
                            {"device_type": "Desktop", "views": 25}]},
-            "engagement": {"likes": 10, "comments": 2,
+            "engagement": {"likes": 10, "comments": 2, "restacks": 3,
                            "scroll_depth": {"preview": {"readers": 20, "reached_25": 10}}},
         }, today="2026-11-04")
         self.assertEqual(post["first_week"][1]["daily_views"], 200)
@@ -51,15 +54,18 @@ class DerivedMetricsTests(TestCase):
         self.assertEqual(post["insights"]["reading_shares"]["reached_25"], .5)
         self.assertEqual(post["insights"]["devices"][0]["share"], .75)
         self.assertEqual(post["insights"]["response_rates"]["likes"], 20)
+        self.assertEqual(post["insights"]["response_rates"]["restacks"], 6)
 
     def test_post_cohort_rules_and_medians_are_server_owned(self):
         rows = [
             {"id": "1", "post_type": "newsletter", "audience": "everyone", "views": 100,
              "lifetime_views": 1500, "later_week_share": .4, "signup_yield": 10,
-             "share_rate": 2, "later_views": 1400, "later_multiple": 14, "signups": 1, "title": "First"},
+             "share_rate": 2, "likes_rate": 20, "comments_rate": 3, "restacks_rate": 1,
+             "later_views": 1400, "later_multiple": 14, "signups": 1, "title": "First"},
             {"id": "2", "post_type": "newsletter", "audience": "everyone", "views": 200,
              "lifetime_views": 2200, "later_week_share": .6, "signup_yield": 20,
-             "share_rate": 3, "later_views": 2000, "later_multiple": 10, "signups": 4, "title": "Second"},
+             "share_rate": 3, "likes_rate": 30, "comments_rate": 4, "restacks_rate": 2,
+             "later_views": 2000, "later_multiple": 10, "signups": 4, "title": "Second"},
             {"id": "3", "post_type": "newsletter", "audience": "everyone", "views": 50,
              "lifetime_views": 300, "later_week_share": .8, "signup_yield": 0,
              "share_rate": None, "later_views": 250, "later_multiple": 5, "signups": 0, "title": "Too small"},
@@ -74,6 +80,9 @@ class DerivedMetricsTests(TestCase):
         self.assertEqual(result["lenses"]["staying"]["median_y"], .5)
         self.assertEqual(result["lenses"]["yield"]["standout_ids"], ["2"])
         self.assertEqual(result["lenses"]["sharing"]["eligible_ids"], ["1", "2"])
+        self.assertEqual(result["lenses"]["likes"]["median_y"], 25)
+        self.assertEqual(result["lenses"]["comments"]["eligible_ids"], ["1", "2"])
+        self.assertEqual(result["lenses"]["restacks"]["median_y"], 1.5)
 
     def test_planner_openings_respect_spacing_and_busy_weeks(self):
         runway = {"start": "2026-11-02", "end": "2026-11-15", "minimumSpacing": 3,

@@ -55,18 +55,18 @@ class NotePlanner:
                 local, start=datetime.now(notes.load_zone(zone_name)).date(),
                 days=days, zone_name=zone_name, minimum_spacing=spacing,
             )
-            drafts = sorted(
-                (
-                    {
-                        "id": notes.item_id(note),
-                        "preview": notes.note_body(note)[:240],
-                        "edited_at": note.get("edited_at"),
-                    }
-                    for note in local if not note.get("trigger_at")
-                ),
-                key=lambda item: (str(item["edited_at"] or ""), item["id"]),
-                reverse=True,
-            )
+            drafts = []
+            for note in local:
+                if note.get("trigger_at"):
+                    continue
+                text = notes.note_body(note)
+                drafts.append({
+                    "id": notes.item_id(note),
+                    "text": text,
+                    "preview": text[:240],
+                    "edited_at": note.get("edited_at"),
+                })
+            drafts.sort(key=lambda item: (str(item["edited_at"] or ""), item["id"]), reverse=True)
             state = notes.read_json(directory / ".private-sync" / "state.json", {})
             return {
                 "runway": payload,

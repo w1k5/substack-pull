@@ -249,7 +249,7 @@ export function renderPostInsights(post) {
     }
     root.append(panel);
   }
-  if (engagement.likes != null || engagement.comments != null || reach.shares != null) {
+  if (engagement.likes != null || engagement.comments != null || engagement.restacks != null || reach.shares != null) {
     const panel = section('Reader response');
     const row = document.createElement('div');
     row.className = 'response-grid';
@@ -261,7 +261,8 @@ export function renderPostInsights(post) {
         engagement.commenters == null ? null : `${fmt(engagement.commenters)} commenters`,
         insights.response_rates?.comments,
       ],
-      ['Shares', reach.shares, null, insights.response_rates?.shares],
+      ['Restacks', engagement.restacks, null, insights.response_rates?.restacks],
+      ['Share actions', reach.shares, null, insights.response_rates?.shares],
     ]) {
       if (count == null) continue;
       const card = document.createElement('div');

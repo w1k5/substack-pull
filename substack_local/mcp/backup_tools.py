@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import pulls as workflows
+from ..workflows import backups as workflows
 from .registry import LOCAL_BUILD, LOCAL_READ, LOCAL_WRITE, mcp
 
 
@@ -32,16 +32,17 @@ def pull_public_posts(publication_url: str, refresh_published: bool = False) -> 
 
 @mcp.tool(annotations=LOCAL_READ)
 def find_post_copies(query: str = "", category: str = "all", limit: int = 20,
-                     publication_url: str | None = None) -> dict:
-    """Search the local post backup by title or ID. Pass a publication URL for an already pulled public backup."""
-    return workflows.find_post_copies(query, category, limit, publication_url)
+                     publication_url: str | None = None, offset: int = 0,
+                     include_missing: bool = False) -> dict:
+    """Page through local post copies by title or ID. Set include_missing to inspect preserved copies absent remotely."""
+    return workflows.find_post_copies(query, category, limit, publication_url, offset, include_missing)
 
 
 @mcp.tool(annotations=LOCAL_READ)
 def read_post_copy(post_id: str, publication_url: str | None = None,
-                   max_chars: int = 16000) -> dict:
-    """Read one post's local Markdown copy by ID; pull first when the newest version is needed."""
-    return workflows.read_post_copy(post_id, publication_url, max_chars)
+                   max_chars: int = 16000, include_missing: bool = False) -> dict:
+    """Read one post's local Markdown copy by ID, including a preserved missing copy when requested."""
+    return workflows.read_post_copy(post_id, publication_url, max_chars, include_missing)
 
 
 @mcp.tool(annotations=LOCAL_WRITE)
@@ -52,9 +53,9 @@ def pull_notes(days: int = 90, minimum_spacing: int = 3) -> dict:
 
 @mcp.tool(annotations=LOCAL_READ)
 def find_note_copies(query: str = "", status: str = "all", limit: int = 20,
-                     include_preview: bool = False) -> dict:
-    """Search local draft and scheduled Notes by ID or text. Body previews are omitted unless requested."""
-    return workflows.find_note_copies(query, status, limit, include_preview)
+                     include_preview: bool = False, offset: int = 0) -> dict:
+    """Page through local draft and scheduled Notes by ID or text. Body previews are opt-in."""
+    return workflows.find_note_copies(query, status, limit, include_preview, offset)
 
 
 @mcp.tool(annotations=LOCAL_READ)
@@ -76,7 +77,23 @@ def pull_published_notes(profile: str, refresh: bool = False) -> dict:
 
 
 @mcp.tool(annotations=LOCAL_READ)
+def published_notes_status(profile: str) -> dict:
+    """Report one profile's local published Note sync time, crawl progress, and preserved missing count."""
+    return workflows.published_notes_status(profile)
+
+
+@mcp.tool(annotations=LOCAL_READ)
 def find_published_notes(profile: str, query: str = "", sort_by: str = "recent",
-                         limit: int = 20) -> dict:
-    """Search or rank a profile's already pulled published Notes by recency or public engagement."""
-    return workflows.find_published_notes(profile, query, sort_by, limit)
+                         limit: int = 20, offset: int = 0,
+                         include_missing: bool = False,
+                         include_preview: bool = False) -> dict:
+    """Page through a profile's pulled published Notes. Results omit full bodies; previews are opt-in."""
+    return workflows.find_published_notes(profile, query, sort_by, limit, offset,
+                                          include_missing, include_preview)
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def read_published_note(profile: str, note_id: str, max_chars: int = 16000,
+                        include_missing: bool = False) -> dict:
+    """Read one published Note's local Markdown by ID after pulling its profile."""
+    return workflows.read_published_note(profile, note_id, max_chars, include_missing)

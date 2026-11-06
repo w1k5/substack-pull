@@ -62,7 +62,8 @@ class PostPortfolioTests(unittest.TestCase):
     def test_portfolio_keeps_week_and_lifetime_metrics_distinct(self):
         service = AnalyticsService(object(), object())
         published = [{"id": "123", "title": "Example", "date": "2026-09-01T12:00:00Z",
-                      "views": 3000, "shares": 30, "signups": 12}]
+                      "views": 3000, "shares": 30, "likes": 90, "comments": 18,
+                      "restacks": 12, "signups": 12}]
         week = first_week_summary("123", detail(views=1000, signups=8)["posts"][0],
                                   today=date(2026, 9, 8))
         with patch.object(service, "posts", return_value=published), \
@@ -72,6 +73,9 @@ class PostPortfolioTests(unittest.TestCase):
         self.assertEqual(row["later_views"], 2000)
         self.assertEqual(row["later_multiple"], 2)
         self.assertEqual(row["share_rate"], 10)
+        self.assertEqual(row["likes_rate"], 30)
+        self.assertEqual(row["comments_rate"], 6)
+        self.assertEqual(row["restacks_rate"], 4)
 
     def test_one_detail_call_and_disk_cache_across_services(self):
         with TemporaryDirectory() as directory:

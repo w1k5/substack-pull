@@ -22,11 +22,43 @@ def source_row(row: dict, *, parent: str | None = None) -> dict:
     }
 
 
+def fetch_public_restacks(api: ApiClient, post_ids: set[str]) -> dict[str, int]:
+    """Match published posts to public archive restack totals in paginated batches."""
+    if not post_ids:
+        return {}
+    archive = ApiClient(api.base_url)
+    found: dict[str, int] = {}
+    offset = 0
+    while len(found) < len(post_ids):
+        page = archive.get_json(query_path(
+            "/api/v1/archive", {"sort": "new", "search": "", "offset": offset, "limit": 50},
+        ))
+        posts = page if isinstance(page, list) else page.get("posts") if isinstance(page, dict) else None
+        if not isinstance(posts, list) or any(not isinstance(post, dict) for post in posts):
+            raise PullError("Unexpected public archive response.")
+        for post in posts:
+            post_id = str(post.get("id") or "")
+            restacks = post.get("restacks")
+            if post_id in post_ids and isinstance(restacks, int) and not isinstance(restacks, bool):
+                found[post_id] = restacks
+        offset += len(posts)
+        total = page.get("total") if isinstance(page, dict) else None
+        if not posts or (isinstance(total, int) and offset >= total) or (total is None and len(posts) < 50):
+            break
+    return found
+
+
 def fetch_posts(api: ApiClient) -> list[dict]:
     posts = paginate_posts(api, "/api/v1/post_management/published", "post_date")
+    try:
+        restacks = fetch_public_restacks(api, {str(post.get("id")) for post in posts if post.get("id")})
+    except (PullError, ValueError, TypeError, KeyError):
+        # The authenticated index remains useful when the public archive is unavailable.
+        restacks = {}
     rows = []
     for post in posts:
         stats = post.get("stats") or {}
+        reactions = post.get("reactions") or {}
         rows.append({
             "id": post.get("id"),
             "title": post.get("title") or post.get("draft_title") or "Untitled",
@@ -36,6 +68,9 @@ def fetch_posts(api: ApiClient) -> list[dict]:
             "sent": stats.get("sent"),
             "open_rate": stats.get("open_rate"),
             "shares": stats.get("shares"),
+            "likes": reactions.get("❤", post.get("reaction_count")),
+            "comments": post.get("comment_count"),
+            "restacks": restacks.get(str(post.get("id"))),
             "signups": stats.get("signups"),
             "engagement_rate": stats.get("engagement_rate"),
         })

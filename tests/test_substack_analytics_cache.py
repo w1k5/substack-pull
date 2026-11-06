@@ -32,7 +32,7 @@ class PruningTests(TestCase):
             previous = PublishedPostsDiskCache(host / ("b" * 24) / "post-index")
             current.write("123", {"id": "123"})
             current.write("456", {"id": "456"})
-            previous.write([{"id": 789}])
+            previous.write([{"id": 789, "likes": None, "comments": None, "restacks": None}])
             stale = [current.directory / "123.json", previous.directory / "published.json"]
             for path in stale:
                 record = json.loads(path.read_text(encoding="utf-8"))
@@ -226,7 +226,8 @@ class PostCacheTests(TestCase):
             self.assertEqual(fetch.call_count, 2)
 
     @patch("substack_local.analytics.service.fetch_posts", side_effect=[
-        [{"id": 123, "views": 1}], [{"id": 123, "views": 2}],
+        [{"id": 123, "views": 1, "likes": 2, "comments": 3, "restacks": 4}],
+        [{"id": 123, "views": 2, "likes": 2, "comments": 3, "restacks": 4}],
     ])
     def test_published_index_survives_restart_and_refresh_replaces_it(self, fetch):
         with TemporaryDirectory() as directory:
@@ -246,7 +247,7 @@ class PostCacheTests(TestCase):
             post_cache = PostDiskCache(root / "posts")
             index_cache = PublishedPostsDiskCache(root / "post-index")
             post_cache.write("123", {"id": "123"})
-            index_cache.write([{"id": 123}])
+            index_cache.write([{"id": 123, "likes": None, "comments": None, "restacks": None}])
             for path, seconds in ((root / "posts/123.json", 3601),
                                   (root / "post-index/published.json", 901)):
                 record = json.loads(path.read_text(encoding="utf-8"))

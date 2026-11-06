@@ -154,8 +154,8 @@ class AnalyticsService:
                     self.post_cache.pop(post_id, None)
                 else:
                     _remember(self.post_cache, post_id, value, 300)
-            shares = post_note_shares(ROOT / "substack" / "published-notes", post_id)
-            for share in shares["notes"]:
+            direct_note_shares = post_note_shares(ROOT / "substack" / "published-notes", post_id)
+            for share in direct_note_shares["notes"]:
                 try:
                     # Refreshing a post should not refetch unrelated Note stats.
                     stats = self.note(share["id"])
@@ -167,7 +167,21 @@ class AnalyticsService:
                     # The public attachment still establishes the link when
                     # owner-only Note statistics are temporarily unavailable.
                     pass
-            return post_detail_metrics({**value, "direct_note_shares": shares})
+            index_post = None
+            if self.published_posts_cache or self.posts_cache:
+                try:
+                    index_post = next((row for row in self.posts() if str(row["id"]) == post_id), None)
+                except (PullError, ValueError, TypeError, KeyError):
+                    pass
+            engagement = {**(value.get("engagement") or {}),
+                          "restacks": index_post.get("restacks") if index_post else None}
+            if index_post:
+                # The index refreshes more often than the cached post detail.
+                for name in ("likes", "comments"):
+                    if index_post.get(name) is not None:
+                        engagement[name] = index_post[name]
+            return post_detail_metrics({**value, "engagement": engagement,
+                                        "direct_note_shares": direct_note_shares})
 
     def posts(self, *, refresh: bool = False) -> list[dict]:
         with self.lock:
@@ -229,7 +243,7 @@ class AnalyticsService:
             if not refresh and cache_key in self.portfolio_cache:
                 return self.portfolio_cache[cache_key][1]
             generation = self.portfolio_generation
-        all_posts = self.posts()
+        all_posts = post_index_metrics(self.posts())
         posts = sorted(all_posts, key=lambda row: row.get("date") or "", reverse=True)[:limit]
         rows, incomplete, unavailable = [], 0, 0
         for post in posts:
@@ -248,20 +262,18 @@ class AnalyticsService:
                 later_views = (int(lifetime_views - summary["views"])
                                if lifetime_views is not None and math.isfinite(lifetime_views)
                                and lifetime_views >= summary["views"] else None)
-                try:
-                    lifetime_shares = float(post.get("shares"))
-                except (TypeError, ValueError):
-                    lifetime_shares = None
-                share_rate = (1000 * lifetime_shares / lifetime_views
-                              if lifetime_views is not None and math.isfinite(lifetime_views)
-                              and lifetime_views >= 1000 and lifetime_shares is not None
-                              and math.isfinite(lifetime_shares) and lifetime_shares >= 0 else None)
                 rows.append({**summary, "title": post["title"],
                              "signup_yield": 1000 * summary["signups"] / summary["views"] if summary["views"] else None,
                              "lifetime_views": post.get("views"),
                              "lifetime_signups": post.get("signups"),
                              "lifetime_shares": post.get("shares"),
-                             "share_rate": share_rate,
+                             "lifetime_likes": post.get("likes"),
+                             "lifetime_comments": post.get("comments"),
+                             "lifetime_restacks": post.get("restacks"),
+                             "share_rate": post.get("shares_per_1k"),
+                             "likes_rate": post.get("likes_per_1k"),
+                             "comments_rate": post.get("comments_per_1k"),
+                             "restacks_rate": post.get("restacks_per_1k"),
                              "later_views": later_views,
                              "later_multiple": later_views / summary["views"]
                              if later_views is not None and summary["views"] else None})

@@ -146,7 +146,9 @@ class PublishedPostsDiskCache(_JsonDiskCache):
 
     def _valid(self, key: str, data: object) -> bool:
         return key == "published" and isinstance(data, list) and all(
-            isinstance(row, dict) and str(row.get("id") or "").isdecimal() for row in data
+            isinstance(row, dict) and str(row.get("id") or "").isdecimal()
+            and all(field in row for field in ("likes", "comments", "restacks"))
+            for row in data
         )
 
     def read(self) -> list[dict] | None:

@@ -168,12 +168,13 @@ class CategoryTransitionTests(unittest.TestCase):
                 public_only=True,
                 now=lambda: "2026-10-13T00:00:00Z",
             )
-            original_public_paginator = substack_pull.paginate_public_posts
-            substack_pull.paginate_public_posts = lambda api, limit: [api._list_item()]
+            from substack_local.pullers.posts import sync as post_sync
+            original_public_paginator = post_sync.paginate_public_posts
+            post_sync.paginate_public_posts = lambda api, limit: [api._list_item()]
             try:
                 summary = engine.sync()
             finally:
-                substack_pull.paginate_public_posts = original_public_paginator
+                post_sync.paginate_public_posts = original_public_paginator
 
             self.assertTrue((output_dir / "drafts" / "42.json").is_file())
             self.assertTrue((output_dir / "published" / "42.json").is_file())

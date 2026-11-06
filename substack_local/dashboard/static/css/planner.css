@@ -33,11 +33,11 @@
 .planner-day-note span { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .planner-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 0.95fr); gap: 20px; align-items: start; }
 .planner-actions { display: grid; gap: 20px; }
-.planner-draft-list { max-height: 550px; overflow: auto; }
+.planner-draft-list { max-height: 550px; overflow: auto; padding-right: 6px; scrollbar-gutter: stable; }
 .planner-draft { width: 100%; display: block; text-align: left; font: inherit; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-control); margin-bottom: 8px; padding: 11px 12px; cursor: pointer; }
 .planner-draft:hover, .planner-draft:focus-visible, .planner-draft.selected { border-color: var(--focus); background: #f0f6ec; }
 .planner-draft small { color: var(--muted); display: block; margin-bottom: 5px; }
-.planner-draft span { display: block; color: var(--ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.planner-draft span { display: block; color: var(--ink); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .planner-field { display: block; color: var(--ink); font-size: 12px; font-weight: 700; margin: 10px 0 7px; }
 #planner-text, #planner-at { width: 100%; font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: var(--radius-control); background: #fff; color: var(--ink); padding: 10px; }
 #planner-text { min-height: 165px; resize: vertical; line-height: 1.5; }
