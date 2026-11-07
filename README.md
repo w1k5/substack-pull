@@ -17,7 +17,9 @@ The post puller and analytics views read Substack data. The Notes CLI, MCP Note 
 and dashboard Note planner can also create a draft or change a schedule after a preview
 and confirmation step. They do not publish immediately.
 
-For the Mac and Windows release path, see the [desktop app plan](docs/desktop-app-plan.md).
+For the GitHub-hosted download path and current Substack access decision, see the
+[distribution plan](docs/github-distribution-plan.md). The broader product design
+is in the [desktop app plan](docs/desktop-app-plan.md).
 
 ## Requirements
 
@@ -41,6 +43,9 @@ Substack**, and sign in on Substack's page with your usual email code or passwor
 app checks access to that publication, saves the session in macOS Keychain, and opens
 the dashboard. The same saved connection is used by the CLI and MCP tools. Use
 **Clearview → Reconnect Substack…** in the Mac menu if the session expires.
+The Mac menu bar also provides the usual Edit, View, Window, and Help menus.
+**View → Reload** reloads the current page; use **Refresh publication** in the
+dashboard to request newer analytics.
 
 This is a developer-run Mac beta prototype, not an installer for other writers. It needs
 Xcode command line tools and Python 3.10 or newer. A separate [Windows beta
@@ -181,15 +186,15 @@ and preceding periods. Today may be incomplete.
 
 The Posts chart compares several outcomes: **Staying power** compares first-week reach with the
 share earned on days 2–7; **Subscriber yield** compares first-week signups per 1,000
-views; **Reader sharing** compares recorded share actions per 1,000 lifetime views;
+views; **Reader sharing** compares recorded shares per 1,000 lifetime views;
 **Reader response** compares likes, comments, or restacks per 1,000 lifetime views; and
 **Later discovery** shows how many additional views accumulated after week one.
 The first two use equal seven-day windows. The others use lifetime totals, so
 check publication dates when comparing older and newer posts. The post portfolio and
 MCP `post_portfolio` tool share these figures.
 
-The Posts table shows lifetime likes, comments, and restacks as separate sortable
-columns. Share actions remain in the Reader sharing chart, post story, and CSV export.
+The Posts table shows lifetime views, signups, likes, comments, and shares as
+separate sortable columns. Restacks remain available in the post story and CSV export.
 On narrow screens, those columns become labeled post cards with direct sort controls
 and 10 posts per page. Selecting two chart dots shows compact comparisons beside the
 chart on wider screens.
@@ -218,8 +223,9 @@ analytics service fills the performance map and comparison columns.
 Search filters the table and highlights matching Note text in the map. Reader
 rates need at least 100 impressions; audience-share comparisons need at least 100 people.
 Reach comparison uses Substack's typical Note at the same age. Reader actions and
-audience are lifetime totals. CSV comparison columns remain blank until the analysis
-finishes. Individual Note stats are reused from the one-hour cache when available.
+audience are lifetime totals. The comparison fills in as cached or fetched Notes are
+processed; CSV includes the results currently available. Individual Note stats are
+reused from the one-hour cache when available.
 
 Discovery’s source lines use the same date range and source-series request as Substack’s
 growth page. Choose up to five top-level sources to compare their timing; select a post
@@ -249,6 +255,15 @@ processes. A refresh of the relevant publication, post, or Note data invalidates
 corresponding comparison in that process. Another process may retain its comparison
 for up to five minutes. **Retry unavailable** on the Notes comparison bypasses the
 assembled cohort cache so temporarily missing Notes can be checked again.
+
+The Posts and Notes comparisons send partial results to the dashboard as they are
+assembled. This changes only when results appear on screen; it does not make extra
+Substack requests. Real Substack requests from the dashboard, MCP, and pull commands
+share a local request gate. They run one at a time with at least one second between
+starts, and the gate honors rate-limit pauses. Cached responses do not use the gate
+or contact Substack. To inspect upstream wait and response times locally, start the
+app with `CLEARVIEW_REQUEST_TIMING=1`; diagnostic lines omit query values, IDs,
+cookies, and response bodies.
 
 A publication snapshot from a previous New York calendar day is never reused. The
 first-week comparison needs one detail request per uncached post. Expired and invalid

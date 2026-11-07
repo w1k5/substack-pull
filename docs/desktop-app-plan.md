@@ -4,6 +4,13 @@
 **Last reviewed:** November 6, 2026
 **Audience:** Writers on macOS or Windows who may use Claude or ChatGPT
 
+**Distribution decision update:** The owner has chosen to keep the existing
+authenticated, undocumented Substack endpoints. The
+[GitHub distribution plan](github-distribution-plan.md) is the current packaging
+plan and supersedes this document's earlier recommendation to make a supported
+data route a prerequisite for beta distribution. The endpoint and policy risks
+described below still apply.
+
 ## Goal
 
 Turn the current local dashboard into an installable app that keeps a writer's analytics current, explains post and Note performance, and optionally lets an AI assistant explore the same data. A writer should be able to install it, connect a publication, see when data was last refreshed, and use it without a terminal or an AI account.
