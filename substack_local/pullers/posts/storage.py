@@ -11,7 +11,7 @@ import tempfile
 from typing import Any
 
 from .api import normalize_publication
-from .common import DEFAULT_OUTPUT, FINGERPRINT_FIELDS, PullError
+from .common import CATEGORY_ENDPOINTS, DEFAULT_OUTPUT, FINGERPRINT_FIELDS, PullError
 from .content import item_subtitle, item_title, item_updated_at
 
 

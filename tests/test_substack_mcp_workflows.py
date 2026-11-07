@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from substack_local.mcp import pulls as workflows
+from substack_local.pullers import posts
 from substack_local.workflows.modules import private_notes
 
 
@@ -88,6 +89,30 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in page["items"]], ["2"])
         self.assertEqual((page["total"], page["next_offset"]), (3, 2))
         self.assertTrue(module.collect_local_posts.call_args.kwargs["include_missing"])
+
+    def test_post_reader_finds_draft_without_a_category_filter(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / ".sync").mkdir()
+            (directory / "drafts").mkdir()
+            (directory / ".sync/state.json").write_text(json.dumps({
+                "categories": {"drafts": {"123": {
+                    "file": "drafts/123.json", "remote_status": "present",
+                }}},
+            }), encoding="utf-8")
+            (directory / "drafts/123.json").write_text(json.dumps({
+                "source": {"draft_title": "Test draft", "draft_updated_at": "2026-11-06T10:00:00Z"},
+            }), encoding="utf-8")
+            (directory / "drafts/123.md").write_text("A local draft.", encoding="utf-8")
+
+            with patch.object(workflows, "_post_backup", return_value=(
+                posts, {"publication": "https://example.substack.com"}, directory,
+            )):
+                result = workflows.read_post_copy("123", max_chars=7)
+
+            self.assertEqual((result["id"], result["category"]), ("123", "drafts"))
+            self.assertEqual(result["markdown"], "A local")
+            self.assertTrue(result["truncated"])
 
     def test_published_notes_status_search_and_single_read(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(
