@@ -1,6 +1,6 @@
 # Clearview download and distribution plan
 
-**Status:** Planning · **Decision owner:** publication owner · **Updated:** November 6, 2026
+**Status:** Release contract on main · **Decision owner:** publication owner · **Updated:** November 12, 2026
 
 ## The intended download
 
@@ -41,13 +41,40 @@ Manage the dependency responsibly without disguising traffic:
 - Distinguish “cached,” “updating,” “needs reconnection,” and “Substack unavailable”
   in the UI. Make it possible to disconnect and remove local data.
 
-## Current starting point
+## Build and release status
+
+The release contract and version wiring are on `main` in `2ecc55c`. The
+remaining Clearview code, tests, and documentation followed in `9eff5d7`.
+Both commits passed the Python test workflow on GitHub. [Release contract CI](https://github.com/w1k5/substack-pull/actions/runs/43320073952) · [Clearview CI](https://github.com/w1k5/substack-pull/actions/runs/43320515084)
+
+The first beta targets **macOS 13 or later on Apple Silicon** and
+**Windows 11 x64**. [The shared release metadata](../desktop/release.json)
+currently specifies `0.1.0-beta.1`, build `1`. It drives the Mac bundle
+version and Windows package naming. CI checks that a version tag matches
+the configured version. App identities, preview isolation, and the
+decision to reconnect once on first install are recorded in the
+[release contract](packaging-todo.md#clearview-release-contract).
 
 | Platform | Present state | Packaging gap |
 | --- | --- | --- |
-| Mac | `./substack-desktop` builds a Swift app from the checkout and launches the shared Python code | Bundle the Python engine and assets inside a standalone app; remove the need for a checkout, Python, and Xcode tools on the user's Mac |
-| Windows | `desktop/windows/build.ps1` builds a self-contained .NET window plus a PyInstaller engine ZIP; a manual GitHub Actions build exists | Test on a clean Windows machine, refine the download/install experience, and publish the ZIP as a Release asset rather than only an expiring Actions artifact |
-| MCP | The shared Python MCP runs locally and uses the same saved connection | Include its entry point and dependencies in each package; test an AI client launching it from the installed location |
+| Mac | `./substack-desktop` builds the Swift shell from the checkout. The generated bundle metadata passed local validation. | Bundle the engine and assets in a standalone app, apply the release identity, and test the download on a clean Mac. |
+| Windows | The packager and manual **Windows beta build** workflow are on `main`. The updated version and ZIP naming need a Windows build run. | Run the workflow, then test its artifact on a clean Windows 11 x64 machine. Publish the validated ZIP through GitHub Releases. |
+| MCP | The local server uses the shared engine and saved connection. | Verify that both packages expose a usable MCP launch command, then test it with the supported AI clients. |
+
+**Next milestone:** Build a standalone Mac app and run the Windows beta
+workflow. Test both artifacts before publishing the first GitHub prerelease.
+The signing publisher, Clearview distribution terms, and bundled dependency
+license review remain open. Track individual tasks in the
+[packaging checklist](packaging-todo.md).
+
+### Download page
+
+The public address is [Clearview downloads](https://w1k5.github.io/substack-pull/).
+The static site lives in [site/](../site/) and the [Pages workflow](../.github/workflows/pages.yml)
+publishes that directory. The page initially shows that beta downloads are in
+preparation. After validating a published package, add its direct GitHub Release
+asset URL to [downloads.js](../site/downloads.js). Each platform's button appears
+when its URL is configured. Check the live download links in a signed-out browser.
 
 The existing source archives that GitHub automatically adds to every Release are
 **not** app downloads. Name the attached binaries clearly by OS and architecture.

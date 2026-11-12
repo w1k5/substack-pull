@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Clearview brings your Substack posts, Notes, and subscriber growth together in a desktop dashboard.">
+  <meta name="theme-color" content="#14352d">
+  <title>Clearview · Substack analytics for writers</title>
+  <link rel="icon" href="./clearview.png" type="image/png">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./downloads.js" defer></script>
+</head>
+<body>
+  <header class="wrap top">
+    <a class="brand" href="./" aria-label="Clearview home"><img src="./clearview.png" width="36" height="36" alt="">Clearview</a>
+    <a href="https://github.com/w1k5/substack-pull">GitHub ↗</a>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">SUBSTACK ANALYTICS</p>
+        <h1>See how your writing travels.</h1>
+        <p>Compare posts and Notes, follow subscriber growth, and see where readers found your work. All in one desktop dashboard.</p>
+        <a class="button" href="#downloads">Download options ↓</a>
+      </div>
+    </section>
+    <section class="wrap section" id="downloads" aria-labelledby="download-title">
+      <p class="eyebrow">DESKTOP APP</p>
+      <h2 id="download-title">Download Clearview</h2>
+      <p id="download-status">The first beta downloads are in preparation.</p>
+      <div class="platforms">
+        <article class="platform">
+          <h3>Mac</h3>
+          <p>macOS 13 or later · Apple Silicon</p>
+          <a class="button" id="download-mac" hidden>Download for Mac</a>
+        </article>
+        <article class="platform">
+          <h3>Windows</h3>
+          <p>Windows 11 · x64</p>
+          <a class="button" id="download-windows" hidden>Download for Windows</a>
+        </article>
+      </div>
+      <p><a href="https://github.com/w1k5/substack-pull/releases">View releases on GitHub ↗</a></p>
+    </section>
+    <section class="wrap section setup" aria-labelledby="setup-title">
+      <div>
+        <p class="eyebrow">GETTING STARTED</p>
+        <h2 id="setup-title">Open Clearview and connect</h2>
+        <ol>
+          <li>On Mac, open the disk image and drag Clearview into Applications. For the Windows ZIP, extract the whole folder and open Clearview.</li>
+          <li>Choose <strong>Connect Substack</strong> and sign in.</li>
+          <li>Open the dashboard to explore your posts, Notes, and subscriber sources.</li>
+        </ol>
+      </div>
+      <div>
+        <p class="eyebrow">LOCAL BY DESIGN</p>
+        <h2>Your data stays on your device</h2>
+        <p>Clearview connects directly to Substack and stores your session in your operating system’s credential store. Changes to Substack can interrupt syncing.</p>
+        <p>Compatible AI clients can optionally connect to the local MCP server. Clearview works on its own.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap bottom">
+    <span>Clearview · Independent of Substack</span>
+    <a href="https://github.com/w1k5/substack-pull/issues">Get help ↗</a>
+  </footer>
+</body>
+</html>
