@@ -86,8 +86,9 @@ download page alone, and failures tell them what to do next.
 - Use a version tag such as `v0.1.0-beta.1`. Run the repository tests and platform
   builds in GitHub Actions on that tag. Upload the completed packages to a GitHub
   **pre-release** with release notes and SHA-256 checksums.
-- Give the release assets stable names, for example
-  `Clearview-macOS-arm64.zip` and `Clearview-Windows-x64.zip`.
+- Use the versioned asset names in the [release contract](packaging-todo.md#clearview-release-contract),
+  such as `Clearview-0.1.0-beta.1-macos-arm64.zip` and
+  `Clearview-0.1.0-beta.1-windows-x64.zip`.
 - Make a small GitHub Pages site with two download buttons, screenshots, a
   three-step setup guide, privacy and data-storage explanation, known beta
   limitations, and a support/issue link. During beta, link to the current

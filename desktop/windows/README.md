@@ -9,7 +9,7 @@ starts separately from an AI client.
 ## Build on Windows
 
 Install Python 3.11+, the .NET 8 SDK, and PowerShell. Run `./build.ps1` from this
-directory. It creates `.build/Clearview-Windows-beta.zip`. Extract the whole ZIP
+directory. It creates `.build/Clearview-<version>-windows-x64.zip`. Extract the whole ZIP
 before launching `Clearview.Windows.exe`; the `engine` folder must stay beside it.
 The repository also has a manually triggered **Windows beta build** GitHub Actions
 workflow, which uploads this ZIP as an artifact.

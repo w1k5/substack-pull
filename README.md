@@ -18,7 +18,8 @@ and dashboard Note planner can also create a draft or change a schedule after a 
 and confirmation step. They do not publish immediately.
 
 For the GitHub-hosted download path and current Substack access decision, see the
-[distribution plan](docs/github-distribution-plan.md). The broader product design
+[distribution plan](docs/github-distribution-plan.md) and
+[packaging checklist](docs/packaging-todo.md). The broader product design
 is in the [desktop app plan](docs/desktop-app-plan.md).
 
 ## Requirements
