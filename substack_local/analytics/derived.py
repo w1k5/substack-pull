@@ -44,7 +44,7 @@ def post_index_metrics(rows: list[dict]) -> list[dict]:
     result = []
     for row in rows:
         views = number(row.get("views"))
-        signups = number(row.get("signups")) or 0
+        signups = number(row.get("signups"))
         published = row.get("date")
         try:
             day = datetime.fromisoformat(published.replace("Z", "+00:00")).astimezone(ZONE).date().isoformat()
@@ -56,7 +56,8 @@ def post_index_metrics(rows: list[dict]) -> list[dict]:
             rates[f"{name}_per_1k"] = (1000 * count / views if views is not None and views >= 1000
                                         and count is not None and count >= 0 else None)
         result.append({**row, "publication_day": day, **rates,
-                       "signup_yield": 1000 * signups / views if views is not None and views >= 1000 else None})
+                       "signup_yield": 1000 * signups / views
+                       if views is not None and views >= 1000 and signups is not None else None})
     return result
 
 
@@ -76,7 +77,7 @@ def dashboard_metrics(data: dict) -> dict:
         signups = (free or 0) + (paid or 0) if free is not None or paid is not None else None
         sources.append({**row, "signups": signups,
                         "signup_rate": signups / users if signups is not None and users and users > 0 else None})
-    return {**data,
+    result = {**data,
             "posts": post_index_metrics(data.get("posts") or []),
             "traffic_sources": sources,
             "briefing": {
@@ -87,6 +88,8 @@ def dashboard_metrics(data: dict) -> dict:
                 "substack_attributed": substack_count,
                 "substack_share": substack_count / subscribers if substack_count is not None and subscribers and subscribers > 0 else None,
             }}
+    from .editorial import editorial_observations
+    return {**result, "editorial": {"observations": editorial_observations(result)}}
 
 
 def post_detail_metrics(post: dict, *, today=None) -> dict:

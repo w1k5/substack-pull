@@ -16,6 +16,7 @@ import urllib.request
 
 from .common import KEYCHAIN_SERVICE, READ_ONLY_POST_PATHS, PullError
 from ...credentials import CredentialError, WindowsCredentialStore
+from ..pacing import paced_request
 
 
 def normalize_publication(value: str) -> str:
@@ -211,8 +212,11 @@ class ApiClient:
             self._throttle()
             request = urllib.request.Request(url, data=body, headers=headers, method=method)
             try:
-                with self.opener(request, timeout=self.timeout) as response:
-                    raw = response.read()
+                with paced_request(self.base_url, path,
+                                   enabled=self.opener is urllib.request.urlopen,
+                                   delay=self.request_delay):
+                    with self.opener(request, timeout=self.timeout) as response:
+                        raw = response.read()
                 self._last_request_at = time.monotonic()
                 try:
                     return json.loads(raw)

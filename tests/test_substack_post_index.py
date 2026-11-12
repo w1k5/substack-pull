@@ -64,10 +64,13 @@ class PostIndexTests(TestCase):
             with patch("substack_local.analytics.service.fetch_post", return_value={
                 "id": "101", "reach": {"views": 1000, "shares": 9},
                 "engagement": {"likes": 5, "comments": 1},
+                "growth": {"signups": 2},
             }), patch("substack_local.analytics.service.fetch_posts", return_value=[{
-                "id": 101, "views": 1000, "likes": 8, "comments": 3, "restacks": 7,
+                "id": 101, "views": 1000, "signups": 4, "shares": 11,
+                "likes": 8, "comments": 3, "restacks": 7,
             }]):
                 post = service.post("101")
         self.assertEqual((post["engagement"]["likes"], post["engagement"]["comments"],
                           post["engagement"]["restacks"]), (8, 3, 7))
+        self.assertEqual((post["reach"]["shares"], post["growth"]["signups"]), (11, 4))
         self.assertEqual(post["insights"]["response_rates"]["restacks"], 7)

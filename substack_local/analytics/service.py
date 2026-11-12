@@ -3,7 +3,8 @@
 import threading
 import time
 import math
-from datetime import datetime
+from typing import Callable
+from datetime import datetime, timedelta
 from hashlib import sha256
 from zoneinfo import ZoneInfo
 
@@ -13,13 +14,13 @@ from .cache import (
     prune_analytics_caches,
 )
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
-from .derived import dashboard_metrics, post_detail_metrics, post_index_metrics
+from .derived import dashboard_metrics, number, post_detail_metrics, post_index_metrics
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
 from .note_shares import post_note_shares, public_note_preview, public_note_text
 from .post import fetch_post, fetch_post_week, first_week_summary
 from .post_comparison import summarize_post_portfolio
-from .publication import fetch_dashboard, fetch_posts
+from .publication import fetch_dashboard, fetch_posts, fetch_recent_notes
 
 ALLOWED_DAYS = {7, 30, 90, 180, 365}
 MEMORY_ENTRY_LIMIT = 64
@@ -76,6 +77,7 @@ class AnalyticsService:
         self.note_cohort_generation = 0
         self.portfolio_generation = 0
         self.posts_cache: tuple[float, list[dict]] | None = None
+        self.latest_cache: tuple[float, dict] | None = None
         self.lock = threading.RLock()
 
     @classmethod
@@ -180,7 +182,16 @@ class AnalyticsService:
                 for name in ("likes", "comments"):
                     if index_post.get(name) is not None:
                         engagement[name] = index_post[name]
-            return post_detail_metrics({**value, "engagement": engagement,
+            reach = {**(value.get("reach") or {})}
+            growth = {**(value.get("growth") or {})}
+            if index_post:
+                for name in ("views", "shares"):
+                    if index_post.get(name) is not None:
+                        reach[name] = index_post[name]
+                if index_post.get("signups") is not None:
+                    growth["signups"] = index_post["signups"]
+            return post_detail_metrics({**value, "reach": reach, "growth": growth,
+                                        "engagement": engagement,
                                         "direct_note_shares": direct_note_shares})
 
     def posts(self, *, refresh: bool = False) -> list[dict]:
@@ -208,6 +219,83 @@ class AnalyticsService:
                 self.posts_cache = None if cached_on_disk else (time.monotonic(), value)
             return post_index_metrics(value)
 
+    def latest(self, *, refresh: bool = False) -> dict:
+        """Latest published writing, independent of the dashboard's activity period."""
+        with self.lock:
+            saved = self.latest_cache
+            if not refresh and saved and time.monotonic() - saved[0] < 300:
+                return saved[1]
+
+        # A publication refresh has already updated this shared index; avoid
+        # fetching every published post a second time for the home screen.
+        posts = sorted(self.posts(), key=lambda row: row.get("date") or "", reverse=True)
+        recent_notes = fetch_recent_notes(self.api)
+        post = posts[0].copy() if posts else None
+        linked_ids = set()
+        if post:
+            try:
+                shares = post_note_shares(ROOT / "substack" / "published-notes", str(post["id"]))
+                linked_ids = {str(row["id"]) for row in shares.get("notes") or []}
+            except (OSError, ValueError, TypeError, KeyError):
+                # Published counts still work when the local Note archive is unavailable.
+                pass
+
+        notes = []
+        post_date = None
+        if post and post.get("date"):
+            try:
+                post_date = datetime.fromisoformat(post["date"].replace("Z", "+00:00")).timestamp()
+            except (AttributeError, ValueError):
+                pass
+        for note in recent_notes[:2]:
+            summary = note.copy()
+            summary["relation"] = ("links to latest post" if note["id"] in linked_ids
+                                   else "published after latest post" if post_date is not None
+                                   and datetime.fromisoformat(note["published_at"]).timestamp() > post_date
+                                   else "published before latest post" if post_date is not None
+                                   else None)
+            try:
+                stats = self.note(note["id"], refresh=refresh)
+                summary["preview"] = stats.get("preview") or stats.get("full_text") or note["title"]
+                summary["impressions"] = stats.get("impressions")
+                summary["comparison"] = stats.get("comparison")
+            except (PullError, LookupError, ValueError, TypeError, KeyError):
+                summary["preview"] = note["title"]
+                summary["impressions"] = None
+            notes.append(summary)
+
+        note_window_start = (datetime.now(ZoneInfo("America/New_York")).date()
+                             - timedelta(days=364)).isoformat()
+        measured_notes = [note for note in notes if number(note.get("impressions")) is not None]
+        standout_note = max(measured_notes, key=lambda note: number(note["impressions"]) or 0,
+                            default=None)
+        paced_notes = [note for note in notes
+                       if number((note.get("comparison") or {}).get("pace", {}).get("ratio")) is not None]
+        standout_pace = max(
+            paced_notes,
+            key=lambda note: number(note["comparison"]["pace"]["ratio"]) or 0,
+            default=None,
+        )
+        note_observation = None
+        if standout_pace:
+            pace = standout_pace["comparison"]["pace"]
+            if (number(pace.get("ratio")) or 0) >= 1.5 and (number(standout_pace.get("impressions")) or 0) >= 100:
+                note_observation = {
+                    "title": "A recent Note is ahead of its usual reach",
+                    "detail": (f"{standout_pace['title']} reached {pace['ratio']:.1f}× the typical "
+                               f"Note at {pace['age']}."),
+                    "basis": f"Among {len(notes)} most recent Notes with available age-matched data",
+                    "path": f"/notes/{standout_pace['id']}",
+                }
+        result = {"post": post, "notes": notes, "standout_note": standout_note,
+                  "note_observation": note_observation,
+                  "notes_since_post": sum(datetime.fromisoformat(note["published_at"]).timestamp() > post_date
+                                          for note in recent_notes)
+                  if post_date is not None and str(post["date"])[:10] >= note_window_start else None}
+        with self.lock:
+            self.latest_cache = (time.monotonic(), result)
+        return result
+
     def post_week(self, post_id: str, *, refresh: bool = False) -> dict | None:
         post_id = numeric_id(post_id, "post")
         with self.lock:
@@ -234,7 +322,8 @@ class AnalyticsService:
                     pass
             return value
 
-    def post_portfolio(self, *, limit: int = 60, refresh: bool = False) -> dict:
+    def post_portfolio(self, *, limit: int = 60, refresh: bool = False,
+                       on_progress: Callable[[dict], None] | None = None) -> dict:
         if not 1 <= limit <= 60:
             raise ValueError("Choose a limit from 1 to 60.")
         cache_key = (limit, _today())
@@ -246,15 +335,17 @@ class AnalyticsService:
         all_posts = post_index_metrics(self.posts())
         posts = sorted(all_posts, key=lambda row: row.get("date") or "", reverse=True)[:limit]
         rows, incomplete, unavailable = [], 0, 0
-        for post in posts:
+        for index, post in enumerate(posts, 1):
+            failed = False
             try:
                 summary = self.post_week(str(post["id"]), refresh=refresh)
             except (PullError, LookupError, ValueError, TypeError, KeyError):
                 unavailable += 1
-                continue
-            if summary is None:
+                summary = None
+                failed = True
+            if summary is None and not failed:
                 incomplete += 1
-            else:
+            elif summary is not None:
                 try:
                     lifetime_views = float(post.get("views"))
                 except (TypeError, ValueError):
@@ -277,7 +368,11 @@ class AnalyticsService:
                              "later_views": later_views,
                              "later_multiple": later_views / summary["views"]
                              if later_views is not None and summary["views"] else None})
-        result = {"rows": rows, "considered": len(posts), "total": len(all_posts),
+            if on_progress and (index == 3 or index % 5 == 0) and index < len(posts):
+                on_progress({"rows": rows.copy(), "considered": index, "target": len(posts), "total": len(all_posts),
+                             "incomplete": incomplete, "unavailable": unavailable,
+                             "comparison": summarize_post_portfolio(rows)})
+        result = {"rows": rows, "considered": len(posts), "target": len(posts), "total": len(all_posts),
                   "incomplete": incomplete, "unavailable": unavailable,
                   "comparison": summarize_post_portfolio(rows)}
         with self.lock:
@@ -329,7 +424,8 @@ class AnalyticsService:
                 _remember(self.note_cache, note_id, value, NOTE_TTL_SECONDS)
             return value
 
-    def note_cohort(self, days: int = 90, *, retry_unavailable: bool = False) -> dict:
+    def note_cohort(self, days: int = 90, *, retry_unavailable: bool = False,
+                    on_progress: Callable[[dict], None] | None = None) -> dict:
         """Compare published Notes in one period, sharing the same result with UI and MCP."""
         if days not in ALLOWED_DAYS:
             raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
@@ -347,16 +443,20 @@ class AnalyticsService:
             key=lambda event: (event.get("day") or "", int(event["id"])), reverse=True,
         )
         rows, unavailable_ids = [], []
-        for event in events:
+        for index, event in enumerate(events, 1):
             note_id = str(event["id"])
             try:
                 stats = self.note(note_id)
             except (PullError, LookupError, ValueError, TypeError, KeyError):
                 unavailable_ids.append(note_id)
-                continue
-            rows.append({"id": note_id, "title": event.get("title") or "Note",
-                         "day": event.get("day"), **stats["comparison"]})
-        result = {"days": days, "total": len(events), "rows": rows,
+            else:
+                rows.append({"id": note_id, "title": event.get("title") or "Note",
+                             "day": event.get("day"), **stats["comparison"]})
+            if on_progress and (index == 3 or index % 5 == 0) and index < len(events):
+                on_progress({"days": days, "total": len(events), "considered": index, "rows": rows.copy(),
+                             "unavailable_ids": unavailable_ids.copy(),
+                             "lenses": summarize_note_cohort(rows)})
+        result = {"days": days, "total": len(events), "considered": len(events), "rows": rows,
                   "unavailable_ids": unavailable_ids,
                   "lenses": summarize_note_cohort(rows)}
         with self.lock:

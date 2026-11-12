@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 
 from .model import PrivateNotesError
+from ..pacing import paced_request
 
 BASE_URL = "https://substack.com"
 
@@ -85,8 +86,11 @@ class PrivateApiClient:
         for attempt in range(self.attempts):
             request = urllib.request.Request(url, headers=headers, method="GET")
             try:
-                with self.opener(request, timeout=self.timeout) as response:
-                    raw = response.read()
+                with paced_request(self.base_url, path,
+                                   enabled=self.opener is urllib.request.urlopen,
+                                   delay=self.request_delay):
+                    with self.opener(request, timeout=self.timeout) as response:
+                        raw = response.read()
                 self._last_request_at = time.monotonic()
                 try:
                     return json.loads(raw)
@@ -152,8 +156,11 @@ class PrivateApiClient:
             method=method,
         )
         try:
-            with self.opener(request, timeout=self.timeout) as response:
-                raw = response.read()
+            with paced_request(self.base_url, path,
+                               enabled=self.opener is urllib.request.urlopen,
+                               delay=self.request_delay):
+                with self.opener(request, timeout=self.timeout) as response:
+                    raw = response.read()
             self._last_request_at = time.monotonic()
         except urllib.error.HTTPError as exc:
             self._last_request_at = time.monotonic()

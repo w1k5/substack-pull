@@ -27,6 +27,8 @@ def stats(note_id: str, impressions: int, actual: int, typical: int,
             {"title": "Profile visit", "value": 20},
             {"title": "Like", "value": 30},
             {"title": "Reply", "value": 5},
+            {"title": "Restack", "value": 2},
+            {"title": "Share", "value": 3},
             {"title": "Link click", "value": 10},
         ]},
         "audience": [{"title": "Unconnected", "value": audience * .75},
@@ -41,11 +43,16 @@ class NoteComparisonTests(TestCase):
             "actual": 1200.0, "typical": 600.0, "age": "48h",
             "ratio": 2.0, "label": "+100% vs typical"})
         self.assertEqual(measured["visitRate"], 20)
-        self.assertEqual(measured["responseRate"], 35)
+        self.assertEqual(measured["responseRate"], 40)
+        self.assertEqual((measured["likes"], measured["replies"],
+                          measured["restacks"], measured["shares"]), (30, 5, 2, 3))
+        self.assertEqual((measured["likeRate"], measured["replyRate"],
+                          measured["restackRate"], measured["shareRate"]), (30, 5, 2, 3))
         self.assertEqual(measured["clickRate"], 10)
         self.assertEqual(measured["unconnected"], .75)
         small = note_comparison_metrics(stats("2", 99, 50, 100, audience=99))
         self.assertIsNone(small["visitRate"])
+        self.assertIsNone(small["likeRate"])
         self.assertIsNone(small["unconnected"])
 
     def test_cohort_ranking_and_standouts(self):
@@ -58,6 +65,8 @@ class NoteComparisonTests(TestCase):
         self.assertEqual(result["pace"]["median"], 1.5)
         self.assertEqual(result["responses"]["plotted"], 3)
         self.assertEqual(result["responses"]["standouts"], 2)
+        for outcome in ("likes", "replies", "restacks", "shares"):
+            self.assertEqual(result[outcome]["plotted"], 3)
 
     def test_existing_disk_cache_gets_metrics_without_refetch(self):
         with TemporaryDirectory() as directory:
@@ -84,8 +93,28 @@ class NoteComparisonTests(TestCase):
              patch.object(service, "note", side_effect=load):
             cohort = service.note_cohort(30)
         self.assertEqual(cohort["total"], 2)
+        self.assertEqual(cohort["considered"], 2)
         self.assertEqual([row["id"] for row in cohort["rows"]], ["1"])
         self.assertEqual(cohort["unavailable_ids"], ["2"])
+
+    def test_progress_reports_notes_processed_including_unavailable(self):
+        service = AnalyticsService(object(), object())
+        events = [{"type": "note", "id": str(index), "day": "2026-11-01",
+                   "title": f"Note {index}"} for index in range(1, 7)]
+        raw = stats("1", 1000, 1200, 600)
+        snapshots = []
+
+        def load(note_id):
+            if note_id == "2":
+                raise ValueError("unavailable")
+            return {**raw, "comparison": note_comparison_metrics(raw)}
+
+        with patch.object(service, "dashboard", return_value={"publication_events": events}), \
+             patch.object(service, "note", side_effect=load):
+            final = service.note_cohort(30, on_progress=snapshots.append)
+        self.assertEqual([item["considered"] for item in snapshots], [3, 5])
+        self.assertEqual([item["total"] for item in snapshots], [6, 6])
+        self.assertEqual(final["considered"], final["total"])
 
     def test_completed_note_cohort_is_reused(self):
         service = AnalyticsService(object(), object())

@@ -1,3 +1,9 @@
+.post-outcomes { margin-bottom: 22px; }
+.post-outcomes h3 { font-size: 16px; margin-bottom: 13px; }
+.post-outcome-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--line); }
+.post-outcome-grid > div { min-width: 0; padding: 16px 17px; background: #fff; }
+.post-outcome-grid span { display: block; color: var(--muted); font-size: 10px; font-weight: 700; }
+.post-outcome-grid strong { display: block; margin-top: 8px; color: var(--ink); font-size: 26px; line-height: 1.1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
 .performance-story {
   padding-bottom: 18px;
   border-bottom: 1px solid #e8eee7;
@@ -5,33 +11,31 @@
 .performance-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 1px;
   margin: 14px 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--line);
 }
 .performance-summary > div {
-  padding: 16px 18px;
-  background: #f3f7ef;
-  border: 1px solid #e2eadb;
-  border-radius: 11px;
+  padding: 15px 17px;
+  background: #fff;
 }
-.performance-summary span,
-.response-grid span {
+.performance-summary span {
   display: block;
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  color: #64806e;
+  font-weight: 650;
+  color: var(--muted);
 }
 .performance-summary strong {
   display: block;
   margin: 7px 0 3px;
   font-size: 23px;
   letter-spacing: -0.05em;
-  color: #204e36;
+  color: var(--ink);
 }
-.performance-summary small,
-.response-grid small {
+.performance-summary small {
   display: block;
   font-size: 10px;
   line-height: 1.4;
@@ -194,25 +198,11 @@
 .device-list {
   max-width: 650px;
 }
-.response-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-.response-grid > div {
-  padding: 15px 17px;
-  border-radius: 10px;
-  background: #f5f8f2;
-}
-.response-grid strong {
-  display: block;
-  font-size: 23px;
-  letter-spacing: -0.04em;
-  color: #254d38;
-  margin: 5px 0 2px;
-}
+.response-detail { border-top: 1px solid #e9eee6; padding-top: 15px; }
+.response-detail p { margin: 10px 0 5px; color: #42634c; font-size: 11px; line-height: 1.5; }
+.response-detail small { display: block; color: #829487; font-size: 10px; }
 @media (max-width: 800px) {
-  .response-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .post-outcome-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .source-compare-row {
     grid-template-columns: 1fr;
     gap: 6px;
@@ -232,11 +222,12 @@
   .performance-summary > div {
     padding: 12px 14px;
   }
-  .response-grid {
-    grid-template-columns: 1fr;
-  }
   .compare-lane {
     grid-template-columns: 70px minmax(0, 1fr) 45px;
     gap: 7px;
   }
+}
+@media (max-width: 480px) {
+  .post-outcome-grid > div { padding: 12px 10px; }
+  .post-outcome-grid strong { font-size: 21px; }
 }

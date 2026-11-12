@@ -17,19 +17,18 @@
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  gap: 12px;
+  margin-bottom: 12px;
 }
 .metric,
 .panel {
   background: #fff;
-  border: 1px solid #e3e9e1;
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
-  box-shadow: 0 2px 8px rgba(20, 54, 42, 0.025);
 }
 .metric {
-  padding: var(--space-6);
-  min-height: 132px;
+  padding: 19px;
+  min-height: 120px;
 }
 .metric.accent {
   background: #e9f1e1;
@@ -41,9 +40,9 @@
   font-weight: 700;
 }
 .metric-value {
-  font-size: 31px;
-  line-height: 1.3;
-  margin-top: 10px;
+  font-size: 29px;
+  line-height: 1.2;
+  margin-top: 8px;
   font-weight: 700;
   letter-spacing: -0.06em;
 }
@@ -53,20 +52,21 @@
   margin-top: 2px;
 }
 .panel {
-  padding: var(--space-6);
+  padding: 21px;
 }
 .panel-heading {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: 14px;
 }
 h2 {
-  margin: 5px 0 0;
+  margin: 0;
   font-size: var(--text-section);
-  letter-spacing: -0.045em;
+  letter-spacing: -0.035em;
 }
+.panel-heading .eyebrow + h2 { margin-top: 5px; }
 .panel-meta {
   color: #93a096;
   font-size: 11px;
@@ -171,6 +171,8 @@ h2 {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.source-trend-more { align-self: center; border: 0; background: none; color: var(--green); font: inherit; font-size: 11px; font-weight: 650; padding: 7px 4px; cursor: pointer; }
+.source-trend-more:hover, .source-trend-more:focus-visible { text-decoration: underline; }
 .source-trend-choice {
   display: inline-flex;
   align-items: center;
@@ -353,12 +355,12 @@ table {
 }
 th {
   text-align: right;
-  color: #9aa89e;
+  color: #7d8d82;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: 10px 8px;
-  border-bottom: 1px solid #e8ede6;
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   background: #fff;
@@ -371,7 +373,7 @@ td:first-child {
 td {
   text-align: right;
   padding: 11px 8px;
-  border-bottom: 1px solid #f0f2ed;
+  border-bottom: 1px solid #edf1ec;
   color: #587064;
 }
 td:first-child {
@@ -382,7 +384,7 @@ td:first-child {
   text-overflow: ellipsis;
 }
 tbody tr:hover {
-  background: #fafcf8;
+  background: #f6f9f5;
 }
 .posts-panel {
   margin-top: var(--space-4);
@@ -402,11 +404,11 @@ tbody tr:hover {
 }
 .badge {
   font-size: 10px;
-  color: #63825e;
-  background: #e9f2e3;
-  border-radius: 20px;
-  padding: 7px 10px;
-  font-weight: 700;
+  color: #4e7259;
+  background: #edf4eb;
+  border-radius: 7px;
+  padding: 6px 9px;
+  font-weight: 650;
 }
 footer {
   text-align: center;

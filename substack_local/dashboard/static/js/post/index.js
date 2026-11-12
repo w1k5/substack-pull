@@ -33,12 +33,37 @@ function linkLabel(value) {
   return label;
 }
 
+function postOutcomes(post) {
+  const panel = section('Lifetime outcomes');
+  panel.classList.add('post-outcomes');
+  const grid = document.createElement('div');
+  grid.className = 'post-outcome-grid';
+  for (const [label, value] of [
+    ['Views', post.reach?.views],
+    ['Signups', post.growth?.signups],
+    ['Likes', post.engagement?.likes],
+    ['Comments', post.engagement?.comments],
+    ['Shares', post.reach?.shares],
+  ]) {
+    const item = document.createElement('div');
+    const name = document.createElement('span');
+    name.textContent = label;
+    const amount = document.createElement('strong');
+    amount.textContent = fmt(value);
+    item.append(name, amount);
+    grid.append(item);
+  }
+  panel.append(grid);
+  return panel;
+}
+
 function renderPostDetail(post) {
   $('detail-title').textContent = post.title;
   $('detail-meta').textContent =
     `Published ${date(post.date)} · lifetime totals · compared with ${fmt(post.comps.n_comp_posts)} similar posts`;
   const root = $('detail-content');
   root.replaceChildren();
+  root.append(postOutcomes(post));
   const story = post.story || {};
   const afterWeek = story.after_week || [];
   if (afterWeek.length) {
@@ -147,14 +172,18 @@ let detailRequest = 0;
 export async function showPost(row, publication, force = false) {
   const request = ++detailRequest;
   const panel = $('post-detail');
+  const content = $('detail-content');
+  const keepDetails = force && content.children.length && !content.querySelector('.loading-state');
+  const pending = keepDetails ? loadingIndicator('Updating post details…', { inline: true }) : null;
   panel.hidden = false;
-  panel.setAttribute('aria-busy', 'true');
+  if (!keepDetails) panel.setAttribute('aria-busy', 'true');
   $('detail-refresh').disabled = true;
   $('detail-title').textContent = row.title;
-  $('detail-meta').textContent = '';
+  if (!keepDetails) $('detail-meta').textContent = '';
   $('detail-open').href = `${publication}/publish/posts/detail/${encodeURIComponent(row.id)}`;
-  $('detail-content').replaceChildren(loadingIndicator('Loading post details…'));
-  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (keepDetails) content.prepend(pending);
+  else content.replaceChildren(loadingIndicator('Loading post details…'));
+  if (!force) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
     const response = await fetch(
       `/api/post/${encodeURIComponent(row.id)}${force ? '?refresh=1' : ''}`,
@@ -165,11 +194,12 @@ export async function showPost(row, publication, force = false) {
     if (request === detailRequest) renderPostDetail(payload);
   } catch (error) {
     if (request === detailRequest) {
-      $('detail-content').replaceChildren();
-      $('detail-meta').textContent = `Could not load details: ${error.message}`;
+      if (!keepDetails) content.replaceChildren();
+      $('detail-meta').textContent = `Could not update details: ${error.message}${keepDetails ? ' · last loaded details remain below' : ''}`;
     }
   } finally {
     if (request === detailRequest) {
+      pending?.remove();
       panel.setAttribute('aria-busy', 'false');
       $('detail-refresh').disabled = false;
     }

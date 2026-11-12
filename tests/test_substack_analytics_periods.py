@@ -46,6 +46,7 @@ class PublicationPeriodTests(TestCase):
             "totals": {"views": 25, "visitors": 80, "subscribers": 8},
         })
         self.assertEqual(result["totals"], {"views": 40, "visitors": 100, "subscribers": 12})
+        self.assertEqual(result["notes_source_attribution"]["status"], "unavailable")
         source_ranges = [
             (query["from_date"][0], query["to_date"][0])
             for path, query in api.requests if path.endswith("/visitor_sources")

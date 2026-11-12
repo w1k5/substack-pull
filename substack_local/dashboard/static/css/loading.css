@@ -49,13 +49,26 @@ body.boot-loading .boot-screen {
 .loading-state.loading-inline {
   justify-content: flex-start;
   min-height: 0;
-  padding: 4px 0 16px;
+  padding: 6px 0 12px;
 }
 .loading-state.loading-inline .spinner {
   width: 16px;
   height: 16px;
   border-width: 2px;
 }
+.loading-state progress {
+  width: min(116px, 25vw);
+  height: 5px;
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--line);
+}
+.loading-state progress::-webkit-progress-bar { background: var(--line); }
+.loading-state progress::-webkit-progress-value { background: var(--green); border-radius: 10px; }
+.loading-state progress::-moz-progress-bar { background: var(--green); border-radius: 10px; }
+.loading-percent { min-width: 31px; color: var(--green); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .spinner {
   display: inline-block;
   width: 24px;
@@ -80,39 +93,4 @@ body.boot-loading .boot-screen {
   .spinner {
     animation-duration: 2s;
   }
-}
-.panel.empty-loading,
-.metric.empty-loading,
-.insight-callout.empty-loading {
-  position: relative;
-}
-.panel.empty-loading {
-  min-height: 240px;
-}
-.insight-callout.empty-loading {
-  min-height: 92px;
-}
-.panel-spinner.loading-state {
-  position: absolute;
-  inset: 62px 1px 1px;
-  min-height: 0;
-  background: #fff;
-  border-radius: 0 0 14px 14px;
-  z-index: 2;
-}
-.metric .panel-spinner.loading-state {
-  inset: 42px 1px 1px;
-  background: inherit;
-  font-size: 11px;
-  gap: 8px;
-}
-.metric .panel-spinner .spinner {
-  width: 18px;
-  height: 18px;
-  border-width: 2px;
-}
-.insight-callout .panel-spinner.loading-state {
-  inset: 0;
-  background: transparent;
-  border-radius: inherit;
 }

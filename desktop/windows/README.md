@@ -5,6 +5,8 @@ Substack sign-in in WebView2, checks editor access, saves the resulting session 
 Windows Credential Manager, and starts the dashboard on a random loopback port.
 The app closes its local server when it exits. The MCP process is optional and
 starts separately from an AI client.
+The window has Clearview, Edit, View, and Help menus. **View → Reload** reloads the
+current page; **Refresh publication** in the dashboard requests newer analytics.
 
 ## Build on Windows
 

@@ -1,28 +1,6 @@
-import { $, fmt, pct, date, emptyMessage } from '../shared.js';
+import { $, fmt, date, emptyMessage } from '../shared.js';
 import { renderPublicationTimeline } from '../timeline.js';
 import { sourceLabel } from '../source-labels.js';
-
-function showCallout(id, label, headline, detail, path, action) {
-  const root = $(id);
-  root.replaceChildren();
-  const copy = document.createElement('div');
-  const kicker = document.createElement('span');
-  kicker.className = 'insight-label';
-  kicker.textContent = label;
-  const title = document.createElement('strong');
-  title.textContent = headline;
-  const description = document.createElement('p');
-  description.textContent = detail;
-  copy.append(kicker, title, description);
-  root.append(copy);
-  if (path) {
-    const link = document.createElement('a');
-    link.href = path;
-    link.dataset.route = '';
-    link.textContent = action || 'Explore →';
-    root.append(link);
-  }
-}
 
 function priorDelta(comparison, days) {
   if (!comparison || comparison.status === 'unavailable') return 'Previous period unavailable';
@@ -40,38 +18,9 @@ export function renderBriefing(data, navigate) {
   }
   $('briefing-period').textContent =
     `${date(data.range.start)} – ${date(data.range.end)} · compared with the preceding ${data.range.days} days · today may be incomplete`;
-  if (briefing.notes_share > 0) {
-    showCallout(
-      'briefing-insight', 'A PATH TO NEW READERS',
-      `${fmt(briefing.notes_attributed)} subscribers were attributed to Notes`,
-      `${pct(briefing.notes_share)} of new subscribers in this period. Attribution describes a channel, not which individual Note caused a signup.`,
-      '/notes', 'Explore Notes →',
-    );
-  } else {
-    showCallout(
-      'briefing-insight', 'START HERE', 'Trace the change in your publication',
-      'Select a post or Note marker below, then inspect where readers came from and what they did next.',
-      '/discovery', 'Explore discovery →',
-    );
-  }
   $('period').textContent = `${data.range.days > 90 ? 'Weekly' : 'Daily'} totals`;
   $('event-detail').hidden = true;
   renderPublicationTimeline(data, navigate);
-}
-
-export function renderDiscoveryInsight(data) {
-  if (data.briefing?.substack_share != null) {
-    showCallout(
-      'discovery-insight', 'SUBSCRIBER ATTRIBUTION',
-      `${pct(data.briefing.substack_share)} of new subscribers were credited to Substack`,
-      'This parent source includes Notes and other Substack surfaces. Its children are a breakdown, not additional subscribers.',
-    );
-  } else {
-    showCallout(
-      'discovery-insight', 'TWO LENSES', 'Compare discovery with traffic',
-      'Subscriber attribution and traffic referrers use different definitions, so their counts do not form a single funnel.',
-    );
-  }
 }
 
 export function renderGrowth(data) {

@@ -10,34 +10,46 @@ export function noteReachCard(stats) {
   const heading = document.createElement('div');
   heading.className = 'note-reach-heading';
   const title = document.createElement('strong');
-  title.textContent = 'Note reach';
+  title.textContent = 'Note performance';
   heading.append(title);
   card.append(heading);
-  const profileVisits = stats.interactions?.items?.find(
-    (item) => item.title === 'Profile visit',
-  )?.value;
-  const metrics = document.createElement('div');
-  metrics.className = 'note-reach-metrics';
-  for (const [label, value, context] of [
+  const response = stats.comparison || {};
+  const metricGroup = (title, rows, kind) => {
+    const section = document.createElement('section');
+    section.className = `note-reach-group ${kind}`;
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const metrics = document.createElement('div');
+    metrics.className = 'note-reach-metrics';
+    for (const [label, value, context] of rows) {
+      const item = document.createElement('div');
+      const name = document.createElement('span');
+      name.textContent = label;
+      const amount = document.createElement('strong');
+      amount.textContent = value;
+      const detail = document.createElement('small');
+      detail.textContent = context;
+      item.append(name, amount, detail);
+      metrics.append(item);
+    }
+    section.append(heading, metrics);
+    return section;
+  };
+  card.append(metricGroup('Reader response', [
+    ['Likes', fmt(response.likes), 'Reader reactions'],
+    ['Replies', fmt(response.replies), 'Comments on this Note'],
+    ['Restacks', fmt(response.restacks), 'Readers who republished it'],
+    ['Shares', fmt(response.shares), 'Recorded share actions'],
+  ], 'response'));
+  card.append(metricGroup('Reach and curiosity', [
     ['Impressions', fmt(stats.impressions), 'Total to date'],
     [
       `Pace at ${matched.age}`,
       matched.label,
       `${fmt(matched.actual)} impressions · typical ${fmt(matched.typical)}`,
     ],
-    ['Profile visits', fmt(profileVisits), 'From this Note'],
-  ]) {
-    const item = document.createElement('div');
-    const name = document.createElement('span');
-    name.textContent = label;
-    const amount = document.createElement('strong');
-    amount.textContent = value;
-    const detail = document.createElement('small');
-    detail.textContent = context;
-    item.append(name, amount, detail);
-    metrics.append(item);
-  }
-  card.append(metrics);
+    ['Profile visits', fmt(response.visits), 'From this Note'],
+  ], 'context'));
   const breakdown = document.createElement('div');
   breakdown.className = 'note-reach-breakdown';
   for (const [label, items] of [
@@ -66,16 +78,9 @@ export function noteReachCard(stats) {
     breakdown.append(group);
   }
   card.append(breakdown);
-  const actions = (stats.interactions?.items || [])
-    .filter((item) => Number(item.value) > 0 && item.title !== 'Profile visit')
-    .map((item) => {
-      const title = item.title.toLowerCase(),
-        plural = title === 'reply' ? 'replies' : `${title}s`;
-      return `${fmt(item.value)} ${Number(item.value) === 1 ? title : plural}`;
-    });
   const foot = document.createElement('p');
   foot.className = 'note-reach-foot';
-  foot.textContent = `${actions.join(' · ') || 'No recorded interactions'} · Impressions and unique audience use different totals.`;
+  foot.textContent = 'Responses, reach, and audience measure different things. Impressions and unique audience use different totals.';
   card.append(foot);
   if (stats.permalink) {
     const link = document.createElement('a');

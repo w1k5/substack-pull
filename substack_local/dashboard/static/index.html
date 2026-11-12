@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="/css/post-insights.css" />
     <link rel="stylesheet" href="/css/post-portfolio.css" />
     <link rel="stylesheet" href="/css/views.css" />
+    <link rel="stylesheet" href="/css/latest.css" />
+    <link rel="stylesheet" href="/css/editorial.css" />
     <link rel="stylesheet" href="/css/comparison-map.css" />
     <link rel="stylesheet" href="/css/planner.css" />
   </head>
@@ -34,6 +36,7 @@
         <div class="side-label">YOUR PUBLICATION</div>
         <nav aria-label="Analytics views">
           <a class="side-link active" data-route href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Briefing</a>
+          <a class="side-link" data-route href="/leaderboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11h4v9M10 20V4h4v16M16 20v-7h4v7M3 20h18"/></svg>Leaderboard</a>
           <a class="side-link" data-route href="/posts"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Posts</a>
           <a class="side-link" data-route href="/discovery"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>Discovery</a>
           <a class="side-link" data-route href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5"/></svg>Notes</a>
@@ -74,12 +77,52 @@
           <section class="view" id="view-briefing" aria-labelledby="briefing-title">
           <div class="hero">
             <div>
-              <div class="eyebrow">THE WRITER'S BRIEFING</div>
-              <h1 id="briefing-title">What deserves <em>attention?</em></h1>
-              <p id="briefing-period">A clear read on this period's reach and growth.</p>
+              <h1 id="briefing-title">What matters <em>now.</em></h1>
+              <p>Your publication at a glance.</p>
             </div>
           </div>
-          <div id="briefing-insight" class="insight-callout" aria-live="polite"></div>
+          <section class="editorial-summary" aria-label="Performance summary">
+            <div id="editorial-pulse"></div>
+            <div id="editorial-highlights"></div>
+          </section>
+          <section class="latest-section" aria-labelledby="latest-title">
+            <div class="section-heading"><h2 id="latest-title">Latest writing</h2><a data-route href="/leaderboard">Browse rankings →</a></div>
+            <div id="latest-content" aria-live="polite"></div>
+          </section>
+          <div class="briefing-section-heading">
+            <h2>Activity</h2>
+            <p id="briefing-period">A clear read on this period's reach and growth.</p>
+          </div>
+          <section class="panel trend">
+            <div class="panel-heading">
+              <div>
+                <h2>Views over time</h2>
+              </div>
+              <div class="panel-meta" id="period">—</div>
+            </div>
+            <div class="chart-wrap">
+              <svg
+                id="chart"
+                viewBox="0 0 1000 240"
+                preserveAspectRatio="xMinYMin meet"
+                role="img"
+                aria-label="Publication views with post and Note markers"
+              ></svg>
+              <div id="chart-hover" class="chart-hover" hidden>
+                <strong id="chart-hover-value"></strong>
+                <span id="chart-hover-date"></span>
+              </div>
+            </div>
+            <div class="chart-axis" id="chart-axis"></div>
+            <p id="chart-partial" class="chart-partial" hidden></p>
+            <div class="event-legend">
+              <span><i class="post-key"></i> Post published</span
+              ><span><i class="note-key"></i> Note published</span
+              ><span>Select a marker to inspect the writing</span>
+            </div>
+            <div id="event-detail" class="event-detail" hidden></div>
+          </section>
+          <details class="overview-more"><summary>More period figures and definitions</summary>
           <section class="metrics" aria-label="Publication metrics">
             <div class="metric">
               <div class="metric-label">New subscribers
@@ -112,51 +155,55 @@
               <div class="metric-note" id="visitors-delta">Growth attribution total</div>
             </div>
           </section>
-          <section class="panel trend">
-            <div class="panel-heading">
-              <div>
-                <div class="eyebrow">MOMENTUM</div>
-                <h2>Views over time</h2>
-              </div>
-              <div class="panel-meta" id="period">—</div>
-            </div>
-            <div class="chart-wrap">
-              <svg
-                id="chart"
-                viewBox="0 0 1000 240"
-                preserveAspectRatio="xMinYMin meet"
-                role="img"
-                aria-label="Publication views with post and Note markers"
-              ></svg>
-              <div id="chart-hover" class="chart-hover" hidden>
-                <strong id="chart-hover-value"></strong>
-                <span id="chart-hover-date"></span>
-              </div>
-            </div>
-            <div class="chart-axis" id="chart-axis"></div>
-            <p id="chart-partial" class="chart-partial" hidden></p>
-            <div class="event-legend">
-              <span><i class="post-key"></i> Post published</span
-              ><span><i class="note-key"></i> Note published</span
-              ><span>Select a publication marker for its posts and Notes</span>
-            </div>
-            <div id="event-detail" class="event-detail" hidden></div>
+          </details>
           </section>
-          <div id="briefing-next" class="briefing-next">
-            <a data-route href="/posts">
-              <span>POSTS</span><strong>Which pieces brought readers in?</strong>
-              <small>Compare reach, signups, and reader response →</small>
-            </a>
-            <a data-route href="/discovery">
-              <span>DISCOVERY</span><strong>Where did those readers come from?</strong>
-              <small>Inspect traffic and subscriber attribution →</small>
-            </a>
-          </div>
+          <section class="view" id="view-leaderboard" aria-labelledby="leaderboard-title" hidden>
+            <div class="hero"><div>
+              <h1 id="leaderboard-title">Leaderboard</h1></div></div>
+            <section class="panel editorial-board" aria-label="Rank published writing">
+              <div class="eyebrow editorial-board-label">PERFORMANCE RANKINGS</div>
+              <div class="editorial-board-controls">
+                <div class="segment-row" id="leaderboard-types" role="group" aria-label="Content type">
+                  <button type="button" class="segment active" data-board-type="posts" aria-pressed="true">Posts</button>
+                  <button type="button" class="segment" data-board-type="notes" aria-pressed="false">Notes</button>
+                  <button type="button" class="segment" data-board-type="all" aria-pressed="false">All writing</button>
+                </div>
+                <span id="leaderboard-scope" class="panel-meta"></span>
+              </div>
+              <div class="editorial-ranking-controls" id="leaderboard-ranking-controls">
+              <div class="editorial-outcomes" role="group" aria-label="Rank by outcome">
+                <button type="button" data-board-sort="reach">Reach</button>
+                <button type="button" data-board-sort="growth">Signups</button>
+                <button type="button" data-board-sort="likes">Likes</button>
+                <button type="button" data-board-sort="discussion">Comments / replies</button>
+                <button type="button" data-board-sort="restacks">Restacks</button>
+                <button type="button" data-board-sort="shares">Shares</button>
+                <button type="button" data-board-sort="relative">First week vs peers</button>
+              </div>
+              <button type="button" class="segment" id="leaderboard-rate-toggle" aria-pressed="false">Rank by rate</button>
+              </div>
+              <div id="leaderboard-loading"></div>
+              <div class="table-scroll editorial-board-scroll">
+                <table class="editorial-board-table">
+                  <thead><tr>
+                    <th><button type="button" class="sort-header" data-board-sort="title">Writing <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                    <th><button type="button" class="sort-header" data-board-sort="date">Published <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                    <th aria-sort="descending">
+                      <button type="button" class="sort-header" data-board-sort="metric"><span id="leaderboard-result-label">Signups</span> <span class="sort-arrow" aria-hidden="true">↓</span></button>
+                      <span id="leaderboard-result-static" hidden>Reach</span>
+                    </th>
+                  </tr></thead>
+                  <tbody id="leaderboard-rows"></tbody>
+                </table>
+              </div>
+              <button type="button" class="refresh editorial-more" id="leaderboard-more" hidden>Show more</button>
+              <details class="method-note"><summary>How rankings work</summary><p id="leaderboard-explainer"></p><p>Notes compare with Substack's typical Note at the same age. Eligible posts compare first-week views with a cohort median of the same post type and audience.</p></details>
+            </section>
           </section>
           <section class="view" id="view-discovery" aria-labelledby="discovery-title" hidden>
             <div class="hero">
-              <div><div class="eyebrow">DISCOVERY</div><h1 id="discovery-title">How readers <em>find you.</em></h1>
-                <p>Subscriber attribution and traffic answer related, different questions.</p></div>
+              <div><h1 id="discovery-title">Discovery</h1>
+                <p>Where attention turns into readers.</p></div>
             </div>
             <div id="discovery-insight" class="insight-callout"></div>
             <section class="panel source-trend" aria-labelledby="source-trend-title">
@@ -167,7 +214,7 @@
                 </div>
                 <span class="panel-meta" id="source-trend-unit">Per-source subscribers · daily</span>
               </div>
-              <p class="source-trend-intro"><strong>Separate lines, not a total.</strong> Each line shows subscribers credited to that source each day or week. Adding a source never changes another line’s values.</p>
+              <p class="source-trend-intro">Each line shows subscribers credited to one source. Sources can overlap.</p>
               <div id="source-trend-choices" class="source-trend-choices" aria-label="Subscriber sources to compare"></div>
               <p id="source-trend-selection-help" class="source-trend-help"></p>
               <p id="source-trend-empty" class="empty-state" role="status" hidden></p>
@@ -186,7 +233,7 @@
                 </div>
               </div>
               <div id="source-trend-event-detail" class="event-detail" hidden></div>
-              <p class="footnote">Source attribution can overlap, so source counts should not be summed into a publication total. Publication markers show timing, not which piece caused a signup.</p>
+              <details class="method-note"><summary>About source attribution</summary><p>Source attribution can overlap, so source counts should not be summed into a publication total. Publication markers show timing, not which piece caused a signup.</p></details>
             </section>
           <div class="two-col" id="sources">
             <section class="panel">
@@ -242,107 +289,109 @@
           </section>
           <section class="view" id="view-posts" aria-labelledby="posts-title" hidden>
             <div class="hero">
-              <div><div class="eyebrow">POST PORTFOLIO</div><h1 id="posts-title">What did your writing <em>do?</em></h1>
-                <p>Compare how posts launch, attract subscribers, draw responses, get shared, and keep finding readers.</p></div>
+              <div><h1 id="posts-title">Posts</h1>
+                <p>Compare outcomes and open a post for the full story.</p></div>
             </div>
-            <section class="panel post-map-panel" id="post-map" aria-labelledby="post-map-title">
-              <div class="panel-heading">
-                <div>
-                  <div class="eyebrow" id="post-map-eyebrow">FIRST-WEEK COMPARISON</div>
-                  <h2 id="post-map-title">How posts travel</h2>
-                </div>
-                <span class="badge" id="post-map-window">Same 7-day window</span>
-              </div>
-              <p class="detail-context" id="post-map-description">See which posts kept finding readers after launch day.</p>
-              <div class="segment-row post-map-lenses" id="post-map-lenses" aria-label="Compare post outcomes">
-                <button type="button" class="segment" data-post-map="staying">Staying power</button>
-                <button type="button" class="segment" data-post-map="yield">Subscriber yield</button>
-                <button type="button" class="segment" data-post-map="sharing">Reader sharing</button>
-                <button type="button" class="segment" data-post-map="response">Reader response</button>
-                <button type="button" class="segment" data-post-map="tail">Later discovery</button>
-              </div>
-              <div class="segment-row post-response-metrics" id="post-response-metrics" aria-label="Choose a reader response" hidden>
-                <button type="button" class="segment" data-post-response="likes">Likes</button>
-                <button type="button" class="segment" data-post-response="comments">Comments</button>
-                <button type="button" class="segment" data-post-response="restacks">Restacks</button>
-              </div>
-              <p class="detail-context" id="post-map-status">Loading post comparison…</p>
-              <div class="post-map-key" id="post-map-key" hidden></div>
-              <div id="post-map-loading"></div>
-              <button type="button" class="refresh" id="post-map-retry" hidden>Retry comparison</button>
-              <div class="post-map-workspace" id="post-map-workspace" hidden>
-                <div class="post-map-visual" id="post-map-visual">
-                  <div class="post-map-y-title" id="post-map-y-title">Days 2–7 share of first-week views</div>
-                  <div class="post-map-plot" id="post-map-plot">
-                    <div id="post-map-grid"></div>
-                    <div id="post-map-points"></div>
-                    <div class="post-map-tooltip" id="post-map-tooltip" hidden></div>
-                  </div>
-                  <div class="post-map-x-title" id="post-map-x-title">First-week views · log scale</div>
-                </div>
-                <aside class="post-map-side" aria-label="Selected post comparison">
-                  <div class="post-map-comparison" id="post-map-comparison"></div>
-                </aside>
-              </div>
-              <p class="footnote" id="post-map-footnote">Guides show cohort medians. Posts need seven complete days and at least 100 first-week views. Views are not unique readers.</p>
-            </section>
-          <section class="panel posts-panel" id="posts">
+          <section class="panel post-map-panel" id="post-map" aria-labelledby="post-map-title">
             <div class="panel-heading">
               <div>
-                <div class="eyebrow">CONTENT</div>
-                <h2>Compare published posts</h2>
+                <div class="eyebrow">PERFORMANCE COMPARISON</div>
+                <h2 id="post-map-title">Patterns across Posts</h2>
               </div>
-              <span class="badge">Lifetime metrics</span>
+              <span class="badge" id="post-map-window">Same 7-day window</span>
             </div>
+            <p class="comparison-lead" id="post-map-description">See which posts kept finding readers after launch day.</p>
             <div class="table-toolbar filter-toolbar">
               <label><input id="posts-in-period" type="checkbox" /> Published in selected period</label>
               <label><input id="posts-min-views" type="checkbox" /> At least 1,000 views</label>
+            </div>
+            <div class="segment-row post-map-lenses" id="post-map-lenses" aria-label="Compare post outcomes">
+              <button type="button" class="segment" data-post-map="staying">Staying power</button>
+              <button type="button" class="segment" data-post-map="yield">Subscriber yield</button>
+              <button type="button" class="segment" data-post-map="sharing">Reader sharing</button>
+              <button type="button" class="segment" data-post-map="response">Reader response</button>
+              <button type="button" class="segment" data-post-map="tail">Later discovery</button>
+            </div>
+            <div class="segment-row post-response-metrics" id="post-response-metrics" aria-label="Choose a reader response" hidden>
+              <button type="button" class="segment" data-post-response="likes">Likes</button>
+              <button type="button" class="segment" data-post-response="comments">Comments</button>
+              <button type="button" class="segment" data-post-response="restacks">Restacks</button>
+            </div>
+            <p class="detail-context" id="post-map-status">Loading post comparison…</p>
+            <div class="post-map-key" id="post-map-key" hidden></div>
+            <div id="post-map-loading"></div>
+            <button type="button" class="refresh" id="post-map-retry" hidden>Retry comparison</button>
+            <div class="post-map-workspace" id="post-map-workspace" hidden>
+              <div class="post-map-visual" id="post-map-visual">
+                <div class="post-map-y-title" id="post-map-y-title">Days 2–7 share of first-week views</div>
+                <div class="post-map-plot" id="post-map-plot">
+                  <div id="post-map-grid"></div>
+                  <div id="post-map-points"></div>
+                  <div class="post-map-tooltip" id="post-map-tooltip" hidden></div>
+                </div>
+                <div class="post-map-x-title" id="post-map-x-title">First-week views · log scale</div>
+              </div>
+              <aside class="post-map-side" aria-label="Selected post comparison">
+                <div class="post-map-comparison" id="post-map-comparison"></div>
+              </aside>
+            </div>
+            <p class="footnote" id="post-map-footnote">Guides show cohort medians. Posts need seven complete days and at least 100 first-week views. Views are not unique readers.</p>
+          </section>
+          <section class="panel posts-panel" id="posts">
+            <div class="panel-heading">
+              <div>
+                <div class="eyebrow">EXACT FIGURES</div>
+                <h2>All Posts</h2>
+                <p id="post-table-count" class="note-compare-count"></p>
+              </div>
               <button type="button" class="refresh" id="export-posts" disabled>Export CSV</button>
             </div>
-            <p class="table-scroll-hint">Tap a metric to sort posts.</p>
+            <p class="table-scroll-hint">Sort any outcome to find the posts that stood out.</p>
             <div class="table-scroll">
               <table>
                 <thead>
                   <tr>
                     <th>Post</th>
-                    <th>Date</th>
+                    <th>Published</th>
                     <th>Views</th>
                     <th>Signups</th>
-                    <th title="Signups per 1,000 views">Signup yield</th>
                     <th>Likes</th>
                     <th>Comments</th>
                     <th>Restacks</th>
+                    <th>Shares</th>
                   </tr>
                 </thead>
                 <tbody id="post-table"></tbody>
               </table>
             </div>
             <div id="post-pagination" class="table-pagination"></div>
-            <p class="footnote">
-              Post metrics are lifetime totals. Signup yield appears for posts with at least 1,000 views.
-              Restacks come from the public archive; an unavailable count appears as —. Share actions remain in the Reader sharing view, post story, and CSV export.
-            </p>
+            <details class="method-note"><summary>About these figures</summary><p>All six outcomes are lifetime totals. Shares and restacks are distinct metrics. Sort a column to compare Posts by that outcome; open a Post for rates, timing, and sources.</p></details>
           </section>
           </section>
           <section class="view" id="view-notes" aria-labelledby="notes-title" hidden>
             <div class="hero">
               <div>
-                <div class="eyebrow">NOTES</div>
-                <h1 id="notes-title">Where short writing <em>travels.</em></h1>
-                <p>Explore Notes published in the selected period. Each Note's reach is lifetime.</p>
+                <h1 id="notes-title">Notes</h1>
+                <p>Compare outcomes and open a Note for the full story.</p>
               </div>
             </div>
-            <div id="notes-insight" class="insight-callout"></div>
             <section class="panel note-map-panel" aria-labelledby="note-map-title">
               <div class="panel-heading">
-                <div><div class="eyebrow">ACROSS NOTES</div><h2 id="note-map-title">Which Notes travel and move readers?</h2></div>
+                <div>
+                  <div class="eyebrow">PERFORMANCE COMPARISON</div>
+                  <h2 id="note-map-title">Patterns across Notes</h2>
+                </div>
+                <span class="badge">Age-matched reach</span>
               </div>
-              <p class="note-map-lead">See which Notes reached further than usual and how readers responded.</p>
+              <p class="comparison-lead">Reach shows who saw a Note. Likes, replies, restacks, and shares show what readers did with it.</p>
               <div class="note-map-toolbar">
                 <div class="note-map-outcome">
                   <span id="note-map-outcome-label">Compare by</span>
                   <div id="note-map-lenses" class="note-map-lenses" role="group" aria-labelledby="note-map-outcome-label">
-                    <button type="button" class="segment" data-map-lens="responses">Responses</button>
+                    <button type="button" class="segment" data-map-lens="likes">Likes</button>
+                    <button type="button" class="segment" data-map-lens="replies">Replies</button>
+                    <button type="button" class="segment" data-map-lens="restacks">Restacks</button>
+                    <button type="button" class="segment" data-map-lens="shares">Shares</button>
                     <button type="button" class="segment" data-map-lens="visits">Profile visits</button>
                     <button type="button" class="segment" data-map-lens="clicks">Link clicks</button>
                     <button type="button" class="segment" data-map-lens="unconnected">Unconnected audience</button>
@@ -350,7 +399,7 @@
                 </div>
                 <button type="button" class="refresh" id="note-map-retry" hidden>Retry unavailable</button>
               </div>
-              <div id="note-map-progress" class="loading-state note-map-progress" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Comparing Notes…</span></div>
+              <div id="note-map-progress" class="note-map-progress" hidden></div>
               <p id="note-map-key" class="note-map-key" hidden></p>
               <p id="note-map-empty" class="empty-state" hidden></p>
               <div id="note-map-display" class="note-map-display" hidden>
@@ -367,14 +416,17 @@
               </div>
               <p id="note-map-summary" class="note-map-summary" hidden></p>
               <p id="note-map-search-note" class="footnote" hidden></p>
-              <details class="note-map-method"><summary>How to read this chart</summary><p>Horizontal position compares reach with your usual Note at the same age. Responses combine likes, replies, shares, and restacks. Reader actions and audience are lifetime totals. Rates require at least 100 impressions; audience share requires at least 100 people. These patterns suggest what to investigate, not what caused them.</p></details>
+              <details class="note-map-method"><summary>How to read this chart</summary><p>Horizontal position compares reach with your usual Note at the same age. Vertical position shows the selected action per 1,000 impressions, so a widely seen Note does not automatically look more compelling. Likes, replies (comments on Notes), restacks, and shares remain separate. Reader actions are lifetime totals; reach pace is age matched. Rates require at least 100 impressions; audience share requires at least 100 people. No single measure defines success, and these patterns do not establish cause.</p></details>
             </section>
             <section class="panel note-compare-panel" id="note-comparison" aria-labelledby="note-comparison-title">
               <div class="panel-heading">
-                <div><div class="eyebrow">EXACT FIGURES</div><h2 id="note-comparison-title">Compare Notes</h2><p id="note-compare-count" class="note-compare-count"></p></div>
+                <div>
+                  <div class="eyebrow">EXACT FIGURES</div>
+                  <h2 id="note-comparison-title">All Notes</h2>
+                  <p id="note-compare-count" class="note-compare-count"></p>
+                </div>
                 <button type="button" class="refresh" id="note-compare-export" disabled>Export CSV</button>
               </div>
-              <p class="note-compare-lead">Sort by any column, then select a Note to inspect its reach.</p>
               <p id="note-compare-guide" class="note-compare-guide"></p>
               <p id="note-compare-empty" class="empty-state" hidden></p>
               <div id="note-compare-results">
@@ -383,8 +435,11 @@
                     <thead><tr>
                       <th><button type="button" class="sort-header" data-note-sort="title">Note <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="pace">Pace vs typical <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="likes">Likes <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="replies">Replies <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="restacks">Restacks <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="shares">Shares <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="visits">Profile visits / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
-                      <th><button type="button" class="sort-header" data-note-sort="responses">Responses / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="clicks">Link clicks / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="unconnected">Unconnected audience <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                     </tr></thead>
@@ -392,7 +447,7 @@
                   </table>
                 </div>
                 <button type="button" class="refresh note-compare-more" id="note-compare-more" hidden></button>
-                <p class="footnote">Dash marks mean stats have not been loaded or the sample is too small. Rate and audience-share rankings require at least 100 impressions or audience members. Note stats are lifetime; pace uses Substack’s age-matched typical series. These numbers describe attention and response, not subscriber conversions from an individual Note.</p>
+                <details class="method-note"><summary>About these figures</summary><p>Counts are lifetime totals. Rates need at least 100 impressions; audience share needs at least 100 people. A dash means data is unavailable or the sample is too small. Pace uses Substack’s age-matched typical series. Likes, replies, restacks, and shares measure different reader behaviors; none alone defines a successful Note.</p></details>
               </div>
             </section>
             <dialog class="panel note-detail-dialog" id="note-detail" aria-label="Selected Note details">
@@ -402,7 +457,7 @@
           </section>
           <section class="view" id="view-planner" aria-labelledby="planner-title" hidden>
             <div class="hero planner-hero">
-              <div><div class="eyebrow">NOTE PLANNER</div><h1 id="planner-title">Make room for the <em>next Note.</em></h1>
+              <div><h1 id="planner-title">Note planner</h1>
                 <p>See your scheduled Notes, write drafts, and choose a time. Nothing is published from this page.</p></div>
             </div>
             <div id="planner-notice" class="notice" role="alert" hidden></div>
@@ -418,7 +473,7 @@
               <span><strong id="planner-open-count">—</strong> days with Notes</span>
                 </div>
                 <div class="planner-controls">
-                  <label>Show <select id="planner-days"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">180 days</option></select></label>
+                  <label>Show <select id="planner-days"><option value="30" selected>30 days</option><option value="90">90 days</option><option value="180">180 days</option></select></label>
                   <label>Spacing <select id="planner-spacing"><option value="2">2 days</option><option value="3" selected>3 days</option><option value="4">4 days</option></select></label>
                 </div>
               </div>

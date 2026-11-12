@@ -4,29 +4,11 @@ import { updateComparedNote } from './notes-compare.js';
 import { notePreview } from './note-preview.js';
 
 let detailRequest = 0;
-let lastData;
 let displayedId;
 
 export function renderNotesPage(data, selectedId) {
   const notes = (data.publication_events || [])
     .filter((event) => event.type === 'note' && /^\d+$/.test(String(event.id)));
-  if (data !== lastData) {
-    const attributed = data.briefing?.notes_attributed;
-    const insight = $('notes-insight');
-    insight.replaceChildren();
-    const copy = document.createElement('div');
-    const label = document.createElement('span');
-    label.className = 'insight-label';
-    label.textContent = 'NOTES IN THIS PERIOD';
-    const heading = document.createElement('strong');
-    heading.textContent = `${fmt(notes.length)} published · ${fmt(attributed)} subscribers attributed to Notes`;
-    const caveat = document.createElement('p');
-    caveat.textContent = 'Subscriber attribution is for Notes as a channel, not for an individual Note.';
-    copy.append(label, heading, caveat);
-    insight.append(copy);
-    lastData = data;
-  }
-
   const dialog = $('note-detail');
   if (!selectedId) {
     if (dialog.open) dialog.close();
@@ -44,7 +26,14 @@ export function renderNotesPage(data, selectedId) {
 async function renderSelectedNote(note, selectedId, refresh = false) {
   const request = ++detailRequest;
   const slot = $('note-detail-content');
-  slot.replaceChildren();
+  const keepDetails = refresh && !!slot.querySelector('.note-reach-card');
+  const oldRefresh = keepDetails ? slot.querySelector('.note-detail-heading .refresh') : null;
+  const pending = keepDetails ? loadingIndicator('Updating Note reach…', { inline: true }) : null;
+  if (keepDetails) {
+    slot.querySelector('.note-detail-error')?.remove();
+    oldRefresh.disabled = true;
+    slot.querySelector('.note-detail-heading').after(pending);
+  } else slot.replaceChildren();
   const heading = document.createElement('div');
   heading.className = 'note-detail-heading';
   const title = document.createElement('h2');
@@ -85,7 +74,7 @@ async function renderSelectedNote(note, selectedId, refresh = false) {
   });
   noteBody.append(excerpt, expand);
   showText(note?.title);
-  slot.append(heading, noteBody, loadingIndicator('Loading Note reach…'));
+  if (!keepDetails) slot.append(heading, noteBody, loadingIndicator('Loading Note reach…'));
   try {
     const stats = await loadNoteStats(selectedId, refresh);
     if (request !== detailRequest) return;
@@ -99,15 +88,24 @@ async function renderSelectedNote(note, selectedId, refresh = false) {
     if (request !== detailRequest) return;
     refreshButton.disabled = false;
     const message = document.createElement('p');
-    message.className = 'empty-state';
-    message.textContent = `Could not load Note reach: ${error.message}`;
-    slot.replaceChildren(heading, noteBody, message);
+    message.className = 'empty-state note-detail-error';
+    message.textContent = `Could not ${keepDetails ? 'update' : 'load'} Note reach: ${error.message}`;
+    if (keepDetails) {
+      pending.remove();
+      oldRefresh.disabled = false;
+      slot.querySelector('.note-detail-heading').after(message);
+    } else slot.replaceChildren(heading, noteBody, message);
   }
 }
 
 export function setupNoteDetail(navigate) {
   const dialog = $('note-detail');
   $('note-detail-close').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', (event) => {
+    const bounds = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right
+      || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
+  });
   dialog.addEventListener('close', () => {
     if (/^\/notes\/\d+$/.test(location.pathname)) navigate('/notes');
   });

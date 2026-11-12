@@ -15,16 +15,23 @@ class StubAnalytics:
     def dashboard(self, days, *, refresh=False):
         return {"days": days, "refresh": refresh}
 
+    def latest(self, *, refresh=False):
+        return {"latest": True, "refresh": refresh}
+
     def post(self, post_id, *, refresh=False):
         return {"post_id": post_id, "refresh": refresh}
 
-    def post_portfolio(self, *, refresh=False):
+    def post_portfolio(self, *, refresh=False, on_progress=None):
+        if on_progress:
+            on_progress({"considered": 1, "target": 2, "rows": [{"id": "partial"}]})
         return {"portfolio": True, "refresh": refresh}
 
     def note(self, note_id, *, refresh=False):
         return {"note_id": note_id, "refresh": refresh}
 
-    def note_cohort(self, days=90, *, retry_unavailable=False):
+    def note_cohort(self, days=90, *, retry_unavailable=False, on_progress=None):
+        if on_progress:
+            on_progress({"considered": 1, "total": 2, "rows": [{"id": "partial"}]})
         return {"days": days, "rows": [], "lenses": {}, "retry": retry_unavailable}
 
 
@@ -84,6 +91,8 @@ class DashboardRoutesTests(unittest.TestCase):
     def test_dashboard_and_detail_api_routes(self):
         for route, expected in (
             ("/api/dashboard?days=30&refresh=1", {"days": 30, "refresh": True}),
+            ("/api/latest", {"latest": True, "refresh": False}),
+            ("/api/latest?refresh=1", {"latest": True, "refresh": True}),
             ("/api/post/123", {"post_id": "123", "refresh": False}),
             ("/api/post/123?refresh=1", {"post_id": "123", "refresh": True}),
             ("/api/post-portfolio?refresh=1", {"portfolio": True, "refresh": True}),
@@ -97,8 +106,19 @@ class DashboardRoutesTests(unittest.TestCase):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
                 self.assertEqual(json.load(response), expected)
 
+    def test_comparison_routes_stream_counts_then_final_result(self):
+        for route in ("/api/post-portfolio?stream=1", "/api/note-comparison?days=30&stream=1"):
+            with self.subTest(route=route), urlopen(self.base_url + route) as response:
+                events = [json.loads(line) for line in response]
+                self.assertEqual(response.headers["Content-Type"], "application/x-ndjson; charset=utf-8")
+                self.assertEqual([event["type"] for event in events], ["progress", "done"])
+                self.assertEqual(events[0]["data"], {"considered": 1,
+                    "target" if "post-portfolio" in route else "total": 2})
+                self.assertTrue(events[1]["data"])
+
     def test_each_view_can_be_opened_directly(self):
-        for route in ("/posts", "/discovery", "/notes", "/planner", "/notes/compare", "/posts/123", "/notes/456"):
+        for route in ("/posts", "/discovery", "/notes", "/planner", "/leaderboard",
+                      "/insights", "/notes/compare", "/posts/123", "/notes/456"):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn("text/html", response.headers["Content-Type"])

@@ -1,8 +1,28 @@
-import { $, date, fmt, pct } from './shared.js';
+import { $, date, fmt, pct, loadingIndicator } from './shared.js';
 import { notePreview } from './note-preview.js';
 import { comparisonMetrics, comparisonSelectionHeading } from './comparison-elements.js';
 
 const lenses = {
+  likes: {
+    label: 'Likes', axis: 'Likes per 1,000 impressions',
+    value: (row) => row.likeRate, count: (row) => row.likes,
+    format: (value) => value.toFixed(1),
+  },
+  replies: {
+    label: 'Replies', axis: 'Replies per 1,000 impressions',
+    value: (row) => row.replyRate, count: (row) => row.replies,
+    format: (value) => value.toFixed(1),
+  },
+  restacks: {
+    label: 'Restacks', axis: 'Restacks per 1,000 impressions',
+    value: (row) => row.restackRate, count: (row) => row.restacks,
+    format: (value) => value.toFixed(1),
+  },
+  shares: {
+    label: 'Shares', axis: 'Shares per 1,000 impressions',
+    value: (row) => row.shareRate, count: (row) => row.shares,
+    format: (value) => value.toFixed(1),
+  },
   responses: {
     label: 'Responses',
     axis: 'Responses per 1,000 impressions',
@@ -29,7 +49,7 @@ const lenses = {
   },
 };
 
-let lens = 'responses';
+let lens = 'likes';
 let query = '';
 let selectedIds = [];
 let snapshot = { rows: [], total: 0, analyzed: false, failed: 0, loading: false, cohort: null, error: '' };
@@ -51,15 +71,16 @@ function showTooltip(row, outcome, event, point) {
   const title = document.createElement('strong');
   title.textContent = row.note.title.length > 90 ? `${row.note.title.slice(0, 90)}…` : row.note.title;
   const metric = document.createElement('span');
-  metric.textContent = `${row.pace.ratio.toFixed(2)}× typical reach · ${lenses[lens].format(outcome)} ${lenses[lens].axis.toLowerCase()}`;
+  const selectedCount = lenses[lens].count?.(row);
+  metric.textContent = `${row.pace.ratio.toFixed(2)}× typical reach · ${selectedCount == null ? '' : `${fmt(selectedCount)} ${lenses[lens].label.toLowerCase()} · `}${lenses[lens].format(outcome)} ${lenses[lens].axis.toLowerCase()}`;
   const published = document.createElement('small');
   published.textContent = `Published ${date(row.note.day)}`;
   tooltip.append(title, metric, published);
   tooltip.hidden = false;
   const rect = $('note-map-plot').getBoundingClientRect();
   const anchor = event?.clientX == null ? point.getBoundingClientRect() : { left: event.clientX, top: event.clientY };
-  tooltip.style.left = `${Math.max(8, Math.min(rect.width - 225, anchor.left - rect.left + 12))}px`;
-  tooltip.style.top = `${Math.max(8, anchor.top - rect.top - 76)}px`;
+  tooltip.style.left = `${Math.max(8, Math.min(rect.width - tooltip.offsetWidth - 8, anchor.left - rect.left + 12))}px`;
+  tooltip.style.top = `${Math.max(8, Math.min(rect.height - tooltip.offsetHeight - 8, anchor.top - rect.top - tooltip.offsetHeight - 8))}px`;
 }
 
 function card(row) {
@@ -85,15 +106,13 @@ function card(row) {
   });
   const published = document.createElement('small');
   published.textContent = `Published ${date(row.note.day)}`;
-  const raw = lens === 'responses' ? [fmt(row.responses), 'responses']
-    : lens === 'visits' ? [fmt(row.visits), 'profile visits']
-    : lens === 'clicks' ? [fmt(row.clicks), 'link clicks']
-    : [fmt(row.unconnectedCount), `of ${fmt(row.audienceCount)} people`];
   const items = [
-    [fmt(row.impressions), 'lifetime impressions'],
-    [row.pace.label, `reach at ${row.pace.age}`],
+    [fmt(row.likes), 'likes'],
+    [fmt(row.replies), 'replies'],
+    [fmt(row.restacks), 'restacks'],
+    [fmt(row.shares), 'shares'],
     [lenses[lens].format(lenses[lens].value(row)), lenses[lens].axis.toLowerCase()],
-    raw,
+    [fmt(row.impressions), 'lifetime impressions'],
   ];
   const metrics = comparisonMetrics('note-map-card-metrics', items);
   root.append(title);
@@ -109,13 +128,12 @@ function compactCard(row) {
   title.textContent = notePreview(row.note.title, 80).text;
   const context = document.createElement('small');
   context.textContent = `${date(row.note.day)} · ${row.pace.label} reach`;
-  const counts = lens === 'responses' ? [row.responses, 'Responses']
-    : lens === 'visits' ? [row.visits, 'Visits']
-      : lens === 'clicks' ? [row.clicks, 'Clicks']
-        : [row.unconnectedCount, 'Unconnected'];
   const metrics = comparisonMetrics('note-map-mini-metrics', [
+    [fmt(row.likes), 'Likes'],
+    [fmt(row.replies), 'Replies'],
+    [fmt(row.restacks), 'Restacks'],
+    [fmt(row.shares), 'Shares'],
     [fmt(row.impressions), 'Impressions'],
-    [fmt(counts[0]), counts[1]],
     [lenses[lens].format(lenses[lens].value(row)), lens === 'unconnected' ? 'Audience share' : 'Per 1k'],
   ]);
   root.append(title, context, metrics);
@@ -149,6 +167,7 @@ function renderSelection(rows) {
   });
   const cards = document.createElement('div');
   cards.className = 'note-map-cards';
+  cards.classList.toggle('comparison-pair', selected.length === 2);
   selected.forEach((row) => cards.append(selected.length === 2 ? compactCard(row) : card(row)));
   root.append(heading, cards);
   if (selected.length === 1) {
@@ -171,11 +190,25 @@ function addLine(root, direction, position, label, emphasized = false) {
   root.append(tick);
 }
 
-function renderPlot() {
-  const { rows, total, analyzed, failed, loading, cohort, error } = snapshot;
+function renderProgress() {
+  const { rows, loading, considered, progressTotal } = snapshot;
   const progress = $('note-map-progress');
   progress.hidden = !loading;
   progress.classList.toggle('with-results', !!rows.length);
+  progress.replaceChildren();
+  if (loading) progress.append(loadingIndicator('Comparing Notes…', {
+    completed: considered, total: progressTotal, inline: !!rows.length,
+  }));
+}
+
+export function updateNotesMapProgress(considered, progressTotal) {
+  snapshot = { ...snapshot, considered, progressTotal };
+  renderProgress();
+}
+
+function renderPlot() {
+  const { rows, total, analyzed, failed, loading, cohort, error } = snapshot;
+  renderProgress();
   const retry = $('note-map-retry');
   retry.hidden = (!failed && !error) || loading;
   retry.textContent = error ? 'Try again' : 'Retry missing stats';

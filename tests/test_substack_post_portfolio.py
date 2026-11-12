@@ -102,6 +102,25 @@ class PostPortfolioTests(unittest.TestCase):
             service.post_portfolio(refresh=True)
             self.assertEqual(week_fetch.call_count, 2)
 
+    def test_progress_snapshots_reuse_the_same_post_fetches(self):
+        service = AnalyticsService(object(), object())
+        published = [{"id": str(index), "title": f"Post {index}",
+                      "date": f"2026-09-0{index}T12:00:00Z", "views": 3000,
+                      "signups": 12} for index in range(1, 7)]
+        week = first_week_summary("123", detail(views=1000, signups=8)["posts"][0],
+                                  today=date(2026, 9, 8))
+        snapshots = []
+        with patch.object(service, "posts", return_value=published), \
+             patch.object(service, "post_week", return_value=week) as fetch:
+            final = service.post_portfolio(on_progress=snapshots.append)
+        self.assertEqual(fetch.call_count, 6)
+        self.assertEqual([item["considered"] for item in snapshots], [3, 5])
+        self.assertEqual([item["target"] for item in snapshots], [6, 6])
+        self.assertEqual([len(item["rows"]) for item in snapshots], [3, 5])
+        self.assertEqual(final["considered"], final["target"])
+        self.assertEqual(len(final["rows"]), 6)
+        self.assertEqual(len(service.post_portfolio()["rows"]), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

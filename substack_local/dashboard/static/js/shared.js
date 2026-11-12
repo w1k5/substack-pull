@@ -20,9 +20,10 @@ export function cell(row, content, className = '') {
   return td;
 }
 
-export function loadingIndicator(message) {
+export function loadingIndicator(message, { completed, total, inline = false } = {}) {
   const root = document.createElement('div');
   root.className = 'loading-state';
+  if (inline) root.classList.add('loading-inline');
   root.setAttribute('role', 'status');
   const spinner = document.createElement('span');
   spinner.className = 'spinner';
@@ -30,6 +31,16 @@ export function loadingIndicator(message) {
   const label = document.createElement('span');
   label.textContent = message;
   root.append(spinner, label);
+  if (Number.isFinite(completed) && Number.isFinite(total) && total > 0) {
+    const progress = document.createElement('progress');
+    progress.max = total;
+    progress.value = Math.max(0, Math.min(completed, total));
+    progress.setAttribute('aria-label', message);
+    const percent = document.createElement('strong');
+    percent.className = 'loading-percent';
+    percent.textContent = `${progress.value === total ? 100 : Math.floor(progress.value / total * 100)}%`;
+    root.append(progress, percent);
+  }
   return root;
 }
 

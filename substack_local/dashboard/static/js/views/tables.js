@@ -8,14 +8,14 @@ const POST_NARROW = window.matchMedia('(max-width: 720px)');
 const pageSize = (section) => section === 'post' && POST_NARROW.matches ? 10 : PAGE_SIZE;
 const sortState = {
   source: { key: 'views', direction: 'desc' },
-  post: { key: 'signups', direction: 'desc' },
+  post: { key: 'date', direction: 'desc' },
 };
 const columns = {
   source: [['name', 'Source'], ['views', 'Views'], ['users', 'Users'],
     ['signups', 'Signups'], ['rate', 'Signup rate']],
-  post: [['title', 'Post'], ['date', 'Date'], ['views', 'Views'],
-    ['signups', 'Signups'], ['yield', 'Signup yield'], ['likes', 'Likes'],
-    ['comments', 'Comments'], ['restacks', 'Restacks']],
+  post: [['title', 'Post'], ['date', 'Published'], ['views', 'Views'],
+    ['signups', 'Signups'], ['likes', 'Likes'], ['comments', 'Comments'],
+    ['restacks', 'Restacks'], ['shares', 'Shares']],
 };
 
 function sortValue(section, row, key) {
@@ -27,7 +27,6 @@ function sortValue(section, row, key) {
   if (section === 'post') {
     if (key === 'title') return (row.title || '').toLowerCase();
     if (key === 'date') return row.date ? new Date(row.date).getTime() : null;
-    if (key === 'yield') return row.signup_yield;
   }
   return row[key] == null ? null : Number(row[key]);
 }
@@ -126,14 +125,18 @@ export function createTables({ getData, getPortfolio, navigate }) {
     const data = getData();
     if (!data) return;
     const filtered = filteredPosts(data);
-    renderPostPortfolio({ ...getPortfolio(), visibleIds: new Set(filtered.map((row) => String(row.id))) });
+    const renderComparison = () => renderPostPortfolio({
+      ...getPortfolio(), visibleIds: new Set(filtered.map((row) => String(row.id))),
+    });
     visiblePostRows = filtered.sort((a, b) => compareRows('post', a, b));
+    $('post-table-count').textContent = `${visiblePostRows.length} Posts shown${$('posts-in-period').checked ? ' · published in selected period' : ''}`;
     $('export-posts').disabled = !visiblePostRows.length;
     const body = $('post-table');
     body.replaceChildren();
     renderPagination('post', visiblePostRows.length, renderPosts);
     if (!visiblePostRows.length) {
       emptyTable(body, columns.post.length, 'No posts match these filters.');
+      renderComparison();
       return;
     }
     const size = pageSize('post');
@@ -148,12 +151,12 @@ export function createTables({ getData, getPortfolio, navigate }) {
       cell(tr, date(row.date));
       cell(tr, fmt(row.views));
       cell(tr, fmt(row.signups));
-      cell(tr, row.signup_yield == null ? '—' : row.signup_yield.toFixed(1));
-      for (const name of ['likes', 'comments', 'restacks'])
+      for (const name of ['likes', 'comments', 'restacks', 'shares'])
         cell(tr, row[name] == null ? '—' : fmt(row[name]));
       tr.querySelectorAll('td').forEach((td, index) => { td.dataset.label = columns.post[index][1]; });
       body.append(tr);
     });
+    renderComparison();
   }
 
   function updateSortControls(section) {
@@ -215,7 +218,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
     if (!getData()) return;
     downloadCsv('substack-posts-visible-lifetime.csv',
       ['Post', 'Published', 'Views', 'Signups', 'Signups per 1k views (1k+ only)',
-        'Likes', 'Comments', 'Restacks', 'Share actions', 'Opens', 'Sent', 'Open rate', 'Engagement rate'],
+        'Likes', 'Comments', 'Restacks', 'Shares', 'Opens', 'Sent', 'Open rate', 'Engagement rate'],
       visiblePostRows.map((row) => [row.title, row.date, row.views, row.signups,
         row.signup_yield, row.likes, row.comments, row.restacks, row.shares,
         row.opens, row.sent, row.open_rate, row.engagement_rate]));

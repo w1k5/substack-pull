@@ -42,7 +42,8 @@
 :is(.post-map-tooltip, .note-map-tooltip) {
   position: absolute;
   z-index: 4;
-  width: 205px;
+  width: min(205px, calc(100% - 16px));
+  overflow-wrap: anywhere;
   padding: 8px 10px;
   border: 1px solid #d3dfd4;
   border-radius: var(--radius-control);
@@ -61,15 +62,22 @@
   height: 365px;
   overflow: auto;
   padding: 14px;
-  border: 1px solid #dce7da;
+  border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: #f7faf5;
+  background: #fbfcfa;
   color: #687e70;
   font-size: var(--text-sm);
   line-height: 1.5;
 }
 :is(.post-map-comparison, .note-map-comparison) > strong { color: #284d3a; font-size: 13px; }
 :is(.post-map-comparison, .note-map-comparison) > p { margin: 10px 0 0; }
+.post-map-side:has(.comparison-pair),
+.note-map-comparison:has(.note-map-cards) {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
 :is(.post-map-selection-heading, .note-map-selection-heading) {
   position: sticky;
   top: -14px;
@@ -79,10 +87,14 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding-bottom: 6px;
-  background: #f7faf5;
+  background: #fbfcfa;
   color: #2e4738;
 }
 :is(.post-map-selection-heading, .note-map-selection-heading) .refresh { padding: 5px 9px; font-size: var(--text-caption); }
+.post-map-side:has(.comparison-pair) .post-map-selection-heading,
+.note-map-comparison:has(.note-map-cards) .note-map-selection-heading {
+  position: static;
+}
 :is(.post-map-cards, .note-map-cards) { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
 :is(.post-map-mini, .note-map-mini) {
   min-width: 0;
@@ -104,7 +116,13 @@
   :is(.post-map-workspace, .note-map-display) { grid-template-columns: 1fr; gap: 18px; }
   :is(.post-map-side, .note-map-comparison) { height: auto; max-height: 320px; }
 }
+@media (min-width: 580px) and (max-width: 1100px) {
+  :is(.post-map-cards, .note-map-cards).comparison-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 700px) {
   .post-map-visual { padding-right: 0; }
   .post-map-plot { height: 250px; }
 }
+:is(.post-map-panel, .note-map-panel) .comparison-lead { max-width: 760px; margin: 0 0 14px; color: #597365; font-size: 12px; line-height: 1.55; }

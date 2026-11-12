@@ -1,4 +1,4 @@
-import { $, loadingIndicator, emptyMessage } from './shared.js';
+import { $, emptyMessage } from './shared.js';
 import { showPost, clearNoteStatsRequests } from './post/index.js';
 import { renderPublicationTimeline } from './timeline.js';
 import { renderSubscriberSourceTrend } from './source-trend.js';
@@ -6,20 +6,35 @@ import { renderNotesPage, setupNoteDetail, clearNotePageStats } from './notes-pa
 import { renderNotesComparison, filterNotesComparison, clearNotesComparison, setupNotesComparison } from './notes-compare.js';
 import { setNoteMapQuery } from './notes-map.js';
 import { renderPlannerRoute, setupPlanner } from './planner.js';
-import { setupPostPortfolio } from './post/portfolio.js';
-import { renderBriefing, renderDiscoveryInsight, renderGrowth } from './views/publication.js';
+import { setupPostPortfolio, updatePostPortfolioProgress } from './post/portfolio.js';
+import { renderBriefing, renderGrowth } from './views/publication.js';
+import { renderDiscoveryInsight } from './views/subscriber-attribution.js';
+import { renderLatest } from './views/latest.js';
 import { createTables } from './views/tables.js';
+import { renderEditorialOverview, createLeaderboard } from './views/editorial.js';
+import { readComparison } from './stream.js';
 
 let data;
 let activePostId;
 let loadRequest = 0;
 let renderedPath = location.pathname;
 let postPortfolio = null;
+let postPortfolioProgress = null;
+let postPortfolioStale = false;
 let postPortfolioError = null;
 let postPortfolioLoading = false;
 let postPortfolioRequest = 0;
-let publicationLoading = false;
-let loadingDifferentPeriod = false;
+let latestData = null;
+let latestLoading = false;
+let latestError = null;
+let latestRequest = 0;
+let leaderboardNotes = null;
+let leaderboardNotesDays = null;
+let leaderboardNotesProgress = null;
+let leaderboardNotesStale = false;
+let leaderboardNotesLoading = false;
+let leaderboardNotesError = '';
+let leaderboardNotesRequest = 0;
 
 const updatedLabel = (snapshot) =>
   `Updated ${new Date(snapshot.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
@@ -33,7 +48,8 @@ function currentRoute() {
   if (/^\/posts\/\d+$/.test(path)) return { view: 'post-detail', id: path.split('/')[2] };
   if (path === '/notes/compare') return { view: 'notes' };
   if (/^\/notes\/\d+$/.test(path)) return { view: 'notes', id: path.split('/')[2] };
-  if (path === '/posts' || path === '/discovery' || path === '/notes' || path === '/planner') return { view: path.slice(1) };
+  if (['/posts', '/discovery', '/notes', '/planner', '/leaderboard'].includes(path))
+    return { view: path.slice(1) };
   return { view: 'briefing' };
 }
 function renderRoute() {
@@ -45,7 +61,7 @@ function renderRoute() {
   $('refresh').hidden = route.view === 'post-detail' || route.view === 'planner';
   $('updated').hidden = route.view === 'post-detail' || route.view === 'planner';
   document.querySelector('.top-search').hidden = route.view === 'planner';
-  for (const view of ['briefing', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
+  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
     $(`view-${view}`).hidden = view !== route.view;
   const primary = route.view === 'post-detail' ? 'posts' : route.view;
   document.querySelectorAll('.side-link').forEach((link) => {
@@ -55,16 +71,27 @@ function renderRoute() {
     else link.removeAttribute('aria-current');
   });
   const titles = {
-    briefing: 'Briefing', posts: 'Posts', discovery: 'Discovery',
+    briefing: 'Briefing', leaderboard: 'Leaderboard',
+    posts: 'Posts', discovery: 'Discovery',
     notes: 'Notes', planner: 'Note planner', 'post-detail': 'Post story',
   };
   document.title = `${titles[route.view]} · Clearview`;
   if (route.view === 'planner') renderPlannerRoute();
-  if (!data) {
-    setEmptyPanelsLoading(publicationLoading && !document.body.classList.contains('boot-loading'));
-    return;
+  if (!data) return;
+  if (route.view === 'briefing') {
+    if (!latestData && !latestLoading && !latestError) loadLatest();
+    renderBriefing(data, navigate);
+    renderEditorialOverview(data, latestData);
+    renderLatest({ data: latestData, loading: latestLoading, error: latestError });
   }
-  if (route.view === 'briefing') renderBriefing(data, navigate);
+  if (route.view === 'leaderboard') leaderboard.render({
+    data, notes: leaderboardNotes, notesLoading: leaderboardNotesLoading,
+    notesError: leaderboardNotesError, notesProgress: leaderboardNotesProgress,
+    portfolio: postPortfolio, portfolioLoading: postPortfolioLoading,
+    portfolioProgress: postPortfolioProgress,
+  });
+  if (route.view === 'leaderboard' && leaderboardNotesStale) loadLeaderboardNotes();
+  if (route.view === 'leaderboard' && postPortfolioStale) loadPostPortfolio();
   if (route.view === 'posts') {
     tables.renderPosts();
     loadPostPortfolio();
@@ -88,7 +115,6 @@ function renderRoute() {
       $('detail-content').replaceChildren(emptyMessage('This post is not in the published post list.'));
     }
   }
-  setEmptyPanelsLoading(publicationLoading && loadingDifferentPeriod);
 }
 const isNoteLibraryPath = (path) => /^\/notes(?:\/\d+)?$/.test(path);
 function navigate(path) {
@@ -131,21 +157,6 @@ function renderSearchResults() {
   if (!results.children.length) results.append(emptyMessage('No posts or Notes match.'));
   results.hidden = false;
 }
-function setEmptyPanelsLoading(loading) {
-  document.querySelectorAll('.panel-spinner').forEach((spinner) => spinner.remove());
-  document.querySelectorAll('.empty-loading').forEach((panel) => panel.classList.remove('empty-loading'));
-  if (!loading || currentRoute().view === 'planner') return;
-  document.querySelectorAll(
-    '.view:not([hidden]) .metric,.view:not([hidden]) .panel,.view:not([hidden]) .insight-callout',
-  ).forEach((panel) => {
-    const indicator = loadingIndicator('Loading…');
-    indicator.classList.add('panel-spinner');
-    indicator.setAttribute('role', 'presentation');
-    panel.classList.add('empty-loading');
-    panel.append(indicator);
-  });
-}
-
 function showLoadError(message, retry) {
   const detail = document.createElement('span');
   detail.textContent = message;
@@ -162,20 +173,19 @@ async function load(force = false) {
   const request = ++loadRequest;
   const days = Number($('range').value);
   const priorData = data;
-  loadingDifferentPeriod = !!(data && data.range.days !== days);
-  publicationLoading = true;
+  const changingPeriod = !!(data && data.range.days !== days);
   if (!data) {
     $('boot-message').textContent = 'Gathering your publication’s story…';
     $('boot-spinner').hidden = false;
     $('boot-retry').hidden = true;
   }
   $('refresh').disabled = true;
+  $('range').disabled = true;
   $('header-spinner').hidden = false;
-  setEmptyPanelsLoading(!!data && loadingDifferentPeriod);
-  $('overview').setAttribute('aria-busy', 'true');
+  if (!data) $('overview').setAttribute('aria-busy', 'true');
   $('updated').textContent = !data ? 'Loading publication data…'
-    : loadingDifferentPeriod ? 'Loading selected period…'
-      : `${updatedLabel(data)} · refreshing…`;
+    : changingPeriod ? 'Updating period…' : 'Refreshing…';
+  $('updated').title = changingPeriod ? 'The previous period remains visible until this update finishes.' : '';
   $('notice').hidden = true;
   try {
     const response = await fetch(
@@ -190,23 +200,34 @@ async function load(force = false) {
       clearNotePageStats();
       clearNotesComparison();
       postPortfolioRequest++;
-      postPortfolio = null;
+      postPortfolioStale = true;
+      postPortfolioProgress = null;
       postPortfolioError = null;
       postPortfolioLoading = false;
+      leaderboardNotesStale = true;
+      leaderboardNotesProgress = null;
+      leaderboardNotesRequest++;
+      leaderboardNotesLoading = false;
     }
     data = payload;
-    loadingDifferentPeriod = false;
-    publicationLoading = false;
+    if (priorData && priorData.range.days !== payload.range.days) {
+      leaderboardNotes = null;
+      leaderboardNotesDays = null;
+      leaderboardNotesProgress = null;
+      leaderboardNotesStale = false;
+      leaderboardNotesRequest++;
+      leaderboardNotesLoading = false;
+      leaderboardNotesError = '';
+    }
     activePostId = undefined;
     tables.resetPages();
     // Charts measure their container during render, so reveal the shell first.
     document.body.classList.remove('boot-loading');
     render();
+    if (force && (latestData || latestError)) loadLatest(true);
     renderSearchResults();
   } catch (error) {
     if (request !== loadRequest) return;
-    const changingPeriod = loadingDifferentPeriod;
-    loadingDifferentPeriod = false;
     if (priorData && changingPeriod) {
       $('range').value = String(priorData.range.days);
       renderRoute();
@@ -224,48 +245,129 @@ async function load(force = false) {
     $('updated').textContent = priorData ? updatedLabel(priorData) : 'Data unavailable';
   } finally {
     if (request === loadRequest) {
-      publicationLoading = false;
-      loadingDifferentPeriod = false;
       $('refresh').disabled = false;
+      $('range').disabled = false;
       $('header-spinner').hidden = true;
-      setEmptyPanelsLoading(false);
+      $('updated').title = '';
       $('overview').setAttribute('aria-busy', 'false');
     }
   }
 }
 
+async function loadLatest(force = false) {
+  if (!force && (latestLoading || latestData)) return;
+  const request = ++latestRequest;
+  latestLoading = true;
+  latestError = null;
+  if (currentRoute().view === 'briefing') renderLatest({ data: latestData, loading: true });
+  try {
+    const response = await fetch(`/api/latest${force ? '?refresh=1' : ''}`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Could not load latest writing');
+    if (request !== latestRequest) return;
+    latestData = payload;
+  } catch (error) {
+    if (request !== latestRequest) return;
+    latestError = error.message;
+  } finally {
+    if (request === latestRequest) {
+      latestLoading = false;
+      if (currentRoute().view === 'briefing')
+        renderLatest({ data: latestData, loading: false, error: latestError });
+      if (currentRoute().view === 'briefing' && data)
+        renderEditorialOverview(data, latestData);
+    }
+  }
+}
+
 async function loadPostPortfolio(force = false) {
-  if (!data || postPortfolioLoading || ((postPortfolio || postPortfolioError) && !force)) return;
+  if (!data || postPortfolioLoading
+      || ((postPortfolio || postPortfolioError) && !force && !postPortfolioStale)) return;
   const request = ++postPortfolioRequest;
   postPortfolioLoading = true;
+  postPortfolioProgress = null;
   postPortfolioError = null;
   tables.renderPosts();
   try {
-    const response = await fetch(`/api/post-portfolio${force ? '?refresh=1' : ''}`, { cache: 'no-store' });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Could not compare posts');
+    const response = await fetch(`/api/post-portfolio?stream=1${force ? '&refresh=1' : ''}`, { cache: 'no-store' });
+    const payload = await readComparison(response, (partial) => {
+      if (request !== postPortfolioRequest) return;
+      postPortfolioProgress = { considered: partial.considered, target: partial.target };
+      if (currentRoute().view === 'posts') updatePostPortfolioProgress(postPortfolioProgress);
+      if (currentRoute().view === 'leaderboard') leaderboard.progress({
+        portfolioProgress: postPortfolioProgress });
+    });
     if (request !== postPortfolioRequest) return;
     postPortfolio = payload;
+    postPortfolioStale = false;
   } catch (error) {
     if (request !== postPortfolioRequest) return;
     postPortfolioError = error.message;
+    postPortfolioStale = false;
   } finally {
     if (request === postPortfolioRequest) {
       postPortfolioLoading = false;
+      postPortfolioProgress = null;
       if (currentRoute().view === 'posts') tables.renderPosts();
+      if (currentRoute().view === 'leaderboard') leaderboard.render({
+        portfolio: postPortfolio, portfolioLoading: false,
+        portfolioProgress: null,
+      });
+    }
+  }
+}
+
+async function loadLeaderboardNotes() {
+  if (!data || leaderboardNotesLoading
+      || (leaderboardNotes && leaderboardNotesDays === data.range.days && !leaderboardNotesStale)) return;
+  const days = data.range.days;
+  const request = ++leaderboardNotesRequest;
+  if (leaderboardNotesDays !== days) leaderboardNotes = null;
+  leaderboardNotesDays = days;
+  leaderboardNotesProgress = null;
+  leaderboardNotesLoading = true;
+  leaderboardNotesError = '';
+  leaderboard.render({ notes: leaderboardNotes, notesLoading: true,
+    notesProgress: null, notesError: '' });
+  try {
+    const response = await fetch('/api/note-comparison?days=' + days + '&stream=1', { cache: 'no-store' });
+    const result = await readComparison(response, (partial) => {
+      if (request !== leaderboardNotesRequest) return;
+      leaderboardNotesProgress = { considered: partial.considered, total: partial.total };
+      leaderboard.progress({ notesProgress: leaderboardNotesProgress });
+    });
+    if (request !== leaderboardNotesRequest) return;
+    leaderboardNotes = result;
+    leaderboardNotesStale = false;
+  } catch (error) {
+    if (request !== leaderboardNotesRequest) return;
+    leaderboardNotesError = error.message;
+    leaderboardNotesStale = false;
+  } finally {
+    if (request === leaderboardNotesRequest) {
+      leaderboardNotesLoading = false;
+      leaderboardNotesProgress = null;
+      leaderboard.render({ notes: leaderboardNotes, notesLoading: false,
+        notesProgress: null, notesError: leaderboardNotesError });
     }
   }
 }
 
 // Old section links open their corresponding views after an upgrade.
 if (location.pathname === '/notes/compare') history.replaceState({}, '', '/notes');
+if (location.pathname === '/insights') history.replaceState({}, '', '/');
 if (location.pathname === '/' && ['#posts', '#sources', '#overview'].includes(location.hash)) {
   history.replaceState({}, '', { '#posts': '/posts', '#sources': '/discovery', '#overview': '/' }[location.hash]);
 }
 const tables = createTables({
   getData: () => data,
-  getPortfolio: () => ({ data: postPortfolio, error: postPortfolioError, loading: postPortfolioLoading }),
+  getPortfolio: () => ({ data: postPortfolio, progress: postPortfolioProgress,
+    error: postPortfolioError, loading: postPortfolioLoading }),
   navigate,
+});
+const leaderboard = createLeaderboard({
+  needNotes: loadLeaderboardNotes,
+  needPostComparison: loadPostPortfolio,
 });
 setupNotesComparison();
 setupPostPortfolio();
@@ -280,6 +382,7 @@ $('global-search').addEventListener('input', () => {
   tables.resetPostPage();
   if (data) {
     tables.renderPosts();
+    if (currentRoute().view === 'leaderboard') leaderboard.search();
     if (currentRoute().view === 'notes') {
       setNoteMapQuery($('global-search').value);
       filterNotesComparison($('global-search').value);
@@ -320,4 +423,6 @@ $('detail-refresh').addEventListener('click', () => {
   const row = (data?.posts || []).find((post) => String(post.id) === id);
   if (row) showPost(row, data.publication, true);
 });
-if (currentRoute().view !== 'planner') load();
+if (currentRoute().view !== 'planner') {
+  load();
+}

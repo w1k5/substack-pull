@@ -9,6 +9,7 @@ let data;
 let navigateTo;
 let selected = new Set();
 let rangeKey = '';
+let showAllSources = false;
 
 const svgElement = (name, attrs = {}) => {
   const element = document.createElementNS('http://www.w3.org/2000/svg', name);
@@ -27,10 +28,16 @@ function ceiling(value) {
 function renderChoices(lines) {
   const root = $('source-trend-choices');
   root.replaceChildren();
+  let hiddenCount = 0;
   lines.forEach((line, index) => {
+    if (!showAllSources && index >= 5 && !selected.has(line.key)) {
+      hiddenCount++;
+      return;
+    }
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'segment source-trend-choice';
+    button.dataset.sourceKey = line.key;
     const active = selected.has(line.key);
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
@@ -48,12 +55,27 @@ function renderChoices(lines) {
         selected.delete(line.key);
       } else selected.add(line.key);
       renderChart();
+      [...root.querySelectorAll('.source-trend-choice')]
+        .find((choice) => choice.dataset.sourceKey === String(line.key))?.focus();
     });
     root.append(button);
   });
-  $('source-trend-selection-help').textContent = selected.size >= 5
-    ? 'Five sources selected. Remove one to compare another. The vertical scale stays fixed.'
-    : 'Keep at least one source selected; compare up to five. The vertical scale stays fixed.';
+  if (lines.length > 5) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'source-trend-more';
+    more.textContent = showAllSources ? 'Show fewer' : `More sources (${hiddenCount})`;
+    more.setAttribute('aria-expanded', String(showAllSources));
+    more.addEventListener('click', () => {
+      showAllSources = !showAllSources;
+      renderChoices(lines);
+      root.querySelector('.source-trend-more')?.focus();
+    });
+    root.append(more);
+  }
+  const help = $('source-trend-selection-help');
+  help.hidden = selected.size < 5;
+  help.textContent = selected.size >= 5 ? 'Five sources selected. Remove one to compare another.' : '';
 }
 
 function showSourcePublicationEvents(index, items, kind, days, weekly, marker) {

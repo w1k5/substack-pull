@@ -14,7 +14,7 @@ internal static class Program
     }
 }
 
-internal sealed class ClearviewForm : Form
+internal sealed partial class ClearviewForm : Form
 {
     private readonly Label heading = new() { AutoSize = true, Text = "Clearview", Font = new Font("Segoe UI", 15, FontStyle.Bold) };
     private readonly Label status = new() { AutoSize = true, Text = "Opening Clearview…" };
@@ -42,6 +42,9 @@ internal sealed class ClearviewForm : Form
         header.Controls.AddRange([heading, publication, connect, status]);
         Controls.Add(web);
         Controls.Add(header);
+        var menu = CreateMenu();
+        Controls.Add(menu);
+        MainMenuStrip = menu;
         connect.Click += async (_, _) => await BeginSignInAsync();
         cookieTimer.Tick += async (_, _) => await CheckCookiesAsync();
         FormClosing += (_, _) => {

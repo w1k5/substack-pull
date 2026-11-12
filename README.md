@@ -157,14 +157,15 @@ not install a background service.
 
 ### Views and time ranges
 
-Use the sidebar to move between five writer-focused views:
+Use the sidebar to move between these writer-focused views:
 
 | View | What it answers |
 | --- | --- |
-| Briefing | What changed in views and subscriber growth, and which post or Note was published near a traffic change? |
-| Posts | Which posts kept finding readers after launch day, brought in subscribers, or continued drawing views after week one? Select two dots to compare them, then open a post for its sources, direct Note shares, and reader response. |
-| Discovery | When did each subscriber source contribute, where were subscriptions attributed, and which referrers brought traffic? |
-| Notes | Which Notes combine strong age-matched reach with reader response, profile interest, link clicks, or a new audience? Browse and sort every Note in one table, then select one for its detailed reach and reader actions. |
+| Briefing | Current reach and subscriber growth, one supported observation, the latest writing, and a publication timeline. Detailed period figures stay available on demand. |
+| Leaderboard | Which published Post or Note leads on the outcome you choose? Pick one measure at a time; open a piece for its full story. |
+| Posts | Compare posts in a chart, select two dots, then use the exact-figures table or open a post for sources, direct Note shares, and reader response. |
+| Discovery | When did each subscriber source contribute, and which Note or post links inside the Notes surface received subscriber credit? A compact split and ranked links sit above the broader source and traffic views. |
+| Notes | Compare Notes in a chart, select two dots, then use the exact-figures table or open a Note for its detailed results. Note reach is compared with a typical Note at the same age. |
 | Note planner | When are Notes scheduled, where is there room, and which unpublished draft should go next? Create drafts and schedule or reschedule Notes from the calendar. |
 
 The [Note planner](http://127.0.0.1:8765/planner) opens from the sidebar. Its calendar
@@ -177,11 +178,29 @@ All Note times use the configured Notes time zone shown on the page. The planner
 publish a Note immediately or edit an existing Note's text.
 
 Search posts and Notes from the header. The activity selector offers 7, 30, 90, 180, or
-365 days. It controls publication traffic, discovery, and the Notes list. Published post
+365 days. It controls publication traffic, discovery, the leaderboard, and the Notes list. Published post
 index metrics and individual Note reach are lifetime totals; the Posts chart also
 offers first-week comparisons. The **Published in selected period** filter narrows
 posts by publication date. The Briefing compares equal-length current
 and preceding periods. Today may be incomplete.
+
+The leaderboard starts with Posts ranked by attributed signups and Notes ranked by
+likes. It shows one chosen outcome at a time for pieces published in the selected period; newer
+pieces have had less time to accumulate totals. Rates use views for Posts and
+impressions for Notes. Individual Note signups are unavailable. The Note baseline
+comes from Substack's typical Note at the same age; eligible Post baselines use
+first-week views and a median of comparable post type and audience. These are
+different comparisons, so the combined view is chronological rather than a single
+cross-format performance score. The Briefing shows one measured observation with a link
+to its evidence. It does not infer a cause; the available data does not support reliable
+topic or tone conclusions.
+
+The analytics logic works across authorized Substack publications, but the source APIs,
+Post and Note metric definitions, and authentication are specific to Substack. A
+publication without Notes, per-piece signups, or enough historical detail will have
+fewer comparisons. The current default rankings favor subscriber growth for Posts and
+likes for Notes; writers with different goals can choose another outcome. Clearview is
+not a generic analytics dashboard for other publishing platforms.
 
 ### Reading the charts and tables
 
@@ -194,8 +213,8 @@ The first two use equal seven-day windows. The others use lifetime totals, so
 check publication dates when comparing older and newer posts. The post portfolio and
 MCP `post_portfolio` tool share these figures.
 
-The Posts table shows lifetime views, signups, likes, comments, and shares as
-separate sortable columns. Restacks remain available in the post story and CSV export.
+The Posts table shows lifetime views, signups, likes, comments, restacks, and shares as
+separate sortable columns.
 On narrow screens, those columns become labeled post cards with direct sort controls
 and 10 posts per page. Selecting two chart dots shows compact comparisons beside the
 chart on wider screens.
@@ -224,9 +243,12 @@ analytics service fills the performance map and comparison columns.
 Search filters the table and highlights matching Note text in the map. Reader
 rates need at least 100 impressions; audience-share comparisons need at least 100 people.
 Reach comparison uses Substack's typical Note at the same age. Reader actions and
-audience are lifetime totals. The comparison fills in as cached or fetched Notes are
-processed; CSV includes the results currently available. Individual Note stats are
+audience are lifetime totals. The comparison appears when the full cohort is ready;
+CSV includes those completed results. Individual Note stats are
 reused from the one-hour cache when available.
+The Notes chart compares each action per 1,000 impressions; the table leads with
+the raw number of likes, replies, restacks, and shares. These are separate outcomes,
+not a single success score.
 
 Discovery’s source lines use the same date range and source-series request as Substack’s
 growth page. Choose up to five top-level sources to compare their timing; select a post
@@ -257,9 +279,13 @@ corresponding comparison in that process. Another process may retain its compari
 for up to five minutes. **Retry unavailable** on the Notes comparison bypasses the
 assembled cohort cache so temporarily missing Notes can be checked again.
 
-The Posts and Notes comparisons send partial results to the dashboard as they are
-assembled. This changes only when results appear on screen; it does not make extra
-Substack requests. Real Substack requests from the dashboard, MCP, and pull commands
+The Posts and Notes comparisons send progress updates to the dashboard as they are
+assembled. The dashboard shows a percentage as each piece is processed, then reveals
+the completed comparison at once. Initial publication loads and other requests keep
+a spinner because their total work is not known in advance. A same-period comparison
+refresh leaves the last complete result visible until the new one arrives. Progress
+updates do not make extra Substack requests. Real Substack requests from the dashboard,
+MCP, and pull commands
 share a local request gate. They run one at a time with at least one second between
 starts, and the gate honors rate-limit pauses. Cached responses do not use the gate
 or contact Substack. To inspect upstream wait and response times locally, start the
@@ -297,11 +323,18 @@ functions. MCP runs over local standard input/output and has no network listener
 tools write to the ignored local backup directories; their Substack requests are
 read-only.
 
-The `publication_sources` tool includes the same dated subscriber source lines shown on
-Discovery. The `post_portfolio` tool returns the same completed first-week cohort and
-lifetime context used by the Posts comparison. The `compare_notes` tool returns the
-Notes page's age-matched reach, reader-outcome rankings, medians, and rows for a selected
-activity period.
+The `publication_sources` tool includes dated subscriber source lines and a breakdown
+of Substack's **Notes** source into credits from Note links, post links shared in Notes,
+and an unclassified remainder. Its item IDs and counts come from the same source
+response, without extra requests. Source credits are period bound and can include
+other writers' links; they are not the same as a post's lifetime signups and should
+not be added to those counts. Discovery removes the publication prefix from your
+own item titles and offers an expandable list of other writer labels and trackbacks
+when Substack reports them. Those labels identify credited items, not every person
+who reshared a post. The `post_portfolio` tool returns the same completed
+first-week cohort and lifetime context used by the Posts comparison. The
+`compare_notes` tool returns the Notes page's age-matched reach, reader-outcome
+rankings, medians, and rows for a selected activity period.
 
 On a Mac with this repository and a saved Substack session, run:
 

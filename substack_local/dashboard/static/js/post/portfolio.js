@@ -22,10 +22,10 @@ const MODES = {
     format: (value) => value.toFixed(1),
   },
   sharing: {
-    description: 'Compare Substack-recorded share actions relative to post reach.',
-    yTitle: 'Share actions per 1,000 lifetime views',
+    description: 'Compare Substack-recorded shares relative to post reach.',
+    yTitle: 'Shares per 1,000 lifetime views',
     window: 'Lifetime totals',
-    footnote: 'Share actions are a separate Substack metric from restacks. Rates use lifetime views; posts need at least 1,000 views. Publication dates and exposure windows differ.',
+    footnote: 'Shares are a separate Substack metric from restacks. Rates use lifetime views; posts need at least 1,000 views. Publication dates and exposure windows differ.',
     value: (row) => row.share_rate,
     format: (value) => value.toFixed(1),
   },
@@ -50,13 +50,29 @@ const MODES = {
 let mode = 'staying';
 let selectedIds = [];
 let snapshot;
+
+function renderLoading({ loading, data, progress }) {
+  const root = $('post-map-loading');
+  root.replaceChildren();
+  if (loading) root.append(loadingIndicator('Comparing posts…', {
+    completed: progress?.considered, total: progress?.target,
+    inline: !!data?.rows?.length,
+  }));
+}
+
+export function updatePostPortfolioProgress(progress) {
+  if (!snapshot) return;
+  snapshot = { ...snapshot, progress };
+  renderLoading(snapshot);
+}
+
 const lifetimeMode = () => mode === 'sharing' || RESPONSE_MODES.includes(mode);
 const xValue = (row) => lifetimeMode() ? Number(row.lifetime_views) : row.views;
 const xTitle = () => lifetimeMode() ? 'Lifetime views · log scale' : 'First-week views · log scale';
 const minViews = () => lifetimeMode() ? MIN_LIFETIME_VIEWS : MIN_FIRST_WEEK_VIEWS;
 const medianOutcome = (value) => mode === 'staying' ? `later share · ${pct(value)}`
   : mode === 'yield' ? `signup yield · ${value.toFixed(1)} / 1k views`
-    : mode === 'sharing' ? `share actions · ${value.toFixed(1)} / 1k views`
+    : mode === 'sharing' ? `shares · ${value.toFixed(1)} / 1k views`
       : RESPONSE_MODES.includes(mode) ? `${mode} · ${value.toFixed(1)} / 1k views`
         : `later views · ${fmt(value)}`;
 
@@ -120,7 +136,7 @@ function showTooltip(row, event, point) {
   title.textContent = row.title;
   const detail = document.createElement('span');
   const suffix = mode === 'staying' ? 'after day one' : mode === 'yield' ? 'signups / 1k'
-    : mode === 'sharing' ? 'share actions / 1k' : RESPONSE_MODES.includes(mode) ? `${mode} / 1k` : 'later views';
+    : mode === 'sharing' ? 'shares / 1k' : RESPONSE_MODES.includes(mode) ? `${mode} / 1k` : 'later views';
   detail.textContent = `${fmt(xValue(row))} ${lifetimeMode() ? 'lifetime' : 'first-week'} views · ${MODES[mode].format(MODES[mode].value(row))} ${suffix}`;
   const published = document.createElement('small');
   published.textContent = `Published ${date(row.date)}`;
@@ -128,8 +144,8 @@ function showTooltip(row, event, point) {
   tooltip.hidden = false;
   const rect = $('post-map-plot').getBoundingClientRect();
   const anchor = event?.clientX == null ? point.getBoundingClientRect() : { left: event.clientX, top: event.clientY };
-  tooltip.style.left = `${Math.max(8, Math.min(rect.width - 225, anchor.left - rect.left + 12))}px`;
-  tooltip.style.top = `${Math.max(8, anchor.top - rect.top - 76)}px`;
+  tooltip.style.left = `${Math.max(8, Math.min(rect.width - tooltip.offsetWidth - 8, anchor.left - rect.left + 12))}px`;
+  tooltip.style.top = `${Math.max(8, Math.min(rect.height - tooltip.offsetHeight - 8, anchor.top - rect.top - tooltip.offsetHeight - 8))}px`;
 }
 
 function card(row, comparison) {
@@ -151,8 +167,8 @@ function card(row, comparison) {
     [MODES.yield.format(MODES.yield.value(row)), 'signups per 1,000 views'],
     [pct(row.later_week_share), 'views after day one'],
   ] : mode === 'sharing' ? [
-    [fmt(row.lifetime_shares), 'share actions'],
-    [MODES.sharing.format(row.share_rate), 'share actions per 1,000 views'],
+    [fmt(row.lifetime_shares), 'shares'],
+    [MODES.sharing.format(row.share_rate), 'shares per 1,000 views'],
     [fmt(row.views), 'first-week views'],
   ] : RESPONSE_MODES.includes(mode) ? [
     [fmt(row[`lifetime_${mode}`]), mode],
@@ -225,6 +241,7 @@ function renderSelection(rows, comparison) {
   });
   const cards = document.createElement('div');
   cards.className = 'post-map-cards';
+  cards.classList.toggle('comparison-pair', selected.length === 2);
   selected.forEach((row) => cards.append(selected.length === 2
     ? compactCard(row, comparison) : card(row, comparison)));
   root.append(heading, cards);
@@ -241,15 +258,12 @@ export function renderPostPortfolio(state) {
   const panel = $('post-map');
   const status = $('post-map-status');
   const key = $('post-map-key');
-  const loadingRoot = $('post-map-loading');
   const retry = $('post-map-retry');
   const workspace = $('post-map-workspace');
   const comparison = $('post-map-comparison');
   const definition = MODES[mode];
   panel.setAttribute('aria-busy', String(loading));
   $('post-map-description').textContent = definition.description;
-  $('post-map-eyebrow').textContent = mode === 'staying' || mode === 'yield'
-    ? 'FIRST-WEEK COMPARISON' : 'LIFETIME COMPARISON';
   $('post-map-y-title').textContent = definition.yTitle;
   $('post-map-x-title').textContent = xTitle();
   $('post-map-window').textContent = definition.window;
@@ -266,15 +280,14 @@ export function renderPostPortfolio(state) {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
-  loadingRoot.replaceChildren();
-  if (loading) loadingRoot.append(loadingIndicator('Comparing post outcomes…'));
+  renderLoading(state);
   retry.hidden = !error;
   workspace.hidden = true;
   key.hidden = true;
   comparison.replaceChildren();
-  if (error) { status.textContent = `Comparison unavailable: ${error}`; return; }
+  if (error && !data) { status.textContent = `Comparison unavailable: ${error}`; return; }
   if (!data) {
-    status.textContent = loading ? 'Loading completed first-week results…' : 'Open Posts to load the comparison.';
+    status.textContent = loading ? 'Preparing the full comparison.' : 'Open Posts to load the comparison.';
     return;
   }
   const model = data.comparison;
@@ -287,7 +300,7 @@ export function renderPostPortfolio(state) {
   const standoutIds = new Set(lens.standout_ids);
   const eligible = (data.rows || []).filter((row) => eligibleIds.has(String(row.id)));
   const visible = eligible.filter((row) => visibleIds.has(String(row.id)));
-  status.textContent = `${eligible.length} of ${model.cohort_size} comparable posts have at least ${fmt(minViews())} ${lifetimeMode() ? 'lifetime' : 'first-week'} views${visible.length < eligible.length ? ` · ${visible.length} shown` : ''}${model.other_types ? ` · ${model.other_types} other post types` : ''}${data.incomplete ? ` · ${data.incomplete} too new` : ''}${data.unavailable ? ` · ${data.unavailable} unavailable` : ''}${data.total > data.considered ? ` · latest ${data.considered} of ${data.total} considered` : ''}.`;
+  status.textContent = `${error ? 'Could not refresh; showing the last complete comparison. ' : ''}${eligible.length} of ${model.cohort_size} comparable posts have at least ${fmt(minViews())} ${lifetimeMode() ? 'lifetime' : 'first-week'} views${visible.length < eligible.length ? ` · ${visible.length} shown` : ''}${model.other_types ? ` · ${model.other_types} other post types` : ''}${data.incomplete ? ` · ${data.incomplete} too new` : ''}${data.unavailable ? ` · ${data.unavailable} unavailable` : ''}.`;
   if (eligible.length < 3) {
     status.textContent += ' At least three are needed to draw the map.';
     return;

@@ -10,6 +10,7 @@ from typing import Any, Callable
 import urllib.error
 import urllib.parse
 import urllib.request
+from ..pacing import paced_request
 
 from .common import DEFAULT_BASE_URL, PullError
 
@@ -119,8 +120,11 @@ class ApiClient:
             self._throttle()
             request = urllib.request.Request(url, headers=headers, method="GET")
             try:
-                with self.opener(request, timeout=self.timeout) as response:
-                    raw = response.read()
+                with paced_request(self.base_url, path,
+                                   enabled=self.opener is urllib.request.urlopen,
+                                   delay=self.request_delay):
+                    with self.opener(request, timeout=self.timeout) as response:
+                        raw = response.read()
                 self._last_request_at = self.monotonic()
                 return raw
             except urllib.error.HTTPError as exc:

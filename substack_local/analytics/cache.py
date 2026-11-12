@@ -175,12 +175,24 @@ class PublicationDiskCache(_JsonDiskCache):
         fields = {
             "previous": dict, "totals": dict, "series": list,
             "publication_events": list, "growth_sources": list,
+            "notes_source_attribution": dict,
             "subscriber_source_series": list, "traffic_sources": list,
             "posts": list,
         }
+        attribution = data.get("notes_source_attribution")
+        attribution_fields = (
+            "status", "subscribers", "note_link_subscribers", "post_link_subscribers",
+            "unclassified_subscribers", "note_link_share", "post_link_share",
+            "unclassified_share", "classified_share", "majority_link_type",
+            "outside_items", "items",
+        )
         return (isinstance(data.get("publication"), str)
                 and isinstance(data.get("refreshed_at"), str)
-                and all(isinstance(data.get(name), kind) for name, kind in fields.items()))
+                and all(isinstance(data.get(name), kind) for name, kind in fields.items())
+                and isinstance(attribution, dict)
+                and all(name in attribution for name in attribution_fields)
+                and isinstance(attribution["items"], list)
+                and isinstance(attribution["outside_items"], list))
 
     def read(self, days: int) -> dict | None:
         return super().read(str(days))

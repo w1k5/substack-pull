@@ -107,6 +107,7 @@ private final class AppModel: ObservableObject {
     @Published var message: String?
     @Published var busy = false
     @Published var dashboardURL: URL?
+    weak var activeWebView: WKWebView?
     private var dashboardProcess: Process?
     private var pendingSessions: [String] = []
     private var attemptedSessions: Set<String> = []
@@ -143,6 +144,7 @@ private final class AppModel: ObservableObject {
         pendingSessions.removeAll()
         attemptedSessions.removeAll()
         message = nil
+        activeWebView = nil
         screen = .signIn
     }
 
@@ -151,6 +153,7 @@ private final class AppModel: ObservableObject {
         pendingSessions.removeAll()
         busy = false
         message = nil
+        activeWebView = nil
         screen = dashboardProcess?.isRunning == true && dashboardURL != nil ? .dashboard : .welcome
     }
 
@@ -204,6 +207,7 @@ private final class AppModel: ObservableObject {
         busy = true
         message = "Opening your dashboard…"
         screen = .loading
+        activeWebView = nil
         if dashboardProcess?.isRunning == true { dashboardProcess?.terminate() }
         dashboardProcess = nil
         Task.detached {
@@ -234,6 +238,7 @@ private final class AppModel: ObservableObject {
 
 private struct SignInWebView: NSViewRepresentable {
     let onSession: (String) -> Void
+    let onCreate: (WKWebView) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onSession: onSession) }
 
@@ -244,6 +249,7 @@ private struct SignInWebView: NSViewRepresentable {
         view.navigationDelegate = context.coordinator
         context.coordinator.store = config.websiteDataStore.httpCookieStore
         config.websiteDataStore.httpCookieStore.add(context.coordinator)
+        onCreate(view)
         view.load(URLRequest(url: URL(string: "https://substack.com/sign-in")!))
         return view
     }
@@ -292,6 +298,7 @@ private struct SignInWebView: NSViewRepresentable {
 
 private struct DashboardWebView: NSViewRepresentable {
     let url: URL
+    let onCreate: (WKWebView) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(dashboardURL: url) }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -312,6 +319,7 @@ private struct DashboardWebView: NSViewRepresentable {
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
+        onCreate(view)
         view.load(URLRequest(url: url))
         return view
     }
@@ -399,12 +407,13 @@ private struct ContentView: View {
                     if let message = model.message {
                         Text(message).font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
                     }
-                    SignInWebView(onSession: model.receivedSession)
+                    SignInWebView(onSession: model.receivedSession,
+                                  onCreate: { model.activeWebView = $0 })
                 }
                 .padding(.top, 30)
             case .dashboard:
                 if let url = model.dashboardURL {
-                    DashboardWebView(url: url)
+                    DashboardWebView(url: url, onCreate: { model.activeWebView = $0 })
                 }
             }
         }
@@ -420,25 +429,82 @@ private final class FullWindowHostingView<Content: View>: NSHostingView<Content>
 }
 
 private func installMenus(delegate: ClearviewDelegate) {
-    let mainMenu = NSMenu()
-    let appItem = NSMenuItem()
-    let appMenu = NSMenu(title: "Clearview")
-    let reconnect = NSMenuItem(title: "Reconnect Substack…", action: #selector(ClearviewDelegate.reconnectSubstack(_:)), keyEquivalent: "R")
-    reconnect.target = delegate
-    appMenu.addItem(reconnect)
-    appMenu.addItem(.separator())
-    appMenu.addItem(withTitle: "Quit Clearview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-    appItem.submenu = appMenu
-    mainMenu.addItem(appItem)
+    func menu(_ title: String, in bar: NSMenu) -> NSMenu {
+        let item = NSMenuItem()
+        let submenu = NSMenu(title: title)
+        item.submenu = submenu
+        bar.addItem(item)
+        return submenu
+    }
 
-    let editItem = NSMenuItem()
-    let editMenu = NSMenu(title: "Edit")
-    editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-    editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-    editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-    editItem.submenu = editMenu
-    mainMenu.addItem(editItem)
+    @discardableResult
+    func add(_ title: String, to menu: NSMenu, action: Selector, key: String = "",
+             modifiers: NSEvent.ModifierFlags = [.command], target: AnyObject? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.target = target
+        menu.addItem(item)
+        return item
+    }
+
+    let mainMenu = NSMenu()
+    let appMenu = menu("Clearview", in: mainMenu)
+    add("About Clearview", to: appMenu,
+        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+    appMenu.addItem(.separator())
+    let services = NSMenu(title: "Services")
+    let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+    servicesItem.submenu = services
+    appMenu.addItem(servicesItem)
+    NSApplication.shared.servicesMenu = services
+    appMenu.addItem(.separator())
+    add("Hide Clearview", to: appMenu, action: #selector(NSApplication.hide(_:)), key: "h")
+    add("Hide Others", to: appMenu, action: #selector(NSApplication.hideOtherApplications(_:)),
+        key: "h", modifiers: [.command, .option])
+    add("Show All", to: appMenu, action: #selector(NSApplication.unhideAllApplications(_:)))
+    appMenu.addItem(.separator())
+    add("Reconnect Substack…", to: appMenu,
+        action: #selector(ClearviewDelegate.reconnectSubstack(_:)), key: "r",
+        modifiers: [.command, .shift], target: delegate)
+    appMenu.addItem(.separator())
+    add("Quit Clearview", to: appMenu, action: #selector(NSApplication.terminate(_:)), key: "q")
+
+    let editMenu = menu("Edit", in: mainMenu)
+    add("Undo", to: editMenu, action: Selector(("undo:")), key: "z")
+    add("Redo", to: editMenu, action: Selector(("redo:")), key: "z",
+        modifiers: [.command, .shift])
+    editMenu.addItem(.separator())
+    add("Cut", to: editMenu, action: #selector(NSText.cut(_:)), key: "x")
+    add("Copy", to: editMenu, action: #selector(NSText.copy(_:)), key: "c")
+    add("Paste", to: editMenu, action: #selector(NSText.paste(_:)), key: "v")
+    add("Select All", to: editMenu, action: #selector(NSText.selectAll(_:)), key: "a")
+
+    let viewMenu = menu("View", in: mainMenu)
+    add("Reload", to: viewMenu, action: #selector(ClearviewDelegate.reloadPage(_:)),
+        key: "r", target: delegate)
+    viewMenu.addItem(.separator())
+    add("Zoom In", to: viewMenu, action: #selector(ClearviewDelegate.zoomIn(_:)),
+        key: "+", target: delegate)
+    add("Zoom Out", to: viewMenu, action: #selector(ClearviewDelegate.zoomOut(_:)),
+        key: "-", target: delegate)
+    add("Actual Size", to: viewMenu, action: #selector(ClearviewDelegate.resetZoom(_:)),
+        key: "0", target: delegate)
+    viewMenu.addItem(.separator())
+    add("Enter Full Screen", to: viewMenu,
+        action: #selector(ClearviewDelegate.toggleFullScreen(_:)),
+        key: "f", modifiers: [.command, .control], target: delegate)
+
+    let windowMenu = menu("Window", in: mainMenu)
+    add("Minimize", to: windowMenu, action: #selector(NSWindow.performMiniaturize(_:)), key: "m")
+    add("Zoom", to: windowMenu, action: #selector(NSWindow.performZoom(_:)))
+    windowMenu.addItem(.separator())
+    add("Bring All to Front", to: windowMenu, action: #selector(NSApplication.arrangeInFront(_:)))
+    NSApplication.shared.windowsMenu = windowMenu
+
+    let helpMenu = menu("Help", in: mainMenu)
+    add("Clearview Help", to: helpMenu, action: #selector(ClearviewDelegate.showHelp(_:)),
+        target: delegate)
+    NSApplication.shared.helpMenu = helpMenu
     NSApplication.shared.mainMenu = mainMenu
 }
 
@@ -473,12 +539,45 @@ struct ClearviewApp {
     }
 }
 
-private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     let model: AppModel
 
     init(model: AppModel) { self.model = model }
 
     @MainActor @objc func reconnectSubstack(_ sender: Any?) { model.beginSignIn() }
+    @MainActor @objc func reloadPage(_ sender: Any?) { model.activeWebView?.reload() }
+    @MainActor @objc func zoomIn(_ sender: Any?) {
+        guard let view = model.activeWebView else { return }
+        view.pageZoom = min(2.0, view.pageZoom + 0.1)
+    }
+    @MainActor @objc func zoomOut(_ sender: Any?) {
+        guard let view = model.activeWebView else { return }
+        view.pageZoom = max(0.5, view.pageZoom - 0.1)
+    }
+    @MainActor @objc func resetZoom(_ sender: Any?) { model.activeWebView?.pageZoom = 1.0 }
+    @MainActor @objc func toggleFullScreen(_ sender: Any?) {
+        NSApplication.shared.keyWindow?.toggleFullScreen(sender)
+    }
+    @MainActor func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(reloadPage(_:)), #selector(zoomIn(_:)),
+             #selector(zoomOut(_:)), #selector(resetZoom(_:)):
+            return model.activeWebView != nil
+        case #selector(toggleFullScreen(_:)):
+            item.title = NSApplication.shared.keyWindow?.styleMask.contains(.fullScreen) == true
+                ? "Exit Full Screen" : "Enter Full Screen"
+            return NSApplication.shared.keyWindow != nil
+        default:
+            return true
+        }
+    }
+    @MainActor @objc func showHelp(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Clearview Help"
+        alert.informativeText = "Use the sidebar to explore your publication, posts, Notes, and Note planner. Choose an activity period at the top of the dashboard, or refresh for newer data. If your Substack connection expires, choose Clearview > Reconnect Substack."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
     func windowWillClose(_ notification: Notification) { NSApplication.shared.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) { model.stop() }
 }

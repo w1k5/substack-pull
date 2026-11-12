@@ -50,7 +50,7 @@ export function sourceLabel(raw, context = 'traffic', parent = '') {
   };
   if (key === 'share' && context === 'growth') return {
     name: 'Copied Substack links',
-    detail: 'Readers arrived through a link copied using Substack’s share action.',
+    detail: 'Readers arrived through a link shared from Substack.',
   };
   return { name: name || 'Unidentified', detail: '' };
 }

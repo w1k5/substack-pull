@@ -1,11 +1,16 @@
 import { $, date, fmt, pct, cell } from './shared.js';
 import { downloadCsv } from './export.js';
-import { renderNotesMap, setupNotesMap } from './notes-map.js';
+import { renderNotesMap, setupNotesMap, updateNotesMapProgress } from './notes-map.js';
 import { notePreview } from './note-preview.js';
+import { readComparison } from './stream.js';
 
 const lenses = {
   day: 'Newest Notes first. Choose a metric column to rank them by performance.',
   pace: 'Reach relative to your typical Note at the same age. Use this to spot ideas worth revisiting.',
+  likes: 'Likes show how many readers reacted. The rate adds context for how widely the Note was seen.',
+  replies: 'Replies show conversation, which can matter even when the audience is small.',
+  restacks: 'Restacks show readers republishing a Note to their own audience.',
+  shares: 'Shares are recorded separately from restacks.',
   visits: 'Profile visits per 1,000 impressions. This separates reader curiosity from sheer exposure.',
   responses: 'Likes, replies, shares, and restacks per 1,000 impressions. This shows response to the writing.',
   clicks: 'Link clicks per 1,000 impressions. This shows which Notes sent readers onward.',
@@ -21,6 +26,8 @@ let loading = false;
 let generation = 0;
 let cohort = null;
 let loadError = '';
+let progressConsidered = null;
+let progressTotal = null;
 let sort = { key: 'day', direction: 'desc' };
 let query = '';
 let selectedId = '';
@@ -33,6 +40,8 @@ function values(note) {
   const stats = measured.get(String(note.id));
   if (!stats) return { note, stats: null, impressions: null, pace: null,
     visits: null, responses: null, clicks: null,
+    likes: null, replies: null, shares: null, restacks: null,
+    likeRate: null, replyRate: null, shareRate: null, restackRate: null,
     visitRate: null, responseRate: null, clickRate: null,
     audienceCount: null, unconnectedCount: null, unconnected: null };
   return { note, stats, ...stats.comparison };
@@ -43,6 +52,10 @@ function sortValue(row) {
     case 'day': return row.note.day;
     case 'title': return row.note.title.toLowerCase();
     case 'pace': return row.pace?.ratio;
+    case 'likes': return row.likes;
+    case 'replies': return row.replies;
+    case 'restacks': return row.restacks;
+    case 'shares': return row.shares;
     case 'visits': return row.visitRate;
     case 'responses': return row.responseRate;
     case 'clicks': return row.clickRate;
@@ -52,7 +65,8 @@ function sortValue(row) {
 }
 
 function rows() {
-  const ranked = cohort?.[sort.key]?.ranked_ids;
+  const ranked = ['pace', 'visits', 'responses', 'clicks', 'unconnected'].includes(sort.key)
+    ? cohort?.[sort.key]?.ranked_ids : null;
   const ranks = ranked ? new Map(ranked.map((id, index) => [String(id), index])) : null;
   return notes.filter((note) => note.title.toLowerCase().includes(query))
     .map(values)
@@ -126,10 +140,13 @@ function renderTable() {
     cell(tr, metric(row.stats ? row.pace.label : '—',
       row.stats ? `${fmt(row.pace.actual)} vs ${fmt(row.pace.typical)} at ${row.pace.age}`
         : loading ? 'Comparing…' : analyzed ? 'Unavailable' : ''));
+    for (const [count, rate] of [
+      [row.likes, row.likeRate], [row.replies, row.replyRate],
+      [row.restacks, row.restackRate], [row.shares, row.shareRate],
+    ]) cell(tr, metric(row.stats ? fmt(count) : '—',
+      row.stats ? rate == null ? 'Small sample' : `${rate.toFixed(1)} / 1k` : ''));
     cell(tr, metric(row.visitRate == null ? '—' : row.visitRate.toFixed(1),
       row.stats ? `${fmt(row.visits)} visits${row.visitRate == null ? ' · small sample' : ''}` : ''));
-    cell(tr, metric(row.responseRate == null ? '—' : row.responseRate.toFixed(1),
-      row.stats ? `${fmt(row.responses)} responses${row.responseRate == null ? ' · small sample' : ''}` : ''));
     cell(tr, metric(row.clickRate == null ? '—' : row.clickRate.toFixed(1),
       row.stats ? `${fmt(row.clicks)} clicks${row.clickRate == null ? ' · small sample' : ''}` : ''));
     cell(tr, metric(row.unconnected == null ? '—' : pct(row.unconnected),
@@ -158,7 +175,7 @@ function renderControls() {
 }
 
 function render() {
-  $('note-compare-count').textContent = `${notes.length} Notes published in this period${loading ? ' · comparing performance…' : ''}`;
+  $('note-compare-count').textContent = `${notes.length} Notes published in this period`;
   renderControls();
   renderTable();
   renderMap();
@@ -168,6 +185,7 @@ function renderMap() {
   renderNotesMap({
     rows: analyzed ? measuredRows() : [], total: notes.length,
     analyzed, failed: failed.size, loading, cohort, error: loadError,
+    considered: progressConsidered, progressTotal,
   });
 }
 
@@ -189,6 +207,8 @@ export function renderNotesComparison(data, navigate, activeId) {
     loading = false;
     cohort = null;
     loadError = '';
+    progressConsidered = null;
+    progressTotal = null;
     measured.clear();
     failed.clear();
     $('note-compare-results').removeAttribute('aria-busy');
@@ -212,21 +232,33 @@ async function analyzeNotes(retryUnavailable = false) {
   if (loading || !notes.length) return;
   loading = true;
   loadError = '';
+  progressConsidered = null;
+  progressTotal = null;
   const currentGeneration = generation;
   $('note-compare-results').setAttribute('aria-busy', 'true');
   render();
   try {
     const days = sourceData?.range?.days || 90;
-    const response = await fetch(`/api/note-comparison?days=${days}${retryUnavailable ? '&retry=1' : ''}`, { cache: 'no-store' });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Could not analyze Notes.');
+    const response = await fetch(`/api/note-comparison?days=${days}&stream=1${retryUnavailable ? '&retry=1' : ''}`, { cache: 'no-store' });
+    const apply = (result) => {
+      if (generation !== currentGeneration) return;
+      measured.clear();
+      result.rows.forEach((row) => measured.set(String(row.id), { comparison: row }));
+      failed.clear();
+      result.unavailable_ids.forEach((id) => failed.add(String(id)));
+      cohort = result.lenses;
+      progressConsidered = result.considered;
+      progressTotal = result.total;
+      analyzed = true;
+    };
+    const result = await readComparison(response, (partial) => {
+      if (generation !== currentGeneration) return;
+      progressConsidered = partial.considered;
+      progressTotal = partial.total;
+      updateNotesMapProgress(progressConsidered, progressTotal);
+    });
     if (generation !== currentGeneration) return;
-    measured.clear();
-    result.rows.forEach((row) => measured.set(String(row.id), { comparison: row }));
-    failed.clear();
-    result.unavailable_ids.forEach((id) => failed.add(String(id)));
-    cohort = result.lenses;
-    analyzed = true;
+    apply(result);
   } catch (error) {
     if (generation !== currentGeneration) return;
     loadError = error.message || 'Could not analyze Notes.';
@@ -249,6 +281,8 @@ export function clearNotesComparison() {
   loading = false;
   cohort = null;
   loadError = '';
+  progressConsidered = null;
+  progressTotal = null;
   measured.clear();
   failed.clear();
   $('note-compare-results').removeAttribute('aria-busy');
@@ -258,8 +292,9 @@ export function clearNotesComparison() {
 export function updateComparedNote(stats) {
   const id = String(stats.id);
   if (notes.some((note) => String(note.id) === id)) {
+    if (loading) return;
     measured.set(id, stats);
-    if (analyzed && !loading) analyzeNotes();
+    if (analyzed) analyzeNotes();
     else render();
   }
 }
@@ -273,11 +308,16 @@ export function setupNotesComparison() {
   $('note-compare-export').addEventListener('click', () => {
     downloadCsv('substack-notes-comparison.csv',
       ['Published', 'Note', 'Note ID', 'Impressions', 'Pace vs typical',
+        'Likes', 'Likes per 1k impressions', 'Replies', 'Replies per 1k impressions',
+        'Restacks', 'Restacks per 1k impressions', 'Shares', 'Shares per 1k impressions',
         'Profile visits', 'Profile visits per 1k impressions', 'Responses',
         'Responses per 1k impressions', 'Link clicks', 'Link clicks per 1k impressions',
         'Unconnected people', 'Audience people', 'Unconnected share'],
       rows().map((row) => [row.note.day, row.note.title, row.note.id,
-        row.impressions, row.stats ? row.pace.label : null, row.visits, row.visitRate,
+        row.impressions, row.stats ? row.pace.label : null,
+        row.likes, row.likeRate, row.replies, row.replyRate,
+        row.restacks, row.restackRate, row.shares, row.shareRate,
+        row.visits, row.visitRate,
         row.responses, row.responseRate, row.clicks, row.clickRate,
         row.unconnectedCount, row.audienceCount, row.unconnected]));
   });

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .client import ApiClient, PullError, paginate_posts, query_path
+from .subscriber_attribution import notes_source_attribution
 
 def metric(row: dict, name: str) -> int | float:
     for item in row.get("metrics") or []:
@@ -75,6 +76,32 @@ def fetch_posts(api: ApiClient) -> list[dict]:
             "engagement_rate": stats.get("engagement_rate"),
         })
     return rows
+
+
+def fetch_recent_notes(api: ApiClient, *, today=None, days: int = 365) -> list[dict]:
+    """Get a small recent Note index without loading publication-wide analytics."""
+    today = today or datetime.now(ZoneInfo("America/New_York")).date()
+    payload = api.get_json(query_path(
+        "/api/v1/publication/stats/growth/events",
+        {"from_date": (today - timedelta(days=days - 1)).isoformat(),
+         "to_date": today.isoformat()},
+    ))
+    notes = []
+    seen = set()
+    for event in payload.get("pubEvents") or []:
+        note_id = str(event.get("id") or "")
+        if (event.get("type") != "note" or not note_id.isascii()
+                or not note_id.isdecimal() or note_id in seen):
+            continue
+        try:
+            published = datetime.fromisoformat(str(event["date"]).replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        seen.add(note_id)
+        notes.append({"id": note_id, "title": event.get("title") or "Note",
+                      "published_at": published.isoformat(),
+                      "day": published.astimezone(ZoneInfo("America/New_York")).date().isoformat()})
+    return sorted(notes, key=lambda note: note["published_at"], reverse=True)
 
 
 def fetch_visitor_sources(api: ApiClient, start_iso: str, end_iso: str) -> list[dict]:
@@ -208,6 +235,10 @@ def fetch_dashboard(api: ApiClient, days: int, today=None,
         } for event in events.get("pubEvents") or []
             if event.get("date") and event.get("type") in {"note", "text"}],
         "growth_sources": source_rows,
+        "notes_source_attribution": notes_source_attribution(
+            growth, own_post_ids=[row.get("id") for row in post_rows],
+            own_note_ids=[event.get("id") for event in events.get("pubEvents") or []
+                          if event.get("type") == "note"]),
         "subscriber_source_series": source_series,
         "subscriber_source_series_error": source_series_error,
         "traffic_sources": [{

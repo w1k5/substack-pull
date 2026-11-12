@@ -1,4 +1,4 @@
-import { $, loadingIndicator, emptyMessage } from './shared.js';
+import { $, emptyMessage } from './shared.js';
 
 let snapshot;
 let loading = false;
@@ -50,7 +50,7 @@ async function loadPlanner(refresh = false) {
   $('planner-loading').querySelector('span:last-child').textContent = refresh
     ? 'Syncing Notes…' : hadSnapshot ? 'Updating calendar…' : 'Loading Note plan…';
   $('planner-loading').hidden = false;
-  if (!hadSnapshot) $('planner-draft-list').replaceChildren(loadingIndicator('Loading drafts…'));
+  if (!hadSnapshot) $('planner-draft-list').replaceChildren();
   $('planner-refresh').disabled = true;
   $('planner-days').disabled = true;
   $('planner-spacing').disabled = true;

@@ -25,9 +25,12 @@ STATIC_FILES = {
     "/css/comparison-map.css": ("css/comparison-map.css", "text/css; charset=utf-8"),
     "/css/post-portfolio.css": ("css/post-portfolio.css", "text/css; charset=utf-8"),
     "/css/views.css": ("css/views.css", "text/css; charset=utf-8"),
+    "/css/latest.css": ("css/latest.css", "text/css; charset=utf-8"),
+    "/css/editorial.css": ("css/editorial.css", "text/css; charset=utf-8"),
     "/css/planner.css": ("css/planner.css", "text/css; charset=utf-8"),
     "/js/app.js": ("js/app.js", "text/javascript; charset=utf-8"),
     "/js/shared.js": ("js/shared.js", "text/javascript; charset=utf-8"),
+    "/js/stream.js": ("js/stream.js", "text/javascript; charset=utf-8"),
     "/js/export.js": ("js/export.js", "text/javascript; charset=utf-8"),
     "/js/notes-page.js": ("js/notes-page.js", "text/javascript; charset=utf-8"),
     "/js/note-preview.js": ("js/note-preview.js", "text/javascript; charset=utf-8"),
@@ -40,6 +43,9 @@ STATIC_FILES = {
     "/js/source-trend.js": ("js/source-trend.js", "text/javascript; charset=utf-8"),
     "/js/source-labels.js": ("js/source-labels.js", "text/javascript; charset=utf-8"),
     "/js/views/publication.js": ("js/views/publication.js", "text/javascript; charset=utf-8"),
+    "/js/views/subscriber-attribution.js": ("js/views/subscriber-attribution.js", "text/javascript; charset=utf-8"),
+    "/js/views/latest.js": ("js/views/latest.js", "text/javascript; charset=utf-8"),
+    "/js/views/editorial.js": ("js/views/editorial.js", "text/javascript; charset=utf-8"),
     "/js/views/tables.js": ("js/views/tables.js", "text/javascript; charset=utf-8"),
     "/js/post/index.js": ("js/post/index.js", "text/javascript; charset=utf-8"),
     "/js/post/notes.js": ("js/post/notes.js", "text/javascript; charset=utf-8"),
@@ -67,6 +73,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def stream_comparison(self, run):
+        """Send progress counts, then one complete comparison response."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        def send(kind, data):
+            self.wfile.write((json.dumps({"type": kind, "data": data},
+                                         ensure_ascii=False, allow_nan=False) + "\n").encode())
+            self.wfile.flush()
+
+        try:
+            send("done", run(lambda data: send("progress", {
+                key: data[key] for key in ("considered", "total", "target") if key in data
+            })))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except (LookupError, ValueError, RuntimeError, PullError, TypeError, KeyError, OSError) as exc:
+            try:
+                send("error", {"error": str(exc)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
     def do_GET(self):
         expected_host = f"127.0.0.1:{self.server.server_port}"
         if self.headers.get("Host") != expected_host:
@@ -90,12 +123,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 params = parse_qs(parsed.query)
                 days = int(params.get("days", ["90"])[0])
                 retry = params.get("retry", ["0"])[0] == "1"
-                self.send_json(self.service.note_cohort(days, retry_unavailable=retry))
+                if params.get("stream", ["0"])[0] == "1":
+                    self.stream_comparison(
+                        lambda progress: self.service.note_cohort(
+                            days, retry_unavailable=retry, on_progress=progress))
+                else:
+                    self.send_json(self.service.note_cohort(days, retry_unavailable=retry))
                 return
             if parsed.path == "/api/post-portfolio":
                 params = parse_qs(parsed.query)
                 refresh = params.get("refresh", ["0"])[0] == "1"
-                self.send_json(self.service.post_portfolio(refresh=refresh))
+                if params.get("stream", ["0"])[0] == "1":
+                    self.stream_comparison(
+                        lambda progress: self.service.post_portfolio(
+                            refresh=refresh, on_progress=progress))
+                else:
+                    self.send_json(self.service.post_portfolio(refresh=refresh))
+                return
+            if parsed.path == "/api/latest":
+                refresh = parse_qs(parsed.query).get("refresh", ["0"])[0] == "1"
+                self.send_json(self.service.latest(refresh=refresh))
                 return
             if parsed.path.startswith("/api/note/"):
                 refresh = parse_qs(parsed.query).get("refresh", ["0"])[0] == "1"
@@ -123,7 +170,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         route = parsed.path
-        if route in {"/posts", "/discovery", "/notes", "/notes/compare", "/planner"} or re.fullmatch(
+        if route in {"/posts", "/discovery", "/notes", "/notes/compare", "/planner", "/leaderboard", "/insights"} or re.fullmatch(
             r"/(?:posts|notes)/[0-9]+", route
         ):
             route = "/"

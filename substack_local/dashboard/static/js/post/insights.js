@@ -249,40 +249,27 @@ export function renderPostInsights(post) {
     }
     root.append(panel);
   }
-  if (engagement.likes != null || engagement.comments != null || engagement.restacks != null || reach.shares != null) {
-    const panel = section('Reader response');
-    const row = document.createElement('div');
-    row.className = 'response-grid';
-    for (const [label, count, detail, rate] of [
-      ['Likes', engagement.likes, null, insights.response_rates?.likes],
-      [
-        'Comments',
-        engagement.comments,
-        engagement.commenters == null ? null : `${fmt(engagement.commenters)} commenters`,
-        insights.response_rates?.comments,
-      ],
-      ['Restacks', engagement.restacks, null, insights.response_rates?.restacks],
-      ['Share actions', reach.shares, null, insights.response_rates?.shares],
-    ]) {
-      if (count == null) continue;
-      const card = document.createElement('div');
-      const name = document.createElement('span');
-      name.textContent = label;
-      const value = document.createElement('strong');
-      value.textContent = fmt(count);
-      const note = document.createElement('small');
-      note.textContent = detail || `${rate == null ? '—' : Math.round(rate)} per 1k views`;
-      card.append(name, value, note);
-      row.append(card);
-    }
-    panel.append(row);
-    if (Number(growth.subscribes || 0) || Number(growth.unsubscribes || 0)) {
-      const note = document.createElement('p');
-      note.className = 'footnote';
-      note.textContent = `Lifetime: ${fmt(growth.subscribes)} paid subscriptions · ${fmt(growth.unsubscribes)} unsubscribes`;
-      panel.append(note);
-    }
-    root.append(panel);
+  const rates = insights.response_rates || {};
+  const responseDetails = [
+    ...(['likes', 'comments', 'shares']
+      .filter((name) => rates[name] != null)
+      .map((name) => `${Math.round(rates[name])} ${name} per 1k views`)),
+    ...(engagement.commenters == null ? [] : [`${fmt(engagement.commenters)} commenters`]),
+    ...(engagement.restacks == null ? [] : [`${fmt(engagement.restacks)} restacks`]),
+    ...(growth.subscribes == null ? [] : [`${fmt(growth.subscribes)} paid subscriptions`]),
+    ...(growth.unsubscribes == null ? [] : [`${fmt(growth.unsubscribes)} unsubscribes`]),
+  ];
+  if (responseDetails.length) {
+    const details = document.createElement('details');
+    details.className = 'detail-more response-detail';
+    const summary = document.createElement('summary');
+    summary.textContent = 'More response context';
+    const body = document.createElement('p');
+    body.textContent = responseDetails.join(' · ');
+    const note = document.createElement('small');
+    note.textContent = 'Rates use lifetime views. Shares and restacks are distinct metrics.';
+    details.append(summary, body, note);
+    root.append(details);
   }
   return root;
 }

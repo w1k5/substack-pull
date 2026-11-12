@@ -31,7 +31,12 @@ def publication_timeline(days: int = 90, refresh: bool = False) -> dict:
 
 @mcp.tool(annotations=READ_ONLY)
 def publication_sources(days: int = 90, limit: int = 20, refresh: bool = False) -> dict:
-    """Compare subscriber and traffic sources. Refresh bypasses the five-minute shared cache."""
+    """Compare subscriber and traffic sources, including Note vs post links within Notes.
+
+    Source credits are period bound and may include other writers' links; they
+    must not be added to a post's lifetime signup total. Refresh bypasses the
+    five-minute shared cache.
+    """
     if not 1 <= limit <= 100:
         raise ValueError("Choose a limit from 1 to 100.")
     data = service().dashboard(days, refresh=refresh)
@@ -39,6 +44,11 @@ def publication_sources(days: int = 90, limit: int = 20, refresh: bool = False) 
         "refreshed_at": data["refreshed_at"],
         "range": data["range"],
         "growth_sources": data["growth_sources"][:limit],
+        "notes_source_attribution": {
+            **data["notes_source_attribution"],
+            "items": data["notes_source_attribution"]["items"][:limit],
+            "outside_items": data["notes_source_attribution"]["outside_items"][:limit],
+        },
         "subscriber_source_series": data["subscriber_source_series"][:limit],
         "subscriber_source_series_error": data["subscriber_source_series_error"],
         "traffic_sources": data["traffic_sources"][:limit],

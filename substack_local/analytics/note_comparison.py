@@ -10,6 +10,10 @@ from statistics import median
 MIN_RATE_SAMPLE = 100
 LENS_FIELDS = {
     "pace": "pace_ratio",
+    "likes": "likeRate",
+    "replies": "replyRate",
+    "restacks": "restackRate",
+    "shares": "shareRate",
     "visits": "visitRate",
     "responses": "responseRate",
     "clicks": "clickRate",
@@ -69,8 +73,11 @@ def note_comparison_metrics(stats: dict) -> dict:
     interactions = (stats.get("interactions") or {}).get("items") or []
     audience = stats.get("audience") or []
     visits = _value(interactions, "profile visit")
-    responses = sum(number(item.get("value")) or 0 for item in interactions
-                    if str(item.get("title") or "").lower() in {"like", "reply", "share", "restack"})
+    likes = _value(interactions, "like")
+    replies = _value(interactions, "reply")
+    shares = _value(interactions, "share")
+    restacks = _value(interactions, "restack")
+    responses = likes + replies + shares + restacks
     clicks = _value(interactions, "link click")
     audience_count = sum(number(item.get("value")) or 0 for item in audience)
     unconnected_count = _value(audience, "unconnected")
@@ -79,7 +86,15 @@ def note_comparison_metrics(stats: dict) -> dict:
         "pace": _pace(stats),
         "visits": visits,
         "responses": responses,
+        "likes": likes,
+        "replies": replies,
+        "shares": shares,
+        "restacks": restacks,
         "clicks": clicks,
+        "likeRate": _rate(likes, impressions),
+        "replyRate": _rate(replies, impressions),
+        "shareRate": _rate(shares, impressions),
+        "restackRate": _rate(restacks, impressions),
         "visitRate": _rate(visits, impressions),
         "responseRate": _rate(responses, impressions),
         "clickRate": _rate(clicks, impressions),

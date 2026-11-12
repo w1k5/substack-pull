@@ -20,6 +20,14 @@ def publication_snapshot(day: str, days: int, views: int) -> dict:
         "range": {"start": day, "end": day, "days": days},
         "previous": {"range": {}, "totals": {}}, "totals": {"views": views},
         "series": [], "publication_events": [], "growth_sources": [],
+        "notes_source_attribution": {
+            "status": "unavailable", "subscribers": None,
+            "note_link_subscribers": None, "post_link_subscribers": None,
+            "unclassified_subscribers": None, "note_link_share": None,
+            "post_link_share": None, "unclassified_share": None,
+            "classified_share": None, "majority_link_type": None,
+            "outside_items": [], "items": [],
+        },
         "subscriber_source_series": [], "traffic_sources": [], "posts": [],
     }
 
@@ -92,6 +100,11 @@ class PublicationCacheTests(TestCase):
 
             record["fetched_at"] = time.time()
             del record["data"]["subscriber_source_series"]
+            path.write_text(json.dumps(record), encoding="utf-8")
+            self.assertIsNone(cache.read(30))
+
+            record["data"] = publication_snapshot("2026-11-04", 30, 1)
+            del record["data"]["notes_source_attribution"]["post_link_share"]
             path.write_text(json.dumps(record), encoding="utf-8")
             self.assertIsNone(cache.read(30))
 
