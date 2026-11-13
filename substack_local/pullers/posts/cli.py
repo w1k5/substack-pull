@@ -7,10 +7,10 @@ import shutil
 import sys
 from typing import Any, Iterable
 
-from .api import ApiClient, KeychainStore, host_for, normalize_publication
+from .api import ApiClient, KeychainStore, host_for, normalize_publication, verify_editor_access
 from .common import DEFAULT_CONFIG, DEFAULT_OUTPUT, PullError
 from .storage import (collect_local_posts, config_path_from, load_config, local_status,
-                      resolve_output_dir, save_config)
+                      read_json, resolve_output_dir, save_config)
 from .sync import SyncEngine
 
 
@@ -35,7 +35,7 @@ def command_auth(args: argparse.Namespace) -> int:
 
     token = keychain.get(account)
     api = ApiClient(publication, token, request_delay=args.request_delay)
-    api.get_json("/api/v1/drafts?limit=1")
+    verify_editor_access(api)
     print(f"Authentication verified for {publication}.")
     print(f"Configuration saved to {config_path} (no secret stored there).")
     return 0

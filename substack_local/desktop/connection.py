@@ -11,10 +11,10 @@ import json
 from pathlib import Path
 import sys
 import ssl
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from ..pullers.posts import ApiClient, KeychainStore, PullError
-from ..pullers.posts.api import host_for, normalize_publication
+from ..pullers.posts.api import host_for, normalize_publication, verify_editor_access
 from ..pullers.posts.common import DEFAULT_OUTPUT
 from ..pullers.posts.storage import read_json, save_config
 from ..paths import data_root
@@ -33,12 +33,20 @@ def verify(publication: str, token: str) -> dict[str, str]:
     if not token or "\n" in token or "\r" in token:
         raise PullError("Substack did not provide a usable sign-in session.")
     try:
-        ApiClient(publication, token).get_json("/api/v1/drafts?limit=1")
+        verify_editor_access(ApiClient(publication, token))
     except PullError as exc:
         cause = exc.__cause__
         if isinstance(cause, URLError) and isinstance(cause.reason, ssl.SSLCertVerificationError):
             raise PullError("Clearview could not verify Substack’s HTTPS certificate.") from exc
-        raise PullError("Clearview could not verify editor access. Check the publication address and Substack account, then try again.") from exc
+        if isinstance(cause, HTTPError):
+            if cause.code in {401, 403}:
+                raise PullError("Substack denied access to the publication. Sign in with an editor account for this publication.") from exc
+            if cause.code == 429:
+                raise PullError("Substack is limiting requests. Try connecting again later.") from exc
+            raise PullError(f"Substack’s publication access check failed (HTTP {cause.code}).") from exc
+        if isinstance(cause, URLError):
+            raise PullError("Clearview could not reach Substack. Check your internet connection and try again.") from exc
+        raise PullError("Substack returned an unexpected response while Clearview checked publication access.") from exc
     return {"publication": publication, "account": host_for(publication)}
 
 

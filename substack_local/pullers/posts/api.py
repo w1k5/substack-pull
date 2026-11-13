@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .common import KEYCHAIN_SERVICE, READ_ONLY_POST_PATHS, PullError
+from .common import CATEGORY_ENDPOINTS, KEYCHAIN_SERVICE, READ_ONLY_POST_PATHS, PullError
 from ...credentials import CredentialError, WindowsCredentialStore
 from ..pacing import paced_request
 
@@ -251,10 +251,22 @@ class ApiClient:
                 if attempt < 2:
                     time.sleep(1.0 * (2**attempt))
                     continue
-        raise PullError(f"Substack API request failed for {path}: {last_error}")
+        raise PullError(f"Substack API request failed for {path}: {last_error}") from last_error
 
 def query_path(path: str, params: dict[str, Any]) -> str:
     return path + "?" + urllib.parse.urlencode(params)
+
+def verify_editor_access(api: ApiClient) -> None:
+    path, order_by = CATEGORY_ENDPOINTS["drafts"]
+    payload = api.get_json(query_path(path, {
+        "offset": 0,
+        "limit": 1,
+        "order_by": order_by,
+        "order_direction": "desc",
+    }))
+    drafts = payload.get("posts") if isinstance(payload, dict) else payload
+    if not isinstance(drafts, list):
+        raise PullError("Substack did not return a drafts list.")
 
 def paginate_posts(
     api: ApiClient,

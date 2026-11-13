@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from substack_local.desktop.connection import configure, current_publication, publication_url, verify
 from substack_local.pullers.posts import PullError
@@ -32,12 +32,29 @@ class DesktopConnectionTests(unittest.TestCase):
 
     def test_verifies_editor_access_with_the_shared_client(self):
         with patch("substack_local.desktop.connection.ApiClient") as client:
+            client.return_value.get_json.return_value = {"posts": [], "total": 0}
             result = verify("name.substack.com", "sample-session")
         self.assertEqual(result, {
             "publication": "https://name.substack.com", "account": "name.substack.com"
         })
         client.assert_called_once_with("https://name.substack.com", "sample-session")
-        client.return_value.get_json.assert_called_once_with("/api/v1/drafts?limit=1")
+        client.return_value.get_json.assert_called_once_with(
+            "/api/v1/post_management/drafts?offset=0&limit=1&order_by=draft_updated_at&order_direction=desc"
+        )
+
+    def test_reports_request_failure_without_claiming_the_account_lacks_access(self):
+        with patch("substack_local.desktop.connection.ApiClient") as client:
+            error = PullError("Internal upstream details")
+            error.__cause__ = HTTPError("https://name.substack.com", 400, "Bad Request", {}, None)
+            client.return_value.get_json.side_effect = error
+            with self.assertRaisesRegex(PullError, r"publication access check failed \(HTTP 400\)"):
+                verify("name.substack.com", "sample-session")
+
+    def test_rejects_json_without_a_drafts_list(self):
+        with patch("substack_local.desktop.connection.ApiClient") as client:
+            client.return_value.get_json.return_value = {"error": "Internal upstream details"}
+            with self.assertRaisesRegex(PullError, "Substack returned an unexpected response"):
+                verify("name.substack.com", "sample-session")
 
     def test_reports_certificate_failure_without_returning_upstream_details(self):
         with patch("substack_local.desktop.connection.ApiClient") as client:
