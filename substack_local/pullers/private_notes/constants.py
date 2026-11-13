@@ -1,7 +1,7 @@
 """Private Note puller constants."""
 
 APP_NAME = "substack-notes-pull"
-KEYCHAIN_SERVICE = "com.local.substack-pull"
+from ..posts.common import KEYCHAIN_SERVICE
 LEGACY_KEYCHAIN_SERVICE = "com.local.substack-notes-pull"
 LEGACY_KEYCHAIN_ACCOUNT = "substack.com"
 SUBSTACK_PULL_CONFIG = ".substack-pull.json"

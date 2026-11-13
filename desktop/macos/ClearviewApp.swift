@@ -2,7 +2,10 @@ import Security
 import SwiftUI
 import WebKit
 
-private let keychainService = "com.local.substack-pull"
+private let packagedEngine = Bundle.main.resourceURL?
+    .appendingPathComponent("engine/clearview-engine")
+private let keychainService = packagedEngine.map { FileManager.default.isExecutableFile(atPath: $0.path) } == true
+    ? "io.github.w1k5.clearview" : "com.local.substack-pull"
 
 private enum ShellError: Error {
     case failed(String)
@@ -12,6 +15,12 @@ private struct LocalEngine {
     let root: URL
 
     init() throws {
+        if let engine = packagedEngine, FileManager.default.isExecutableFile(atPath: engine.path) {
+            root = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support/Clearview", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            return
+        }
         let path = ProcessInfo.processInfo.environment["CLEARVIEW_ROOT"]
             ?? Bundle.main.bundleURL
                 .deletingLastPathComponent()
@@ -24,12 +33,22 @@ private struct LocalEngine {
         root = URL(fileURLWithPath: path, isDirectory: true)
     }
 
-    func command(_ action: String, publication: String? = nil, session: String? = nil) throws -> [String: Any] {
+    private func process(_ command: String, module: String, arguments: [String]) -> Process {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["python3", "-m", "substack_local.desktop.connection", action]
-            + (publication.map { ["--publication", $0] } ?? [])
+        if let engine = packagedEngine, FileManager.default.isExecutableFile(atPath: engine.path) {
+            task.executableURL = engine
+            task.arguments = [command] + arguments
+        } else {
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            task.arguments = ["python3", "-m", module] + arguments
+        }
         task.currentDirectoryURL = root
+        return task
+    }
+
+    func command(_ action: String, publication: String? = nil, session: String? = nil) throws -> [String: Any] {
+        let task = process("connection", module: "substack_local.desktop.connection",
+                           arguments: [action] + (publication.map { ["--publication", $0] } ?? []))
         let output = Pipe()
         task.standardOutput = output
         task.standardError = Pipe()
@@ -52,10 +71,7 @@ private struct LocalEngine {
     }
 
     func launchDashboard() throws -> (Process, URL) {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["python3", "-m", "substack_local.dashboard.server", "--port", "0"]
-        task.currentDirectoryURL = root
+        let task = process("dashboard", module: "substack_local.dashboard.server", arguments: ["--port", "0"])
         let output = Pipe()
         task.standardOutput = output
         task.standardError = Pipe()

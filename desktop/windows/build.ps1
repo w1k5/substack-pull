@@ -20,6 +20,7 @@ try {
         --hidden-import substack_local.mcp.server --collect-submodules mcp `
         --add-data 'substack_local/dashboard/static;substack_local/dashboard/static' `
         'substack_local/desktop/entry.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Clearview engine build failed.' }
 } finally { Pop-Location }
 dotnet publish (Join-Path $PSScriptRoot 'Clearview.Windows.csproj') -c Release -r win-x64 `
     --self-contained true -o (Join-Path $build 'publish') `
@@ -36,4 +37,11 @@ Copy-Item (Join-Path $build 'engine-dist/clearview-engine') `
 $archive = Join-Path $build "Clearview-$($release.version)-windows-x64.zip"
 if (Test-Path $archive) { Remove-Item $archive }
 Compress-Archive -Path (Join-Path $build 'publish/*') -DestinationPath $archive
+$check = Join-Path $build 'check'
+Expand-Archive -Path $archive -DestinationPath $check -Force
+if (!(Test-Path (Join-Path $check 'Clearview.Windows.exe'))) { throw 'Missing Windows app.' }
+& $python (Join-Path $root 'desktop/smoke_package.py') (Join-Path $check 'engine/clearview-engine.exe')
+if ($LASTEXITCODE -ne 0) { throw 'Packaged engine smoke test failed.' }
+$digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+"$digest  $(Split-Path -Leaf $archive)" | Set-Content -Encoding ascii (Join-Path $build 'SHA256SUMS-windows.txt')
 Write-Host "Windows beta ready at $archive"

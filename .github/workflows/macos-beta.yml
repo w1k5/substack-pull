@@ -1,0 +1,29 @@
+name: Mac beta build
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: arm64
+      - run: python -m pip install pyinstaller tzdata tzlocal -r requirements-analytics-mcp.txt
+      - run: python -m unittest discover -s tests
+      - run: bash desktop/macos/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clearview-macOS-beta
+          path: |
+            desktop/macos/.build/beta/Clearview-*-macos-arm64.zip
+            desktop/macos/.build/beta/Clearview-*-macos-arm64.dmg
+            desktop/macos/.build/beta/SHA256SUMS-macos.txt
+          if-no-files-found: error
+          retention-days: 14

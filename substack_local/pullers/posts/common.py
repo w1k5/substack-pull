@@ -2,7 +2,10 @@
 
 APP_NAME = "substack-pull"
 READ_ONLY_POST_PATHS = frozenset({"/api/v1/publication/stats/growth/partial-timeseries"})
-KEYCHAIN_SERVICE = "com.local.substack-pull"
+import sys
+
+KEYCHAIN_SERVICE = ("io.github.w1k5.clearview" if sys.platform == "darwin"
+                    and getattr(sys, "frozen", False) else "com.local.substack-pull")
 DEFAULT_CONFIG = ".substack-pull.json"
 DEFAULT_OUTPUT = "substack"
 STATE_VERSION = 1
