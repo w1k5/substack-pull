@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..analytics import AnalyticsService, PullError
 from ..workflows.notes import NotePlanner
+from ..workflows import local_data
 
 STATIC = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
@@ -36,6 +37,7 @@ STATIC_FILES = {
     "/js/note-preview.js": ("js/note-preview.js", "text/javascript; charset=utf-8"),
     "/js/comparison-elements.js": ("js/comparison-elements.js", "text/javascript; charset=utf-8"),
     "/js/planner.js": ("js/planner.js", "text/javascript; charset=utf-8"),
+    "/js/views/local-data.js": ("js/views/local-data.js", "text/javascript; charset=utf-8"),
     "/js/notes-compare.js": ("js/notes-compare.js", "text/javascript; charset=utf-8"),
     "/js/notes-map.js": ("js/notes-map.js", "text/javascript; charset=utf-8"),
     "/js/timeline.js": ("js/timeline.js", "text/javascript; charset=utf-8"),
@@ -111,6 +113,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/local-data":
+                history = getattr(self.service, "history", None)
+                self.send_json({**local_data.local_data(), "analytics": history.index() if history else []})
+                return
+            if parsed.path == "/api/local-data/analytics":
+                params = parse_qs(parsed.query)
+                history = getattr(self.service, "history", None)
+                record = history.read(params.get("kind", [""])[0], params.get("key", [""])[0]) if history else None
+                if record is None:
+                    raise LookupError("Saved analytics record not found.")
+                self.send_json(record)
+                return
+            if parsed.path == "/api/local-data/markdown":
+                key = parse_qs(parsed.query).get("file", [""])[0]
+                self.send_json({"markdown": local_data.backup_markdown(key).decode("utf-8")})
+                return
             if parsed.path == "/api/planner":
                 params = parse_qs(parsed.query)
                 days = int(params.get("days", ["90"])[0])
@@ -170,7 +188,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         route = parsed.path
-        if route in {"/posts", "/discovery", "/notes", "/notes/compare", "/planner", "/leaderboard", "/insights"} or re.fullmatch(
+        if route in {"/posts", "/discovery", "/notes", "/notes/compare", "/planner", "/leaderboard", "/insights", "/local-data"} or re.fullmatch(
             r"/(?:posts|notes)/[0-9]+", route
         ):
             route = "/"
@@ -203,7 +221,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("Expected a JSON object.")
-            if self.path in {"/api/planner/preview-draft", "/api/planner/create-draft"}:
+            if self.path == "/api/local-data/open":
+                local_data.open_data_folder()
+                result = {"opened": True}
+            elif self.path == "/api/local-data/export":
+                result = {"path": local_data.save_backup_export()}
+            elif self.path == "/api/local-data/clear-cache":
+                result = {"removed": local_data.clear_temporary_cache()}
+                clear = getattr(self.service, "clear_memory_cache", None)
+                if clear:
+                    clear()
+            elif self.path in {"/api/planner/preview-draft", "/api/planner/create-draft"}:
                 text = payload.get("text")
                 if not isinstance(text, str):
                     raise ValueError("Note text is required.")

@@ -261,6 +261,19 @@ not causation.
 
 ### Cache and refresh
 
+Open **Local data** in the sidebar to find the storage folders, check when
+backups last synced, search and preview saved Markdown, and create a ZIP with
+an index and relative links. The ZIP is saved in the local `exports/` folder
+and contains writing backups, which can include private drafts.
+
+Saved measurements live separately in `substack/.analytics-history/` under
+the current publication and session. Clearview saves Note reach at 6, 24, and
+48 hours when those points are available, completed first-week post results,
+and subscriber sources by date range from normal reads. Browse records in
+**Local data** or use the MCP `saved_analytics` tool. The post comparison can
+reuse a saved week after the temporary cache expires. Clearing the temporary
+cache leaves the writing backups and saved measurements in place.
+
 The dashboard and MCP share normalized disk caches in the ignored
 `substack/.analytics-cache/` directory. The caches never store the session cookie.
 

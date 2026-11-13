@@ -16,6 +16,18 @@ def service() -> AnalyticsService:
 
 
 @mcp.tool(annotations=READ_ONLY)
+def saved_analytics(kind: str = "", key: str = "") -> dict:
+    """List saved analytics, or read one record by kind and key without fetching Substack."""
+    history = service().history
+    if not kind and not key:
+        return {"records": history.index()}
+    record = history.read(kind, key)
+    if record is None:
+        raise LookupError("No saved analytics for this item or date range.")
+    return record
+
+
+@mcp.tool(annotations=READ_ONLY)
 def publication_summary(days: int = 90, refresh: bool = False) -> dict:
     """Get publication totals for 7, 30, 90, 180, or 365 days. Refresh bypasses the five-minute shared cache."""
     data = service().dashboard(days, refresh=refresh)

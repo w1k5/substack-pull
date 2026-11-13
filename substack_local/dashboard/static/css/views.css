@@ -412,3 +412,13 @@ td .empty-state { margin: 0; font-weight: 400; }
   .sidebar nav { width: 100%; justify-content: space-between; }
   .side-link { padding: 8px 6px; }
 }
+
+.local-data-panel + .local-data-panel { margin-top: var(--space-4); }
+.local-data-panel > .segment-row { margin-top: 0; }
+.local-data-disclosure > summary { color: var(--green); cursor: pointer; font-weight: 650; }
+.local-data-disclosure[open] > summary,
+.local-storage-details[open] > summary { margin-bottom: var(--space-3); }
+#local-data-status:empty { display: none; }
+.local-data-panel .table-scroll { max-height: 540px; }
+.local-data-panel :is(td, th), #local-data-status { white-space: normal; overflow-wrap: anywhere; }
+#backup-preview-body { white-space: pre-wrap; overflow-wrap: anywhere; }

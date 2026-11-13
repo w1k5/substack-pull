@@ -15,6 +15,7 @@ from .cache import (
 )
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
 from .derived import dashboard_metrics, number, post_detail_metrics, post_index_metrics
+from .history import AnalyticsHistory
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
 from .note_shares import post_note_shares, public_note_preview, public_note_text
@@ -61,7 +62,8 @@ class AnalyticsService:
                  post_disk_cache: PostDiskCache | None = None,
                  published_posts_cache: PublishedPostsDiskCache | None = None,
                  post_week_cache: PostWeekDiskCache | None = None,
-                 publication_disk_cache: PublicationDiskCache | None = None):
+                 publication_disk_cache: PublicationDiskCache | None = None,
+                 history: AnalyticsHistory | None = None):
         self.api = api
         self.note_api = note_api
         self.note_disk_cache = note_disk_cache
@@ -69,6 +71,7 @@ class AnalyticsService:
         self.published_posts_cache = published_posts_cache
         self.post_week_cache = post_week_cache
         self.publication_disk_cache = publication_disk_cache
+        self.history = history
         self.cache: dict[int, tuple[float, dict]] = {}
         self.post_cache: dict[str, tuple[float, dict]] = {}
         self.note_cache: dict[str, tuple[float, dict]] = {}
@@ -79,6 +82,15 @@ class AnalyticsService:
         self.posts_cache: tuple[float, list[dict]] | None = None
         self.latest_cache: tuple[float, dict] | None = None
         self.lock = threading.RLock()
+
+    def clear_memory_cache(self):
+        with self.lock:
+            for cache in (self.cache, self.post_cache, self.note_cache,
+                          self.note_cohort_cache, self.portfolio_cache):
+                cache.clear()
+            self.note_cohort_generation += 1
+            self.portfolio_generation += 1
+            self.posts_cache = self.latest_cache = None
 
     @classmethod
     def from_saved_session(cls) -> "AnalyticsService":
@@ -95,7 +107,8 @@ class AnalyticsService:
                    PostDiskCache(cache_root / "posts"),
                    PublishedPostsDiskCache(cache_root / "post-index"),
                    PostWeekDiskCache(cache_root / "post-week"),
-                   PublicationDiskCache(cache_root / "publication"))
+                   PublicationDiskCache(cache_root / "publication"),
+                   AnalyticsHistory(ROOT / "substack" / ".analytics-history" / host / session_scope))
 
     def dashboard(self, days: int = 90, *, refresh: bool = False) -> dict:
         if days not in ALLOWED_DAYS:
@@ -110,12 +123,16 @@ class AnalyticsService:
                     value = self.publication_disk_cache.read(days)
                     if value is not None:
                         self.cache.pop(days, None)
+                        if self.history:
+                            self.history.publication(value, from_cache=True)
                         return dashboard_metrics(value)
                 saved = self.cache.get(days)
                 if saved and saved[1].get("range", {}).get("end") == _today():
                     return saved[1]
                 self.cache.pop(days, None)
             value = dashboard_metrics(fetch_dashboard(self.api, days, post_rows=self.posts(refresh=refresh)))
+            if self.history:
+                self.history.publication(value)
             cached_on_disk = False
             if self.publication_disk_cache:
                 try:
@@ -156,6 +173,15 @@ class AnalyticsService:
                     self.post_cache.pop(post_id, None)
                 else:
                     _remember(self.post_cache, post_id, value, 300)
+            if self.history:
+                comps = value.get("comps") or {}
+                week = first_week_summary(post_id, {
+                    "type": comps.get("post_type"), "audience": comps.get("audience"),
+                    "post_date": value.get("date"),
+                    "stats": {"firstWeekDailyStats": value.get("first_week")},
+                })
+                if week and (refresh or not self.history.read("posts", post_id)):
+                    self.history.save("posts", post_id, week)
             direct_note_shares = post_note_shares(ROOT / "substack" / "published-notes", post_id)
             for share in direct_note_shares["notes"]:
                 try:
@@ -302,8 +328,19 @@ class AnalyticsService:
             if refresh:
                 self.portfolio_cache.clear()
                 self.portfolio_generation += 1
-            value = self.post_week_cache.read(post_id) if self.post_week_cache and not refresh else None
+            value = None
+            if self.history and not refresh:
+                record = self.history.read("posts", post_id)
+                value = record.get("data") if record else None
+                if value is not None and (value.get("id") != post_id or not isinstance(value.get("daily"), list)
+                                          or number(value.get("views")) is None
+                                          or number(value.get("signups")) is None):
+                    value = None
+            if value is None and self.post_week_cache and not refresh:
+                value = self.post_week_cache.read(post_id)
             if value is not None:
+                if self.history:
+                    self.history.save("posts", post_id, value)
                 return value
             detail = self.post_disk_cache.read(post_id) if self.post_disk_cache and not refresh else None
             if detail is not None:
@@ -315,6 +352,8 @@ class AnalyticsService:
                 })
             if value is None:
                 value = fetch_post_week(self.api, post_id)
+            if value is not None and self.history:
+                self.history.save("posts", post_id, value)
             if value is not None and self.post_week_cache:
                 try:
                     self.post_week_cache.write(post_id, value)
@@ -391,6 +430,8 @@ class AnalyticsService:
                 disk_value = self.note_disk_cache.read(note_id)
                 if disk_value is not None:
                     self.note_cache.pop(note_id, None)
+                    if self.history:
+                        self.history.note(disk_value)
                     disk_value = {**disk_value, "comparison": note_comparison_metrics(disk_value)}
                     if "full_text" not in disk_value:
                         disk_value = {**disk_value, "full_text": public_note_text(
@@ -405,6 +446,8 @@ class AnalyticsService:
             if saved and not refresh:
                 return saved[1]
             value = note_stats(self.note_api, note_id)
+            if self.history:
+                self.history.note(value)
             if not value.get("full_text"):
                 value = {**value, "full_text": public_note_text(
                     ROOT / "substack" / "published-notes", note_id

@@ -4,7 +4,7 @@
 from .analytics_tools import (
     compare_notes, list_posts, note_performance, post_performance,
     post_portfolio, publication_sources, publication_summary,
-    publication_timeline, service,
+    publication_timeline, saved_analytics, service,
 )
 from .backup_tools import (
     backup_status, find_note_copies, find_post_copies,

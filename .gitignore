@@ -2,6 +2,7 @@
 /substack/
 .substack-notes-pull.json
 /substack-notes/
+/exports/
 .DS_Store
 __pycache__/
 *.py[cod]

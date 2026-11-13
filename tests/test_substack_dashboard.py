@@ -118,7 +118,7 @@ class DashboardRoutesTests(unittest.TestCase):
 
     def test_each_view_can_be_opened_directly(self):
         for route in ("/posts", "/discovery", "/notes", "/planner", "/leaderboard",
-                      "/insights", "/notes/compare", "/posts/123", "/notes/456"):
+                      "/insights", "/notes/compare", "/posts/123", "/notes/456", "/local-data"):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn("text/html", response.headers["Content-Type"])

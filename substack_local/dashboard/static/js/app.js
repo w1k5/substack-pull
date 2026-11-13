@@ -5,6 +5,7 @@ import { renderSubscriberSourceTrend } from './source-trend.js';
 import { renderNotesPage, setupNoteDetail, clearNotePageStats } from './notes-page.js';
 import { renderNotesComparison, filterNotesComparison, clearNotesComparison, setupNotesComparison } from './notes-compare.js';
 import { setNoteMapQuery } from './notes-map.js';
+import { renderLocalData, setupLocalData } from './views/local-data.js';
 import { renderPlannerRoute, setupPlanner } from './planner.js';
 import { setupPostPortfolio, updatePostPortfolioProgress } from './post/portfolio.js';
 import { renderBriefing, renderGrowth } from './views/publication.js';
@@ -48,20 +49,22 @@ function currentRoute() {
   if (/^\/posts\/\d+$/.test(path)) return { view: 'post-detail', id: path.split('/')[2] };
   if (path === '/notes/compare') return { view: 'notes' };
   if (/^\/notes\/\d+$/.test(path)) return { view: 'notes', id: path.split('/')[2] };
-  if (['/posts', '/discovery', '/notes', '/planner', '/leaderboard'].includes(path))
+  if (['/posts', '/discovery', '/notes', '/planner', '/leaderboard', '/local-data'].includes(path))
     return { view: path.slice(1) };
   return { view: 'briefing' };
 }
+const localView = (view) => view === 'planner' || view === 'local-data';
+
 function renderRoute() {
   const route = currentRoute();
   renderedPath = location.pathname;
   if (route.view !== 'notes' && $('note-detail').open) $('note-detail').close();
-  $('period-control').hidden = route.view === 'post-detail' || route.view === 'planner';
+  $('period-control').hidden = route.view === 'post-detail' || localView(route.view);
   $('lifetime-scope').hidden = route.view !== 'post-detail';
-  $('refresh').hidden = route.view === 'post-detail' || route.view === 'planner';
-  $('updated').hidden = route.view === 'post-detail' || route.view === 'planner';
-  document.querySelector('.top-search').hidden = route.view === 'planner';
-  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
+  $('refresh').hidden = route.view === 'post-detail' || localView(route.view);
+  $('updated').hidden = route.view === 'post-detail' || localView(route.view);
+  document.querySelector('.top-search').hidden = localView(route.view);
+  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'local-data', 'post-detail'])
     $(`view-${view}`).hidden = view !== route.view;
   const primary = route.view === 'post-detail' ? 'posts' : route.view;
   document.querySelectorAll('.side-link').forEach((link) => {
@@ -73,10 +76,11 @@ function renderRoute() {
   const titles = {
     briefing: 'Briefing', leaderboard: 'Leaderboard',
     posts: 'Posts', discovery: 'Discovery',
-    notes: 'Notes', planner: 'Note planner', 'post-detail': 'Post story',
+    notes: 'Notes', planner: 'Note planner', 'local-data': 'Local data', 'post-detail': 'Post story',
   };
   document.title = `${titles[route.view]} · Clearview`;
   if (route.view === 'planner') renderPlannerRoute();
+  if (route.view === 'local-data') renderLocalData();
   if (!data) return;
   if (route.view === 'briefing') {
     if (!latestData && !latestLoading && !latestError) loadLatest();
@@ -126,7 +130,7 @@ function navigate(path) {
     setNoteMapQuery('');
   }
   renderRoute();
-  if (currentRoute().view !== 'planner' && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
+  if (!localView(currentRoute().view) && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
   if (!keepNotePosition) window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function renderSearchResults() {
@@ -373,7 +377,8 @@ setupNotesComparison();
 setupPostPortfolio();
 setupNoteDetail(navigate);
 setupPlanner();
-if (currentRoute().view === 'planner') document.body.classList.remove('boot-loading');
+setupLocalData();
+if (localView(currentRoute().view)) document.body.classList.remove('boot-loading');
 renderRoute();
 $('range').addEventListener('change', () => load());
 $('refresh').addEventListener('click', () => load(true));
@@ -405,7 +410,7 @@ document.addEventListener('click', (event) => {
 window.addEventListener('popstate', () => {
   const keepNotePosition = isNoteLibraryPath(renderedPath) && isNoteLibraryPath(location.pathname);
   renderRoute();
-  if (currentRoute().view !== 'planner' && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
+  if (!localView(currentRoute().view) && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
   if (!keepNotePosition) window.scrollTo(0, 0);
 });
 let chartResizeFrame;
@@ -423,6 +428,6 @@ $('detail-refresh').addEventListener('click', () => {
   const row = (data?.posts || []).find((post) => String(post.id) === id);
   if (row) showPost(row, data.publication, true);
 });
-if (currentRoute().view !== 'planner') {
+if (!localView(currentRoute().view)) {
   load();
 }
