@@ -331,11 +331,8 @@ class SyncTests(unittest.TestCase):
                 summary["categories"]["drafts"]["fetched_items"][0]["title"],
                 "Draft one",
             )
-            self.assertTrue(
-                summary["categories"]["drafts"]["fetched_items"][0][
-                    "readable_file"
-                ].endswith("drafts/10.md")
-            )
+            readable = summary["categories"]["drafts"]["fetched_items"][0]["readable_file"]
+            self.assertEqual(Path(readable).parts[-2:], ("drafts", "10.md"))
 
             published_list_requests = [
                 request
@@ -458,7 +455,7 @@ class SyncTests(unittest.TestCase):
 
             self.assertEqual(len(posts), 1)
             self.assertEqual(posts[0]["title"], "Draft one")
-            self.assertTrue(posts[0]["readable_file"].endswith("drafts/10.md"))
+            self.assertEqual(Path(posts[0]["readable_file"]).parts[-2:], ("drafts", "10.md"))
 
 
 class ReadableBodyTests(unittest.TestCase):
