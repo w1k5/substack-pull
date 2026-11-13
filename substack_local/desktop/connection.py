@@ -10,6 +10,8 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import ssl
+from urllib.error import URLError
 
 from ..pullers.posts import ApiClient, KeychainStore, PullError
 from ..pullers.posts.api import host_for, normalize_publication
@@ -30,7 +32,13 @@ def verify(publication: str, token: str) -> dict[str, str]:
     publication = publication_url(publication)
     if not token or "\n" in token or "\r" in token:
         raise PullError("Substack did not provide a usable sign-in session.")
-    ApiClient(publication, token).get_json("/api/v1/drafts?limit=1")
+    try:
+        ApiClient(publication, token).get_json("/api/v1/drafts?limit=1")
+    except PullError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, URLError) and isinstance(cause.reason, ssl.SSLCertVerificationError):
+            raise PullError("Clearview could not verify Substack’s HTTPS certificate.") from exc
+        raise PullError("Clearview could not verify editor access. Check the publication address and Substack account, then try again.") from exc
     return {"publication": publication, "account": host_for(publication)}
 
 

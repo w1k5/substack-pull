@@ -209,10 +209,16 @@ private final class AppModel: ObservableObject {
                     self.startDashboard()
                 }
             } catch {
+                let detail: String
+                if case ShellError.failed(let reason) = error {
+                    detail = reason
+                } else {
+                    detail = "Clearview could not start its connection helper."
+                }
                 await MainActor.run {
                     guard self.signInGeneration == generation else { return }
                     self.busy = false
-                    self.message = "Could not connect. Check the publication address, then finish signing in."
+                    self.message = detail
                     self.tryNextSession()
                 }
             }

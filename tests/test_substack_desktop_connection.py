@@ -3,10 +3,12 @@
 import json
 from io import StringIO
 import os
+import ssl
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+from urllib.error import URLError
 
 from substack_local.desktop.connection import configure, current_publication, publication_url, verify
 from substack_local.pullers.posts import PullError
@@ -36,6 +38,14 @@ class DesktopConnectionTests(unittest.TestCase):
         })
         client.assert_called_once_with("https://name.substack.com", "sample-session")
         client.return_value.get_json.assert_called_once_with("/api/v1/drafts?limit=1")
+
+    def test_reports_certificate_failure_without_returning_upstream_details(self):
+        with patch("substack_local.desktop.connection.ApiClient") as client:
+            error = PullError("Internal upstream details")
+            error.__cause__ = URLError(ssl.SSLCertVerificationError("certificate failure"))
+            client.return_value.get_json.side_effect = error
+            with self.assertRaisesRegex(PullError, "could not verify Substack’s HTTPS certificate"):
+                verify("name.substack.com", "sample-session")
 
     def test_configuration_preserves_existing_backup_directory_and_never_saves_token(self):
         with TemporaryDirectory() as folder:
