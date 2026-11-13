@@ -29,4 +29,5 @@ jobs:
             desktop/windows/.build/Clearview-*-windows-x64.zip
             desktop/windows/.build/SHA256SUMS-windows.txt
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14

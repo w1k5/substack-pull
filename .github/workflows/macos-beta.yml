@@ -26,4 +26,5 @@ jobs:
             desktop/macos/.build/beta/Clearview-*-macos-arm64.dmg
             desktop/macos/.build/beta/SHA256SUMS-macos.txt
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
