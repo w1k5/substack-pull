@@ -16,7 +16,7 @@ xcrun swiftc -target arm64-apple-macos13.0 -parse-as-library -O \
 python -m PyInstaller --noconfirm --clean --onedir --name clearview-engine \
   --distpath "$build/engine-dist" --workpath "$build/py-work" --specpath "$build" \
   --paths "$PWD" --target-architecture arm64 --collect-data tzdata \
-  --hidden-import tzlocal --hidden-import substack_local.mcp.server --collect-submodules mcp \
+  --hidden-import tzlocal --hidden-import substack_local.mcp.server --copy-metadata mcp \
   --add-data 'substack_local/dashboard/static:substack_local/dashboard/static' \
   substack_local/desktop/entry.py
 ditto "$build/engine-dist/clearview-engine" "$app/Contents/Resources/engine"

@@ -17,7 +17,7 @@ try {
     & $python -m PyInstaller --noconfirm --clean --onedir --name clearview-engine `
         --distpath (Join-Path $build 'engine-dist') --workpath (Join-Path $build 'py-work') `
         --specpath $build --paths $root --collect-data tzdata --hidden-import tzlocal `
-        --hidden-import substack_local.mcp.server --collect-submodules mcp `
+        --hidden-import substack_local.mcp.server --copy-metadata mcp `
         --add-data 'substack_local/dashboard/static;substack_local/dashboard/static' `
         'substack_local/desktop/entry.py'
     if ($LASTEXITCODE -ne 0) { throw 'Clearview engine build failed.' }
