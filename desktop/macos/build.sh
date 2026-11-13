@@ -22,8 +22,8 @@ python -m PyInstaller --noconfirm --clean --onedir --name clearview-engine \
 ditto "$build/engine-dist/clearview-engine" "$app/Contents/Resources/engine"
 codesign --force --deep --sign - "$app"
 codesign --verify --deep --strict "$app"
-lipo -verify_arch arm64 "$app/Contents/MacOS/Clearview"
-lipo -verify_arch arm64 "$app/Contents/Resources/engine/clearview-engine"
+lipo "$app/Contents/MacOS/Clearview" -verify_arch arm64
+lipo "$app/Contents/Resources/engine/clearview-engine" -verify_arch arm64
 
 stem="$build/Clearview-$version-macos-arm64"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$stem.zip"
