@@ -10,7 +10,8 @@ def data_root() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Clearview"
+        local = os.environ.get("LOCALAPPDATA")
+        return (Path(local) if local else Path.home() / "AppData" / "Local") / "Clearview"
     if sys.platform == "darwin" and getattr(sys, "frozen", False):
         return Path.home() / "Library" / "Application Support" / "Clearview"
     return Path(__file__).resolve().parents[1]

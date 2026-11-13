@@ -58,15 +58,14 @@ def paced_request(base_url: str, path: str, *, enabled: bool, delay: float = 0.2
     lock_path = root / ".request-pacing"
     started_wait = time.monotonic()
     with open(lock_path, "a+b") as handle:
-        if lock_path.stat().st_size == 0:
-            handle.write(b"0\n")
-            handle.flush()
         _lock(handle)
         try:
             handle.seek(0)
             try:
-                next_allowed = float(handle.read().strip() or b"0")
-            except ValueError:
+                deadline_file = root / ".request-pacing-deadline"
+                raw = deadline_file.read_text(encoding="ascii") if sys.platform == "win32" else handle.read()
+                next_allowed = float(raw.strip() or 0)
+            except (FileNotFoundError, ValueError):
                 next_allowed = 0.0
             while (remaining := next_allowed - time.time()) > 0:
                 if remaining > 120:
@@ -98,10 +97,19 @@ def paced_request(base_url: str, path: str, *, enabled: bool, delay: float = 0.2
                 status = "error"
                 raise
             finally:
+                # Byte zero is reserved for the Windows lock. Never truncate
+                # the file while another process is waiting on that byte.
+                deadline = f"{time.time() + max(1.0, delay, cooldown):.6f}\n"
                 handle.seek(0)
-                handle.truncate()
-                handle.write(f"{time.time() + max(1.0, delay, cooldown):.6f}\n".encode())
-                handle.flush()
+                if sys.platform == "win32":
+                    # Release the byte lock only after persisting the deadline.
+                    # Use a separate file for the deadline so readers and writes
+                    # never touch the locked byte.
+                    deadline_file.write_text(deadline, encoding="ascii")
+                else:
+                    handle.truncate()
+                    handle.write(deadline.encode())
+                    handle.flush()
                 if os.environ.get("CLEARVIEW_REQUEST_TIMING") == "1":
                     print(f"clearview request {_endpoint(path)} status={status} "
                           f"wait_ms={waited * 1000:.0f} network_ms={(time.monotonic() - started) * 1000:.0f}",

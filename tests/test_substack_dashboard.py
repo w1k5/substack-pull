@@ -79,11 +79,11 @@ class DashboardRoutesTests(unittest.TestCase):
                 self.assertTrue(response.read())
 
     def test_every_linked_stylesheet_and_local_module_is_declared(self):
-        index = (STATIC / "index.html").read_text()
+        index = (STATIC / "index.html").read_text(encoding="utf-8")
         for route in re.findall(r'href="(/css/[^"]+)"|src="(/js/[^"]+)"', index):
             self.assertIn(next(filter(None, route)), STATIC_FILES)
         for module in (STATIC / "js").rglob("*.js"):
-            for imported in re.findall(r"from ['\"](\.[^'\"]+)['\"]", module.read_text()):
+            for imported in re.findall(r"from ['\"](\.[^'\"]+)['\"]", module.read_text(encoding="utf-8")):
                 target = (module.parent / imported).resolve()
                 route = "/" + target.relative_to(STATIC).as_posix()
                 self.assertIn(route, STATIC_FILES, f"{module.name} imports {imported}")
