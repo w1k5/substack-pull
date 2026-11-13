@@ -3,7 +3,8 @@ $root = (Resolve-Path "$PSScriptRoot/../..").Path
 $build = Join-Path $PSScriptRoot '.build'
 $venv = Join-Path $build 'venv'
 New-Item -ItemType Directory -Force $build | Out-Null
-py -3 -m venv $venv
+python -m venv $venv
+if ($LASTEXITCODE -ne 0) { throw 'Could not create the build environment.' }
 $python = Join-Path $venv 'Scripts/python.exe'
 & $python (Join-Path $root 'desktop/release_metadata.py')
 if ($LASTEXITCODE -ne 0) { throw 'Invalid Clearview release metadata.' }
@@ -18,7 +19,7 @@ try {
         --distpath (Join-Path $build 'engine-dist') --workpath (Join-Path $build 'py-work') `
         --specpath $build --paths $root --collect-data tzdata --hidden-import tzlocal `
         --hidden-import substack_local.mcp.server --copy-metadata mcp `
-        --add-data 'substack_local/dashboard/static;substack_local/dashboard/static' `
+        --add-data "$root/substack_local/dashboard/static;substack_local/dashboard/static" `
         'substack_local/desktop/entry.py'
     if ($LASTEXITCODE -ne 0) { throw 'Clearview engine build failed.' }
 } finally { Pop-Location }

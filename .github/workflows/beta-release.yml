@@ -1,0 +1,61 @@
+name: Stage Clearview beta release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mac_run:
+        description: Successful Mac beta run ID
+        required: true
+        type: string
+      windows_run:
+        description: Successful Windows beta run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: clearview-beta-release
+
+jobs:
+  draft:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package runs and stage prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAC_RUN: ${{ inputs.mac_run }}
+          WINDOWS_RUN: ${{ inputs.windows_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MAC_RUN" =~ ^[0-9]+$ && "$WINDOWS_RUN" =~ ^[0-9]+$ ]]
+          verify_run() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" | jq -er --arg workflow "$2" --arg repo "$GITHUB_REPOSITORY" '
+              select(.conclusion == "success" and .event == "workflow_dispatch" and .head_branch == "main"
+                     and .head_repository.full_name == $repo and .path == $workflow) | .head_sha'
+          }
+          mac_sha=$(verify_run "$MAC_RUN" .github/workflows/macos-beta.yml)
+          windows_sha=$(verify_run "$WINDOWS_RUN" .github/workflows/windows-beta.yml)
+          [[ "$mac_sha" == "$windows_sha" && "$mac_sha" =~ ^[0-9a-f]{40}$ ]]
+          version=$(gh api "repos/$GITHUB_REPOSITORY/contents/desktop/release.json?ref=$mac_sha" --jq .content | base64 -d | jq -er .version)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*$ ]]
+          gh run download "$MAC_RUN" -n Clearview-macOS-beta -D assets
+          gh run download "$WINDOWS_RUN" -n Clearview-Windows-beta -D assets
+          cd assets
+          mac="Clearview-$version-macos-arm64"
+          windows="Clearview-$version-windows-x64.zip"
+          sha256sum --check SHA256SUMS-macos.txt
+          sha256sum --check SHA256SUMS-windows.txt
+          sha256sum "$mac.zip" "$mac.dmg" "$windows" > SHA256SUMS.txt
+          gh release create "v$version" "$mac.zip" "$mac.dmg" "$windows" SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$mac_sha" --draft --prerelease \
+            --title "Clearview $version" \
+            --notes "Limited beta for Apple Silicon Macs and Windows 11 x64. The Mac build is ad hoc signed and the Windows build is unsigned. Publish after confirming first launch, Substack sign-in, and dashboard loading on both platforms."
