@@ -31,7 +31,20 @@ mkdir -p "$build/dmg"
 ditto "$app" "$build/dmg/Clearview.app"
 ln -sfn /Applications "$build/dmg/Applications"
 hdiutil create -ov -volname Clearview -srcfolder "$build/dmg" -format UDZO "$stem.dmg"
-hdiutil verify "$stem.dmg"
+mount="$build/mounted"
+mkdir -p "$mount"
+for attempt in 1 2 3 4 5; do
+  if hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$stem.dmg"; then
+    break
+  fi
+  if [[ "$attempt" = 5 ]]; then exit 1; fi
+  sleep 3
+done
+trap 'hdiutil detach "$mount"' EXIT
+codesign --verify --deep --strict "$mount/Clearview.app"
+test "$(readlink "$mount/Applications")" = /Applications
+hdiutil detach "$mount"
+trap - EXIT
 mkdir -p "$build/check"
 ditto -x -k "$stem.zip" "$build/check"
 codesign --verify --deep --strict "$build/check/Clearview.app"
