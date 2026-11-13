@@ -1,6 +1,10 @@
 name: Stage Clearview beta release
 
 on:
+  workflow_run:
+    workflows: [Mac beta build, Windows beta build]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       mac_run:
@@ -21,7 +25,7 @@ concurrency:
 
 jobs:
   draft:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -36,6 +40,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_run ]]; then
+            source_sha=$(jq -er .workflow_run.head_sha "$GITHUB_EVENT_PATH")
+            find_run() {
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$1/runs?branch=main&event=workflow_dispatch&status=success&head_sha=$source_sha" \
+                --jq '.workflow_runs[0].id // empty'
+            }
+            MAC_RUN=$(find_run macos-beta.yml)
+            WINDOWS_RUN=$(find_run windows-beta.yml)
+            if [[ -z "$MAC_RUN" || -z "$WINDOWS_RUN" ]]; then
+              echo 'Waiting for a successful build on the other platform.'
+              exit 0
+            fi
+          fi
           [[ "$MAC_RUN" =~ ^[0-9]+$ && "$WINDOWS_RUN" =~ ^[0-9]+$ ]]
           verify_run() {
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" | jq -er --arg workflow "$2" --arg repo "$GITHUB_REPOSITORY" '
@@ -47,6 +64,10 @@ jobs:
           [[ "$mac_sha" == "$windows_sha" && "$mac_sha" =~ ^[0-9a-f]{40}$ ]]
           version=$(gh api "repos/$GITHUB_REPOSITORY/contents/desktop/release.json?ref=$mac_sha" --jq .content | base64 -d | jq -er .version)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*$ ]]
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'The beta release already exists.'
+            exit 0
+          fi
           gh run download "$MAC_RUN" -n Clearview-macOS-beta -D assets
           gh run download "$WINDOWS_RUN" -n Clearview-Windows-beta -D assets
           cd assets
