@@ -25,6 +25,9 @@ def main():
     engine = str(Path(sys.argv[1]).resolve(strict=True))
     internal = Path(engine).parent / "_internal"
     assert (internal / "substack_local/dashboard/static/index.html").is_file()
+    runway = internal / "substack_local/pullers/private_notes/note-runway-template.html"
+    assert runway.is_file(), f"Missing Note runway template: {runway}"
+    assert "__RUNWAY_DATA__" in runway.read_text(encoding="utf-8"), "Invalid Note runway template"
     with TemporaryDirectory() as directory:
         env = {**os.environ, "CLEARVIEW_DATA_DIR": directory}
         result = subprocess.check_output([engine, "connection", "current"], env=env, timeout=40)

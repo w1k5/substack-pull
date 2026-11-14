@@ -20,6 +20,7 @@ try {
         --specpath $build --paths $root --collect-data tzdata --hidden-import tzlocal `
         --hidden-import substack_local.mcp.server --copy-metadata mcp `
         --add-data "$root/substack_local/dashboard/static;substack_local/dashboard/static" `
+        --add-data "$root/substack_local/pullers/private_notes/note-runway-template.html;substack_local/pullers/private_notes" `
         'substack_local/desktop/entry.py'
     if ($LASTEXITCODE -ne 0) { throw 'Clearview engine build failed.' }
 } finally { Pop-Location }

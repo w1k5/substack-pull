@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import Future
 from datetime import date, datetime, timedelta
-from threading import RLock
+from threading import Lock, RLock
 
 from .modules import NOTE_CONFIG, private_notes
 
@@ -39,6 +40,8 @@ def suggested_openings(runway: dict) -> list[str]:
 class NotePlanner:
     def __init__(self):
         self.lock = RLock()
+        self._refresh_lock = Lock()
+        self._refreshes: dict[tuple[int, int], Future] = {}
 
     def _context(self):
         notes = private_notes()
@@ -80,14 +83,31 @@ class NotePlanner:
             }
 
     def refresh(self, *, days: int = 90, spacing: int = 3) -> dict:
-        with self.lock:
-            notes, config, directory, zone_name = self._context()
-            token = notes.reusable_session(NOTE_CONFIG, config)
-            api = notes.PrivateApiClient(token, request_delay=0.25)
-            notes.PrivateNotesSync(api, directory, zone_name=zone_name).sync(
-                days=days, minimum_spacing=spacing,
-            )
-            return self.snapshot(days=days, spacing=spacing)
+        key = (days, spacing)
+        with self._refresh_lock:
+            pending = self._refreshes.get(key)
+            leader = pending is None
+            if leader:
+                pending = self._refreshes[key] = Future()
+        if not leader:
+            return pending.result()
+        try:
+            with self.lock:
+                notes, config, directory, zone_name = self._context()
+                token = notes.reusable_session(NOTE_CONFIG, config)
+                api = notes.PrivateApiClient(token, request_delay=0.25)
+                notes.PrivateNotesSync(api, directory, zone_name=zone_name).sync(
+                    days=days, minimum_spacing=spacing,
+                )
+                snapshot = self.snapshot(days=days, spacing=spacing)
+            pending.set_result(snapshot)
+            return snapshot
+        except BaseException as error:
+            pending.set_exception(error)
+            raise
+        finally:
+            with self._refresh_lock:
+                self._refreshes.pop(key)
 
     def preview_draft(self, text: str) -> dict:
         return private_notes().create_note_draft(text, config_path=NOTE_CONFIG)

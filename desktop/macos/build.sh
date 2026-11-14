@@ -18,6 +18,7 @@ python -m PyInstaller --noconfirm --clean --onedir --name clearview-engine \
   --paths "$PWD" --target-architecture arm64 --collect-data tzdata \
   --hidden-import tzlocal --hidden-import substack_local.mcp.server --copy-metadata mcp \
   --add-data "$PWD/substack_local/dashboard/static:substack_local/dashboard/static" \
+  --add-data "$PWD/substack_local/pullers/private_notes/note-runway-template.html:substack_local/pullers/private_notes" \
   substack_local/desktop/entry.py
 ditto "$build/engine-dist/clearview-engine" "$app/Contents/Resources/engine"
 codesign --force --deep --sign - "$app"

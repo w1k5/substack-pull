@@ -39,29 +39,38 @@ async function loadPlanner(refresh = false) {
   if (loading) return;
   loading = true;
   notice();
+  $('planner-retry').hidden = true;
   const hadSnapshot = !!snapshot;
   $('planner-loading').classList.toggle('loading-inline', hadSnapshot);
   $('planner-loading').querySelector('span:last-child').textContent = refresh
-    ? 'Syncing Notes…' : hadSnapshot ? 'Updating calendar…' : 'Loading Note plan…';
+    ? 'Syncing Notes…' : hadSnapshot ? 'Updating calendar…' : 'Loading your Note planner…';
   $('planner-loading').hidden = false;
-  if (!hadSnapshot) $('planner-draft-list').replaceChildren();
   $('planner-refresh').disabled = true;
   $('planner-spacing').disabled = true;
   try {
     const spacing = $('planner-spacing').value;
-    snapshot = await api(`/api/planner?spacing=${spacing}${refresh ? '&refresh=1' : ''}`);
-    if (!selectedDay || selectedDay < snapshot.runway.start || selectedDay > snapshot.runway.end)
-      selectedDay = snapshot.runway.start;
-    renderPlanner();
+    const next = await api(`/api/planner?spacing=${spacing}${refresh ? '&refresh=1' : ''}`);
+    const previous = snapshot;
+    snapshot = next;
+    try { renderPlannerSnapshot(); }
+    catch (error) { snapshot = previous; throw error; }
+    $('planner-content').hidden = false;
   } catch (error) {
     notice(`Could not load the Note plan: ${error.message}`);
-    if (!snapshot) $('planner-draft-list').replaceChildren(emptyMessage('Notes are unavailable. Sync Notes to try again.'));
+    $('planner-content').hidden = !snapshot;
+    $('planner-retry').hidden = !!snapshot;
   } finally {
     loading = false;
     $('planner-loading').hidden = true;
     $('planner-refresh').disabled = false;
     $('planner-spacing').disabled = false;
   }
+}
+
+function renderPlannerSnapshot() {
+  if (!selectedDay || selectedDay < snapshot.runway.start || selectedDay > snapshot.runway.end)
+    selectedDay = snapshot.runway.start;
+  renderPlanner();
 }
 
 function renderCalendar() {
@@ -232,6 +241,7 @@ async function applyAction() {
 }
 
 export function setupPlanner() {
+  $('planner-retry').addEventListener('click', () => loadPlanner());
   $('planner-refresh').addEventListener('click', () => loadPlanner(true));
   $('planner-spacing').addEventListener('change', () => loadPlanner());
   $('planner-text').addEventListener('input', () => {

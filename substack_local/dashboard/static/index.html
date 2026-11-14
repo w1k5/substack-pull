@@ -454,6 +454,9 @@
                 <p>See your scheduled Notes, write drafts, and choose a time. Nothing is published from this page.</p></div>
             </div>
             <div id="planner-notice" class="notice" role="alert" hidden></div>
+            <div id="planner-loading" class="loading-state" role="status"><span class="spinner" aria-hidden="true"></span><span>Loading your Note planner…</span></div>
+            <button id="planner-retry" class="refresh" type="button" hidden>Try again</button>
+            <div id="planner-content" hidden>
             <section class="panel planner-panel" aria-labelledby="planner-calendar-title">
               <div class="panel-heading">
                 <div><div class="eyebrow">SCHEDULE</div><h2 id="planner-calendar-title">Note calendar</h2><p id="planner-subhead" class="detail-context">Loading your local Note plan…</p></div>
@@ -469,7 +472,6 @@
                   <label>Spacing <select id="planner-spacing"><option value="2">2 days</option><option value="3" selected>3 days</option><option value="4">4 days</option></select></label>
                 </div>
               </div>
-              <div id="planner-loading" class="loading-state" role="status" hidden><span class="spinner" aria-hidden="true"></span><span>Loading Notes…</span></div>
               <div id="planner-calendar" class="planner-calendar" aria-label="Scheduled Notes by week"></div>
               <div id="planner-day-detail" class="planner-day-detail" aria-live="polite"></div>
               <p class="footnote">Outlined dates are openings with room around them at your selected spacing. Select a date to inspect its Notes or use it for a new schedule.</p>
@@ -494,6 +496,7 @@
                   <div class="planner-form-footer"><span id="planner-timezone">—</span><button type="button" class="refresh planner-primary" id="planner-preview-schedule" disabled>Preview schedule</button></div>
                 </section>
               </div>
+            </div>
             </div>
             <dialog id="planner-confirm" class="panel planner-confirm" aria-labelledby="planner-confirm-title">
               <div class="eyebrow">REVIEW CHANGE</div>
