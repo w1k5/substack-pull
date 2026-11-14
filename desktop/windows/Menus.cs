@@ -1,14 +1,68 @@
 using System.Diagnostics;
+using System.Reflection;
+using Microsoft.Win32;
 
 namespace Clearview.Windows;
 
 internal sealed partial class ClearviewForm
 {
+    private const string UpdateSettingsKey = @"Software\Clearview";
+    private const string AutomaticUpdatesKey = "AutomaticUpdateChecks";
+    private bool checkingUpdates;
+    private bool AutomaticUpdateChecks =>
+        Registry.GetValue(@"HKEY_CURRENT_USER\" + UpdateSettingsKey, AutomaticUpdatesKey, 0) is 1;
+
+    private async Task CheckForUpdatesAsync(bool automatic)
+    {
+        if (checkingUpdates || engine is null) return;
+        var version = typeof(ClearviewForm).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (version is null) return;
+        checkingUpdates = true;
+        try {
+            using var response = await engine.ConnectionAsync(
+                automatic ? "check-update-automatic" : "check-update", installedVersion: version);
+            if (IsDisposed || (automatic && !AutomaticUpdateChecks)) return;
+            var update = response.RootElement.GetProperty("update");
+            if (update.ValueKind == System.Text.Json.JsonValueKind.Object) {
+                var next = update.GetProperty("version").GetString();
+                var choice = MessageBox.Show(this,
+                    "Download and extract the new ZIP, then open Clearview from the new folder.",
+                    $"Clearview {next} is available", MessageBoxButtons.OKCancel);
+                if (choice == DialogResult.OK) OpenInBrowser(new Uri(update.GetProperty("url").GetString()!));
+            } else if (!automatic) {
+                MessageBox.Show(this, "Clearview is up to date.", "Software Updates");
+            }
+        } catch (Exception) {
+            if (!automatic && !IsDisposed)
+                MessageBox.Show(this, "Could not check for updates.", "Software Updates");
+        } finally {
+            checkingUpdates = false;
+        }
+    }
+
     private MenuStrip CreateMenu()
     {
         var menu = new MenuStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
 
         var clearview = new ToolStripMenuItem("&Clearview");
+        var updates = new ToolStripMenuItem("Software &Updates");
+        var automaticUpdates = new ToolStripMenuItem("Automatically Check for Updates");
+        automaticUpdates.Click += async (_, _) => {
+            using var key = Registry.CurrentUser.CreateSubKey(UpdateSettingsKey);
+            var enabled = !AutomaticUpdateChecks;
+            key.SetValue(AutomaticUpdatesKey, enabled ? 1 : 0);
+            automaticUpdates.Checked = enabled;
+            if (enabled) await CheckForUpdatesAsync(true);
+        };
+        var checkUpdates = new ToolStripMenuItem("Check for Updates…", null,
+            async (_, _) => await CheckForUpdatesAsync(false));
+        updates.DropDownOpening += (_, _) => {
+            automaticUpdates.Checked = AutomaticUpdateChecks;
+            checkUpdates.Enabled = engine is not null && !checkingUpdates;
+        };
+        updates.DropDownItems.AddRange(new ToolStripItem[] { automaticUpdates, checkUpdates });
+        clearview.DropDownItems.Add(updates);
         var aiConnections = new ToolStripMenuItem("AI &Connections");
         aiConnections.DropDownItems.Add("Install Claude Extension…", null,
             async (_, _) => await RunAIConnectionAsync("setup-claude"));

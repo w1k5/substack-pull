@@ -1,15 +1,15 @@
 :root {
-  --ink: #1c2b25;
-  --muted: #66776d;
+  --ink: #172a22;
+  --muted: #586c61;
   --green: #245b46;
   --green-strong: #214f3d;
-  --green-soft: #f0f5ed;
-  --line: #e2e9e2;
+  --green-soft: #edf5ea;
+  --line: #e0e9e0;
   --focus: #36775a;
   --post-event: #ad6e3e;
   --note-event: #547c95;
   --radius-control: 9px;
-  --radius-panel: 13px;
+  --radius-panel: 16px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -21,10 +21,16 @@
   --text-sm: 12px;
   --text-body: 14px;
   --text-section: 19px;
-  --text-page: 33px;
+  --text-page: clamp(29px, 3vw, 39px);
+  --surface: #fff;
+  --canvas: #f5f8f3;
+  --forest: #12352e;
+  --lime: #d9edab;
+  --hover: #f0f6ee;
+  --ease-out: cubic-bezier(.2, .75, .25, 1);
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
-  background: #f8faf7;
+  background: var(--canvas);
   font-synthesis: none;
 }
 * {
@@ -42,7 +48,7 @@ body {
   min-height: 100vh;
 }
 .sidebar {
-  background: #12352e;
+  background: var(--forest);
   color: #f5f7f3;
   padding: var(--space-8) var(--space-4);
   display: flex;
@@ -75,8 +81,8 @@ html.mac-desktop .sidebar {
   width: 37px;
   height: 37px;
   border-radius: 11px;
-  background: #d9edab;
-  color: #12352e;
+  background: var(--lime);
+  color: var(--forest);
   display: grid;
   place-items: center;
   font-size: 25px;
@@ -95,6 +101,7 @@ html.mac-desktop .sidebar {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   margin: var(--space-1) 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
   text-decoration: none;
   color: #b9cec3;
@@ -112,11 +119,17 @@ html.mac-desktop .sidebar {
   stroke-linejoin: round;
 }
 .side-link:hover,
-.side-link:focus-visible,
-.side-link.active {
-  background: #245347;
+.side-link:focus-visible {
+  background: #1b453b;
   color: #fff;
 }
+.side-link.active {
+  background: #245347;
+  border-color: #366759;
+  color: #fff;
+}
+.side-link.active svg { color: var(--lime); }
+.side-link:focus-visible { outline-color: var(--lime); }
 .side-bottom {
   margin-top: auto;
   padding: 18px 13px 5px;
@@ -174,8 +187,11 @@ main {
   cursor: pointer;
 }
 .refresh:hover:not(:disabled) {
-  background: var(--green-soft);
+  background: var(--hover);
+  border-color: #b4cbb8;
+  color: var(--green-strong);
 }
+.refresh:active:not(:disabled), .segment:active:not(:disabled) { transform: translateY(1px); }
 .content {
   max-width: 1460px;
   margin: auto;
@@ -191,7 +207,7 @@ main {
 h1 {
   margin: 0;
   font-size: var(--text-page);
-  letter-spacing: -0.055em;
+  letter-spacing: -0.04em;
   line-height: 1.15;
 }
 h1 em {
@@ -242,9 +258,16 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
-:is(.side-link, .refresh, .segment) {
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+:is(.side-link, .refresh, .segment, .sort-header, .search-results button,
+    .data-options-list button, .planner-day, .planner-draft) {
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), transform 120ms var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.side-link, .refresh, .segment) { transition: none; }
+  html { scroll-behavior: auto; }
+  :is(.side-link, .refresh, .segment, .sort-header, .search-results button,
+      .data-options-list button, .planner-day, .planner-draft) {
+    transition: none;
+    transform: none !important;
+  }
 }

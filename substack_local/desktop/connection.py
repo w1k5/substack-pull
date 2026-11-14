@@ -20,6 +20,7 @@ from ..pullers.posts.common import DEFAULT_OUTPUT
 from ..pullers.posts.storage import read_json, save_config
 from ..paths import data_root
 from .ai_connections import TEST_PROMPT, setup_client
+from .updates import check_for_update
 
 
 def publication_url(value: str) -> str:
@@ -112,12 +113,17 @@ def current_publication(config_path: Path) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("current", "discover", "discover-saved", "switch", "verify", "configure", "connect",
-                                           "setup-codex", "setup-claude", "test-prompt"))
+                                           "setup-codex", "setup-claude", "test-prompt",
+                                           "check-update", "check-update-automatic"))
     parser.add_argument("--publication")
+    parser.add_argument("--installed-version")
     parser.add_argument("--config", type=Path, default=data_root() / ".substack-pull.json")
     args = parser.parse_args()
     try:
-        if args.action == "test-prompt":
+        if args.action in {"check-update", "check-update-automatic"}:
+            result = check_for_update(args.installed_version or "", data_root(),
+                                      automatic=args.action.endswith("-automatic"))
+        elif args.action == "test-prompt":
             result = {"prompt": TEST_PROMPT}
         elif args.action in {"setup-codex", "setup-claude"}:
             result = setup_client(args.action.removeprefix("setup-"), data_root())

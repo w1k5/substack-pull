@@ -46,9 +46,10 @@ private struct LocalEngine {
         return task
     }
 
-    func command(_ action: String, publication: String? = nil, session: String? = nil) throws -> [String: Any] {
+    func command(_ action: String, publication: String? = nil, session: String? = nil, installedVersion: String? = nil) throws -> [String: Any] {
         let task = process("connection", module: "substack_local.desktop.connection",
-                           arguments: [action] + (publication.map { ["--publication", $0] } ?? []))
+                           arguments: [action] + (publication.map { ["--publication", $0] } ?? [])
+                           + (installedVersion.map { ["--installed-version", $0] } ?? []))
         let output = Pipe()
         task.standardOutput = output
         task.standardError = Pipe()
@@ -649,6 +650,15 @@ private func installMenus(delegate: ClearviewDelegate) {
         key: "h", modifiers: [.command, .option])
     add("Show All", to: appMenu, action: #selector(NSApplication.unhideAllApplications(_:)))
     appMenu.addItem(.separator())
+    let updates = NSMenu(title: "Software Updates")
+    let updatesItem = NSMenuItem(title: "Software Updates", action: nil, keyEquivalent: "")
+    updatesItem.submenu = updates
+    appMenu.addItem(updatesItem)
+    add("Automatically Check for Updates", to: updates,
+        action: #selector(ClearviewDelegate.toggleAutomaticUpdates(_:)), target: delegate)
+    add("Check for Updates…", to: updates,
+        action: #selector(ClearviewDelegate.checkUpdates(_:)), target: delegate)
+    appMenu.addItem(.separator())
     let aiConnections = NSMenu(title: "AI Connections")
     let aiItem = NSMenuItem(title: "AI Connections", action: nil, keyEquivalent: "")
     aiItem.submenu = aiConnections
@@ -744,6 +754,49 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
 
     init(model: AppModel) { self.model = model }
 
+    private var checkingUpdates = false
+    private let automaticUpdatesKey = "automaticUpdateChecks"
+
+    @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
+        if UserDefaults.standard.bool(forKey: automaticUpdatesKey) {
+            checkForUpdates(automatic: true)
+        }
+    }
+
+    @MainActor @objc func toggleAutomaticUpdates(_ sender: Any?) {
+        let enabled = !UserDefaults.standard.bool(forKey: automaticUpdatesKey)
+        UserDefaults.standard.set(enabled, forKey: automaticUpdatesKey)
+        if enabled { checkForUpdates(automatic: true) }
+    }
+
+    @MainActor @objc func checkUpdates(_ sender: Any?) { checkForUpdates(automatic: false) }
+
+    @MainActor private func checkForUpdates(automatic: Bool) {
+        guard !checkingUpdates, packagedEngine != nil,
+              let version = Bundle.main.object(forInfoDictionaryKey: "ClearviewReleaseVersion") as? String else { return }
+        checkingUpdates = true
+        Task.detached {
+            let result = try? LocalEngine().command(automatic ? "check-update-automatic" : "check-update",
+                                                    installedVersion: version)
+            await MainActor.run {
+                self.checkingUpdates = false
+                if automatic && !UserDefaults.standard.bool(forKey: self.automaticUpdatesKey) { return }
+                let alert = NSAlert()
+                if let update = result?["update"] as? [String: String],
+                   let version = update["version"], let url = update["url"].flatMap(URL.init(string:)) {
+                    alert.messageText = "Clearview \(version) is available"
+                    alert.informativeText = "Download the disk image, then replace Clearview in Applications."
+                    alert.addButton(withTitle: "Download Update")
+                    alert.addButton(withTitle: "Later")
+                    if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
+                } else if !automatic {
+                    alert.messageText = result == nil ? "Could not check for updates" : "Clearview is up to date"
+                    alert.runModal()
+                }
+            }
+        }
+    }
+
     @MainActor @objc func connectClaude(_ sender: Any?) { runAIConnection("setup-claude") }
     @MainActor @objc func connectCodex(_ sender: Any?) { runAIConnection("setup-codex") }
     @MainActor @objc func copyTestPrompt(_ sender: Any?) { runAIConnection("test-prompt") }
@@ -802,6 +855,11 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
     }
     @MainActor func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(toggleAutomaticUpdates(_:)):
+            item.state = UserDefaults.standard.bool(forKey: automaticUpdatesKey) ? .on : .off
+            return Bundle.main.object(forInfoDictionaryKey: "ClearviewReleaseVersion") != nil
+        case #selector(checkUpdates(_:)):
+            return !checkingUpdates && Bundle.main.object(forInfoDictionaryKey: "ClearviewReleaseVersion") != nil
         case #selector(connectClaude(_:)), #selector(connectCodex(_:)):
             return model.screen == .dashboard && packagedEngine != nil
         case #selector(changePublication(_:)):

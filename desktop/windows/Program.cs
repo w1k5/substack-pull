@@ -98,7 +98,10 @@ internal sealed partial class ClearviewForm : Form
             if (dashboardProcess is { HasExited: false }) dashboardProcess.Kill(entireProcessTree: true);
             dashboardProcess?.Dispose();
         };
-        Shown += async (_, _) => await OpenAsync();
+        Shown += async (_, _) => {
+            await OpenAsync();
+            if (AutomaticUpdateChecks) await CheckForUpdatesAsync(true);
+        };
     }
 
     private static void StyleHeaderButton(Button button, Color background, Color foreground)

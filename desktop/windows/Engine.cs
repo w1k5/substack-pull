@@ -34,11 +34,12 @@ internal sealed class Engine
     }
 
     public async Task<JsonDocument> ConnectionAsync(string action, string? publication = null,
-                                                     string? session = null)
+                                                     string? session = null, string? installedVersion = null)
     {
-        using var process = publication is null
-            ? CreateProcess("connection", action)
-            : CreateProcess("connection", action, "--publication", publication);
+        var arguments = new List<string> { "connection", action };
+        if (publication is not null) arguments.AddRange(["--publication", publication]);
+        if (installedVersion is not null) arguments.AddRange(["--installed-version", installedVersion]);
+        using var process = CreateProcess(arguments.ToArray());
         process.Start();
         if (session is not null) await process.StandardInput.WriteAsync(session);
         process.StandardInput.Close();

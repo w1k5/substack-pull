@@ -322,6 +322,14 @@ return `refreshed_at` to show when their shared snapshot was fetched. Published 
 content has a separate incremental backup managed by `substack-pull`. Substack's
 analytics endpoints are undocumented and may change.
 
+## Software updates
+
+In the desktop app, choose **Clearview → Software Updates → Automatically
+Check for Updates** to check GitHub at launch, at most once a day. Automatic
+checks are off by default. **Check for Updates…** checks immediately. When
+there’s a newer compatible release, Clearview offers the Mac DMG or Windows
+ZIP. Install the download using the same steps as the original beta.
+
 ## Connect a desktop assistant
 
 Install Clearview and sign into Substack first. On Mac and Windows, open
