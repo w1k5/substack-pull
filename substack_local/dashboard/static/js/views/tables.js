@@ -1,4 +1,4 @@
-import { $, fmt, pct, date, cell, emptyMessage } from '../shared.js';
+import { $, fmt, pct, date, cell, emptyMessage, setupOutcomeMode } from '../shared.js';
 import { downloadCsv } from '../export.js';
 import { sourceLabel } from '../source-labels.js';
 import { renderPostPortfolio } from '../post/portfolio.js';
@@ -18,6 +18,11 @@ const columns = {
     ['restacks', 'Restacks'], ['shares', 'Shares']],
 };
 
+const postRateFields = {
+  signups: 'signup_yield', likes: 'likes_per_1k', comments: 'comments_per_1k',
+  restacks: 'restacks_per_1k', shares: 'shares_per_1k',
+};
+
 function sortValue(section, row, key) {
   if (section === 'source') {
     if (key === 'name') return sourceLabel(row.name, 'traffic', row.category).name.toLowerCase();
@@ -31,9 +36,10 @@ function sortValue(section, row, key) {
   return row[key] == null ? null : Number(row[key]);
 }
 
-function compareRows(section, a, b) {
+function compareRows(section, a, b, rates = false) {
   const { key, direction } = sortState[section];
-  const av = sortValue(section, a, key), bv = sortValue(section, b, key);
+  const field = rates ? postRateFields[key] || key : key;
+  const av = sortValue(section, a, field), bv = sortValue(section, b, field);
   if (av == null && bv == null) return 0;
   if (av == null) return 1;
   if (bv == null) return -1;
@@ -50,6 +56,7 @@ function emptyTable(body, count, message) {
 }
 
 export function createTables({ getData, getPortfolio, navigate }) {
+  let postRates = false;
   const page = { source: 1, post: 1 };
   let visibleSourceRows = [], visiblePostRows = [];
 
@@ -127,7 +134,7 @@ export function createTables({ getData, getPortfolio, navigate }) {
     const renderComparison = () => renderPostPortfolio({
       ...getPortfolio(), visibleIds: new Set(filtered.map((row) => String(row.id))),
     });
-    visiblePostRows = filtered.sort((a, b) => compareRows('post', a, b));
+    visiblePostRows = filtered.sort((a, b) => compareRows('post', a, b, postRates));
     $('post-table-count').textContent = `${visiblePostRows.length} Posts shown${$('posts-in-period').checked ? ' · published in selected period' : ''}`;
     $('export-posts').disabled = !visiblePostRows.length;
     const body = $('post-table');
@@ -149,9 +156,10 @@ export function createTables({ getData, getPortfolio, navigate }) {
       cell(tr, button);
       cell(tr, date(row.date));
       cell(tr, fmt(row.views));
-      cell(tr, fmt(row.signups));
-      for (const name of ['likes', 'comments', 'restacks', 'shares'])
-        cell(tr, row[name] == null ? '—' : fmt(row[name]));
+      for (const [key, field] of Object.entries(postRateFields)) {
+        const value = row[postRates ? field : key];
+        cell(tr, value == null ? '—' : postRates ? value.toFixed(1) : fmt(value));
+      }
       tr.querySelectorAll('td').forEach((td, index) => { td.dataset.label = columns.post[index][1]; });
       body.append(tr);
     });
@@ -201,6 +209,11 @@ export function createTables({ getData, getPortfolio, navigate }) {
 
   setupSort('source');
   setupSort('post');
+  setupOutcomeMode('post-outcome-mode', (rates) => {
+    postRates = rates;
+    page.post = 1;
+    renderPosts();
+  });
   $('source-search').addEventListener('input', () => { page.source = 1; renderSources(); });
   for (const id of ['posts-in-period', 'posts-min-views'])
     $(id).addEventListener('change', () => { page.post = 1; renderPosts(); });

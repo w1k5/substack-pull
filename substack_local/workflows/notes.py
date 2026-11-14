@@ -97,7 +97,7 @@ class NotePlanner:
                 token = notes.reusable_session(NOTE_CONFIG, config)
                 api = notes.PrivateApiClient(token, request_delay=0.25)
                 notes.PrivateNotesSync(api, directory, zone_name=zone_name).sync(
-                    days=days, minimum_spacing=spacing,
+                    days=days, minimum_spacing=spacing, export_runway=False,
                 )
                 snapshot = self.snapshot(days=days, spacing=spacing)
             pending.set_result(snapshot)
@@ -114,7 +114,7 @@ class NotePlanner:
 
     def create_draft(self, text: str) -> dict:
         with self.lock:
-            return private_notes().create_note_draft(text, apply=True, config_path=NOTE_CONFIG)
+            return private_notes().create_note_draft(text, apply=True, config_path=NOTE_CONFIG, export_runway=False)
 
     def preview_schedule(self, note_id: str, at: str) -> dict:
         with self.lock:
@@ -122,4 +122,4 @@ class NotePlanner:
 
     def schedule(self, note_id: str, at: str) -> dict:
         with self.lock:
-            return private_notes().schedule_note(note_id, at, apply=True, config_path=NOTE_CONFIG)
+            return private_notes().schedule_note(note_id, at, apply=True, config_path=NOTE_CONFIG, export_runway=False)

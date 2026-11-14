@@ -45,7 +45,8 @@ if it finds one, or asks you to choose if you manage several. You can enter the
 publication address if discovery fails. Clearview checks editor access, remembers
 your publication for reconnects, saves the session in macOS Keychain, and opens
 the dashboard. The same saved connection is used by the CLI and MCP tools. Use
-**Clearview → Reconnect Substack…** in the Mac menu if the session expires.
+**Clearview → Change Publication…** to select another publication with your saved
+session, or **Clearview → Reconnect Substack…** if the session expires.
 The Mac menu bar also provides the usual Edit, View, Window, and Help menus.
 **View → Reload** reloads the current page; use **Refresh publication** in the
 dashboard to request newer analytics.
@@ -164,7 +165,6 @@ Use the sidebar to move between these writer-focused views:
 | View | What it answers |
 | --- | --- |
 | Briefing | Current reach and subscriber growth, one supported observation, the latest writing, and a publication timeline. Detailed period figures stay available on demand. |
-| Leaderboard | Which published Post or Note leads on the outcome you choose? Pick one measure at a time; open a piece for its full story. |
 | Posts | Compare posts in a chart, select two dots, then use the exact-figures table or open a post for sources, direct Note shares, and reader response. |
 | Discovery | When did each subscriber source contribute, and which Note or post links inside the Notes surface received subscriber credit? A compact split and ranked links sit above the broader source and traffic views. |
 | Notes | Compare Notes in a chart, select two dots, then use the exact-figures table or open a Note for its detailed results. Note reach is compared with a typical Note at the same age. |
@@ -179,28 +179,23 @@ room at the selected spacing; those are planning suggestions, not automatic sche
 All Note times use the configured Notes time zone shown on the page. The planner does not
 publish a Note immediately or edit an existing Note's text.
 
-Search posts and Notes from the header. The activity selector offers 7, 14, 30, 90, or 180 days. It controls publication traffic, discovery, the leaderboard, and the Notes list. Published post
+Search posts and Notes from the header. The activity selector offers 7, 14, 30, 90, or 180 days. It controls publication traffic, discovery, and the Notes list. Published post
 index metrics and individual Note reach are lifetime totals; the Posts chart also
 offers first-week comparisons. The **Published in selected period** filter narrows
 posts by publication date. The Briefing compares equal-length current
 and preceding periods. Today may be incomplete.
 
-The leaderboard starts with Posts ranked by attributed signups and Notes ranked by
-likes. It shows one chosen outcome at a time for pieces published in the selected period; newer
-pieces have had less time to accumulate totals. Rates use views for Posts and
-impressions for Notes. Individual Note signups are unavailable. The Note baseline
-comes from Substack's typical Note at the same age; eligible Post baselines use
-first-week views and a median of comparable post type and audience. These are
-different comparisons, so the combined view is chronological rather than a single
-cross-format performance score. The Briefing shows one measured observation with a link
+Switch between **Totals** and **Per 1,000** in the Posts and Notes tables.
+Rates use views for Posts and impressions for Notes. Select a column heading
+to rank by that metric. Individual Note signups are unavailable.
+The Briefing shows one measured observation with a link
 to its evidence. It does not infer a cause; the available data does not support reliable
 topic or tone conclusions.
 
 The analytics logic works across authorized Substack publications, but the source APIs,
 Post and Note metric definitions, and authentication are specific to Substack. A
 publication without Notes, per-piece signups, or enough historical detail will have
-fewer comparisons. The current default rankings favor subscriber growth for Posts and
-likes for Notes; writers with different goals can choose another outcome. Clearview is
+fewer comparisons. Clearview is
 not a generic analytics dashboard for other publishing platforms.
 
 ### Reading the charts and tables
@@ -326,6 +321,22 @@ and **Refresh Note** bypass their respective detail caches. MCP
 return `refreshed_at` to show when their shared snapshot was fetched. Published post
 content has a separate incremental backup managed by `substack-pull`. Substack's
 analytics endpoints are undocumented and may change.
+
+## Connect a desktop assistant
+
+Install Clearview and sign into Substack first. On Mac and Windows, open
+**Clearview → AI Connections**.
+
+- **Install Claude Extension…** creates a local extension and opens it for
+  installation. If needed, select `Clearview.mcpb` from the Clearview data folder
+  using Claude Desktop’s **Install Extension…** command.
+- **Connect to Codex…** adds Clearview to Codex’s local MCP settings. Restart
+  Codex after connecting.
+
+Choose **Copy Test Prompt** from the same menu and paste it into your desktop
+assistant. Both clients start the bundled engine locally and use the publication
+saved in Clearview. Keep the app in its installed location and reconnect if
+you move it.
 
 ## MCP server for Codex
 

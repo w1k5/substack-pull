@@ -104,9 +104,9 @@ def note_performance(note_id: str, include_series: bool = False, refresh: bool =
 
 @mcp.tool(annotations=READ_ONLY)
 def compare_notes(days: int = 90, lens: str = "responses", limit: int = 30) -> dict:
-    """Rank published Notes by age-matched reach or reader outcome using the dashboard's comparison math."""
-    if lens not in {"pace", "responses", "visits", "clicks", "unconnected"}:
-        raise ValueError("Choose pace, responses, visits, clicks, or unconnected.")
+    """Rank Notes by age-matched reach or reader outcome. Use replies for replies per 1,000 impressions."""
+    if lens not in {"pace", "responses", "likes", "replies", "restacks", "shares", "visits", "clicks", "unconnected"}:
+        raise ValueError("Choose pace, responses, likes, replies, restacks, shares, visits, clicks, or unconnected.")
     if not 1 <= limit <= 100:
         raise ValueError("Choose a limit from 1 to 100.")
     cohort = service().note_cohort(days)

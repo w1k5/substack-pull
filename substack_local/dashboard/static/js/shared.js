@@ -60,3 +60,17 @@ export function section(title) {
   el.append(h);
   return el;
 }
+
+export function setupOutcomeMode(id, onChange) {
+  const buttons = [...$(id).querySelectorAll('button[data-mode]')];
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-pressed') === 'true') return;
+      for (const choice of buttons) {
+        choice.setAttribute('aria-pressed', String(choice === button));
+        choice.classList.toggle('active', choice === button);
+      }
+      onChange(button.dataset.mode === 'rate');
+    });
+  }
+}

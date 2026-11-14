@@ -7,7 +7,6 @@ from datetime import date, datetime
 import math
 from zoneinfo import ZoneInfo
 
-from .leaderboard import post_rows
 
 ZONE = ZoneInfo("America/New_York")
 
@@ -163,7 +162,6 @@ def dashboard_metrics(data: dict) -> dict:
             "posts": posts,
             "publication_events": publication_buckets(data.get("publication_events") or [], views,
                                                       source_dates, activity["bucket_days"]),
-            "leaderboard_rows": post_rows(posts),
             "activity_period": activity,
             "ranked_growth_sources": ranked_growth_sources(growth),
             "discovery_rankings": discovery_rankings(data, posts),

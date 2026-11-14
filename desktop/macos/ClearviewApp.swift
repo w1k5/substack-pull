@@ -114,9 +114,25 @@ private func saveSession(_ value: String, account: String) throws {
     }
 }
 
+private func readSession(account: String) throws -> String {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: keychainService,
+        kSecAttrAccount as String: account,
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var item: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+          let data = item as? Data, let session = String(data: data, encoding: .utf8) else {
+        throw ShellError.failed("Reconnect Substack to choose a publication.")
+    }
+    return session
+}
+
 @MainActor
 private final class AppModel: ObservableObject {
-    enum Screen { case loading, welcome, signIn, dashboard }
+    enum Screen { case loading, welcome, signIn, choosePublication, dashboard }
 
     @Published var screen: Screen = .loading
     @Published var publication = ""
@@ -165,6 +181,46 @@ private final class AppModel: ObservableObject {
         screen = .signIn
     }
 
+    func changePublication() {
+        guard screen == .dashboard else { return }
+        signInGeneration += 1
+        let generation = signInGeneration
+        let account = publication
+        choices = []
+        showManualPublication = false
+        selectionSession = nil
+        activeWebView = nil
+        busy = true
+        message = "Finding your publications…"
+        screen = .choosePublication
+        Task.detached {
+            do {
+                let token = try readSession(account: account)
+                let discovery = try LocalEngine().command("discover", session: token)
+                await MainActor.run {
+                    guard self.signInGeneration == generation else { return }
+                    self.presentPublications(discovery, session: token)
+                }
+            } catch {
+                await MainActor.run {
+                    guard self.signInGeneration == generation else { return }
+                    self.busy = false
+                    self.message = "Could not load publications. Reconnect Substack and try again."
+                }
+            }
+        }
+    }
+
+    private func presentPublications(_ discovery: [String: Any], session: String) {
+        busy = false
+        selectionSession = session
+        choices = discovery["publications"] as? [[String: String]] ?? []
+        showManualPublication = choices.isEmpty
+        message = choices.isEmpty ? "Enter your publication address." : nil
+        activeWebView = nil
+        screen = .choosePublication
+    }
+
     func cancelSignIn() {
         signInGeneration += 1
         pendingSessions.removeAll()
@@ -198,17 +254,17 @@ private final class AppModel: ObservableObject {
             let result = try? LocalEngine().command("discover", session: session)
             await MainActor.run {
                 guard self.signInGeneration == generation else { return }
-                self.busy = false
-                self.selectionSession = session
-                self.choices = result?["publications"] as? [[String: String]] ?? []
-                if let selected = result?["selected"] as? String {
-                    self.connect(session, address: selected)
-                } else {
-                    self.showManualPublication = self.choices.isEmpty
-                    self.message = self.choices.isEmpty
-                        ? "Couldn’t find a publication automatically. You can enter its address below."
-                        : "Choose a publication to open."
+                guard let result else {
+                    self.busy = false
+                    self.selectionSession = session
+                    self.showManualPublication = true
+                    self.message = "Couldn’t find a publication automatically."
                     self.tryNextSession()
+                    return
+                }
+                self.presentPublications(result, session: session)
+                if let selected = result["selected"] as? String {
+                    self.connect(session, address: selected)
                 }
             }
         }
@@ -227,7 +283,7 @@ private final class AppModel: ObservableObject {
                     throw ShellError.failed("Substack did not confirm publication access.")
                 }
                 let stillSigningIn = await MainActor.run {
-                    self.screen == .signIn && self.signInGeneration == generation
+                    (self.screen == .signIn || self.screen == .choosePublication) && self.signInGeneration == generation
                 }
                 guard stillSigningIn else { return }
                 try saveSession(session, account: account)
@@ -426,6 +482,8 @@ private struct DashboardWebView: NSViewRepresentable {
 
 private struct ContentView: View {
     @ObservedObject var model: AppModel
+    @State private var selectedPublication = ""
+    @State private var manualAddress = ""
     // Match the dashboard's sidebar, brand mark, and page background.
     private let forest = Color(red: 18.0 / 255, green: 53.0 / 255, blue: 46.0 / 255)
     private let lime = Color(red: 217.0 / 255, green: 237.0 / 255, blue: 171.0 / 255)
@@ -467,13 +525,13 @@ private struct ContentView: View {
                 .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(forest.opacity(0.12)))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(canvas)
-            case .signIn:
+            case .signIn, .choosePublication:
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
                         brandMark
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Clearview").font(.headline)
-                            Text("Sign in to Substack").font(.caption).foregroundStyle(lime)
+                            Text(model.screen == .signIn ? "Sign in to Substack" : "Choose publication").font(.caption).foregroundStyle(lime)
                         }
                         Spacer()
                         Button("Back") { model.cancelSignIn() }
@@ -494,27 +552,33 @@ private struct ContentView: View {
                                 Text(message).font(.callout)
                             }
                         }
-                        if !model.choices.isEmpty {
-                            Menu("Choose publication") {
-                                ForEach(model.choices, id: \.self) { choice in
-                                    if let address = choice["address"] {
-                                        Button(choice["name"] ?? address) { model.choosePublication(address) }
+                        if model.screen == .choosePublication && !model.choices.isEmpty {
+                            HStack {
+                                Picker("Publication", selection: $selectedPublication) {
+                                    Text("Choose a publication").tag("")
+                                    ForEach(model.choices, id: \.self) { choice in
+                                        if let address = choice["address"] {
+                                            Text(choice["name"] ?? address).tag(address)
+                                        }
                                     }
-                                }
-                            }.disabled(model.busy)
-                        }
-                        if !model.choices.isEmpty && !model.showManualPublication {
+                                }.pickerStyle(.menu)
+                                Button("Open publication") { model.choosePublication(selectedPublication) }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(selectedPublication.isEmpty)
+                            }
+                            .disabled(model.busy)
+                            .onAppear { selectedPublication = "" }
                             Button("Enter publication address") { model.showManualPublication = true }
                                 .disabled(model.busy)
                         }
                         if model.showManualPublication {
                             HStack {
-                                TextField("name.substack.com", text: $model.publication)
+                                TextField("name.substack.com", text: $manualAddress)
                                     .textFieldStyle(.roundedBorder)
                                     .autocorrectionDisabled()
                                     .frame(maxWidth: 270)
-                                Button("Connect") { model.choosePublication(model.publication) }
-                                    .disabled(model.busy || model.publication.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                Button("Connect") { model.choosePublication(manualAddress) }
+                                    .disabled(model.busy || manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             }
                         }
                     }
@@ -522,8 +586,12 @@ private struct ContentView: View {
                     .frame(maxWidth: .infinity)
                     .background(canvas)
                     .tint(forest)
-                    SignInWebView(onSession: model.receivedSession,
-                                  onCreate: { model.activeWebView = $0 })
+                    if model.screen == .signIn {
+                        SignInWebView(onSession: model.receivedSession,
+                                      onCreate: { model.activeWebView = $0 })
+                    } else {
+                        Spacer(minLength: 0)
+                    }
                 }
             case .dashboard:
                 if let url = model.dashboardURL {
@@ -534,6 +602,9 @@ private struct ContentView: View {
         .frame(minWidth: 920, minHeight: 620)
         .ignoresSafeArea(edges: .top)
         .preferredColorScheme(.light)
+        .onChange(of: model.screen) { screen in
+            if screen == .signIn { manualAddress = "" }
+        }
         .task { model.load() }
     }
 }
@@ -578,6 +649,16 @@ private func installMenus(delegate: ClearviewDelegate) {
         key: "h", modifiers: [.command, .option])
     add("Show All", to: appMenu, action: #selector(NSApplication.unhideAllApplications(_:)))
     appMenu.addItem(.separator())
+    let aiConnections = NSMenu(title: "AI Connections")
+    let aiItem = NSMenuItem(title: "AI Connections", action: nil, keyEquivalent: "")
+    aiItem.submenu = aiConnections
+    appMenu.addItem(aiItem)
+    add("Install Claude Extension…", to: aiConnections, action: #selector(ClearviewDelegate.connectClaude(_:)), target: delegate)
+    add("Connect to Codex…", to: aiConnections, action: #selector(ClearviewDelegate.connectCodex(_:)), target: delegate)
+    aiConnections.addItem(.separator())
+    add("Copy Test Prompt", to: aiConnections, action: #selector(ClearviewDelegate.copyTestPrompt(_:)), target: delegate)
+    appMenu.addItem(.separator())
+    add("Change Publication…", to: appMenu, action: #selector(ClearviewDelegate.changePublication(_:)), target: delegate)
     add("Reconnect Substack…", to: appMenu,
         action: #selector(ClearviewDelegate.reconnectSubstack(_:)), key: "r",
         modifiers: [.command, .shift], target: delegate)
@@ -663,6 +744,41 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
 
     init(model: AppModel) { self.model = model }
 
+    @MainActor @objc func connectClaude(_ sender: Any?) { runAIConnection("setup-claude") }
+    @MainActor @objc func connectCodex(_ sender: Any?) { runAIConnection("setup-codex") }
+    @MainActor @objc func copyTestPrompt(_ sender: Any?) { runAIConnection("test-prompt") }
+
+    @MainActor private func runAIConnection(_ action: String) {
+        do {
+            let result = try LocalEngine().command(action)
+            if let prompt = result["prompt"] as? String {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(prompt, forType: .string)
+                return
+            }
+            if let path = result["path"] as? String {
+                let file = URL(fileURLWithPath: path)
+                if !NSWorkspace.shared.open(file) {
+                    NSWorkspace.shared.activateFileViewerSelecting([file])
+                }
+                showAIMessage("Finish installing in Claude Desktop. If the extension didn’t open, use Claude’s Install Extension command to select Clearview.mcpb.")
+            } else if let message = result["message"] as? String {
+                showAIMessage(message)
+            }
+        } catch ShellError.failed(let detail) {
+            showAIMessage(detail)
+        } catch {
+            showAIMessage("Could not set up the connection.")
+        }
+    }
+
+    @MainActor private func showAIMessage(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "AI Connections"
+        alert.informativeText = message
+        alert.runModal()
+    }
+    @MainActor @objc func changePublication(_ sender: Any?) { model.changePublication() }
     @MainActor @objc func reconnectSubstack(_ sender: Any?) { model.beginSignIn() }
     @MainActor @objc func openDataFolder(_ sender: Any?) { runDataAction("open") }
     @MainActor @objc func exportBackups(_ sender: Any?) { runDataAction("export") }
@@ -686,6 +802,10 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
     }
     @MainActor func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(connectClaude(_:)), #selector(connectCodex(_:)):
+            return model.screen == .dashboard && packagedEngine != nil
+        case #selector(changePublication(_:)):
+            return model.screen == .dashboard
         case #selector(openDataFolder(_:)), #selector(exportBackups(_:)), #selector(clearCache(_:)):
             return model.screen == .dashboard && model.activeWebView != nil
         case #selector(reloadPage(_:)), #selector(zoomIn(_:)),

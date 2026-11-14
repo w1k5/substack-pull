@@ -425,3 +425,6 @@ body:has(.note-detail-dialog[open]) .sidebar { z-index: 43; }
 .action-status[hidden] { display: none; }
 .discovery-source-breakdown { grid-template-columns: minmax(0, 1fr); margin-bottom: var(--space-3); }
 .discovery-source-breakdown .note-reach-row { grid-template-columns: minmax(0, 1fr) minmax(50px, 1fr) minmax(40px, auto); }
+
+.outcome-controls { gap: var(--space-2); flex-wrap: wrap; }
+.outcome-controls .segment-row { margin: 0; }

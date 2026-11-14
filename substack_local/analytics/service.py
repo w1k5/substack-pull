@@ -16,7 +16,6 @@ from .cache import (
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
 from .derived import dashboard_metrics, number, post_detail_metrics, post_index_metrics
 from .history import AnalyticsHistory
-from .leaderboard import note_rows
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
 from .note_shares import post_note_shares, public_note_preview, public_note_text
@@ -502,7 +501,6 @@ class AnalyticsService:
                              "lenses": summarize_note_cohort(rows)})
         result = {"days": days, "total": len(events), "considered": len(events), "rows": rows,
                   "unavailable_ids": unavailable_ids,
-                  "leaderboard_rows": note_rows(rows),
                   "lenses": summarize_note_cohort(rows)}
         with self.lock:
             if self.note_cohort_generation == generation:

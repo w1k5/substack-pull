@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using System.Diagnostics;
@@ -28,6 +29,8 @@ internal sealed partial class ClearviewForm : Form
     private readonly ComboBox publications = new() { Width = 260, Visible = false, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
     private readonly Button manual = new() { AutoSize = true, Visible = false, Text = "Enter publication address" };
     private string? selectionSession;
+    private bool changingPublication;
+    private readonly Button cancelPublication = new() { AutoSize = true, Text = "Back", Visible = false };
     private readonly WebView2 web = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly System.Windows.Forms.Timer cookieTimer = new() { Interval = 1200 };
     private readonly HashSet<string> attemptedSessions = new(StringComparer.Ordinal);
@@ -60,14 +63,22 @@ internal sealed partial class ClearviewForm : Form
         status.Margin = new Padding(8, 8, 0, 0);
         StyleHeaderButton(connect, Lime, Forest);
         StyleHeaderButton(manual, Forest, Color.White);
-        header.Controls.AddRange([mark, heading, publications, publication, connect, manual, status]);
+        StyleHeaderButton(cancelPublication, Forest, Color.White);
+        header.Controls.AddRange([mark, heading, publications, publication, connect, manual, cancelPublication, status]);
+        cancelPublication.Click += (_, _) => {
+            changingPublication = false;
+            publications.Visible = publication.Visible = manual.Visible = cancelPublication.Visible = false;
+            connect.Enabled = web.Visible = true;
+            connect.Text = "Reconnect Substack";
+            status.Text = "Private · local";
+        };
         Controls.Add(web);
         Controls.Add(header);
         var menu = CreateMenu();
         Controls.Add(menu);
         MainMenuStrip = menu;
         connect.Click += async (_, _) => {
-            if (selectionSession is null) await BeginSignInAsync();
+            if (selectionSession is null && !changingPublication) await BeginSignInAsync();
             else {
                 var address = publication.Visible ? publication.Text.Trim()
                     : (publications.SelectedItem as PublicationChoice)?.Address;
@@ -163,11 +174,49 @@ internal sealed partial class ClearviewForm : Form
         catch { status.Text = "Could not open the link in your browser."; }
     }
 
+    private async Task ChangePublicationAsync()
+    {
+        if (!IsDashboardOpen() || changingPublication || choosingPublication || engine is null) return;
+        choosingPublication = true;
+        changingPublication = true;
+        connect.Enabled = false;
+        web.Visible = false;
+        status.Text = "Finding your publications…";
+        try {
+            using var discovery = await engine.ConnectionAsync("discover-saved");
+            ShowPublicationChoices(discovery.RootElement);
+        } catch (InvalidOperationException) {
+            status.Text = "Could not load publications. Reconnect Substack and try again.";
+        } finally {
+            cancelPublication.Visible = true;
+            choosingPublication = false;
+        }
+    }
+
+    private void ShowPublicationChoices(JsonElement result)
+    {
+        publications.Items.Clear();
+        foreach (var entry in result.GetProperty("publications").EnumerateArray()) {
+            publications.Items.Add(new PublicationChoice(
+                entry.GetProperty("name").GetString()!,
+                entry.GetProperty("address").GetString()!));
+        }
+        if (publications.Items.Count == 0) {
+            status.Text = "Enter your publication address.";
+            ShowManualPublication();
+            return;
+        }
+        publications.Visible = manual.Visible = connect.Enabled = true;
+        connect.Text = "Open publication";
+        status.Text = "Choose a publication to open.";
+    }
+
     private async Task BeginSignInAsync()
     {
         if (checkingSession || choosingPublication) return;
         try {
             signingIn = true;
+            changingPublication = cancelPublication.Visible = false;
             selectionSession = null;
             publications.Items.Clear();
             publications.Visible = publication.Visible = manual.Visible = false;
@@ -202,22 +251,12 @@ internal sealed partial class ClearviewForm : Form
                 try {
                     using var discovery = await engine.ConnectionAsync("discover", session: cookie.Value);
                     var result = discovery.RootElement;
-                    foreach (var entry in result.GetProperty("publications").EnumerateArray()) {
-                        publications.Items.Add(new PublicationChoice(
-                            entry.GetProperty("name").GetString()!,
-                            entry.GetProperty("address").GetString()!));
-                    }
+                    web.Visible = false;
+                    cookieTimer.Stop();
                     var selected = result.GetProperty("selected").GetString();
-                    if (selected is not null) {
-                        await ConnectPublicationAsync(selected, cookie.Value);
-                        return;
-                    }
-                    if (publications.Items.Count > 0) {
-                        publications.Visible = manual.Visible = connect.Enabled = true;
-                        connect.Text = "Open publication";
-                        status.Text = "Choose a publication to open.";
-                        return;
-                    }
+                    ShowPublicationChoices(result);
+                    if (selected is not null) await ConnectPublicationAsync(selected, cookie.Value);
+                    return;
                 } catch (InvalidOperationException) {
                     // The current session may still work with a manually entered address.
                 }
@@ -243,14 +282,15 @@ internal sealed partial class ClearviewForm : Form
         publication.Focus();
     }
 
-    private async Task ConnectPublicationAsync(string address, string session)
+    private async Task ConnectPublicationAsync(string address, string? session)
     {
         if (engine is null) return;
         choosingPublication = true;
-        connect.Enabled = manual.Enabled = publications.Enabled = false;
+        connect.Enabled = manual.Enabled = publications.Enabled = cancelPublication.Enabled = false;
         status.Text = "Checking publication access…";
         try {
-            using var result = await engine.ConnectionAsync("connect", address, session);
+            using var result = await engine.ConnectionAsync(changingPublication ? "switch" : "connect", address, session);
+            changingPublication = cancelPublication.Visible = false;
             signingIn = false;
             selectionSession = null;
             attemptedSessions.Clear();
@@ -268,7 +308,7 @@ internal sealed partial class ClearviewForm : Form
             }
         } finally {
             choosingPublication = false;
-            manual.Enabled = publications.Enabled = true;
+            manual.Enabled = publications.Enabled = cancelPublication.Enabled = true;
         }
     }
 

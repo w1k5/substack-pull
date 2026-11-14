@@ -1,4 +1,4 @@
-import { $, date, fmt, pct, cell } from './shared.js';
+import { $, date, fmt, pct, cell, setupOutcomeMode } from './shared.js';
 import { downloadCsv } from './export.js';
 import { renderNotesMap, setupNotesMap, updateNotesMapProgress } from './notes-map.js';
 import { notePreview } from './note-preview.js';
@@ -47,7 +47,14 @@ function values(note) {
   return { note, stats, ...stats.comparison };
 }
 
+let noteRates = false;
+const noteRateFields = {
+  likes: 'likeRate', replies: 'replyRate', restacks: 'restackRate', shares: 'shareRate',
+  visits: 'visitRate', clicks: 'clickRate',
+};
+
 function sortValue(row) {
+  if (noteRates && noteRateFields[sort.key]) return row[noteRateFields[sort.key]];
   switch (sort.key) {
     case 'day': return row.note.day;
     case 'title': return row.note.title.toLowerCase();
@@ -56,16 +63,17 @@ function sortValue(row) {
     case 'replies': return row.replies;
     case 'restacks': return row.restacks;
     case 'shares': return row.shares;
-    case 'visits': return row.visitRate;
+    case 'visits': return row.visits;
     case 'responses': return row.responseRate;
-    case 'clicks': return row.clickRate;
+    case 'clicks': return row.clicks;
     case 'unconnected': return row.unconnected;
     default: return row.impressions;
   }
 }
 
 function rows() {
-  const ranked = ['pace', 'visits', 'responses', 'clicks', 'unconnected'].includes(sort.key)
+  const ranked = (['pace', 'responses', 'unconnected'].includes(sort.key)
+    || (noteRates && ['visits', 'clicks'].includes(sort.key)))
     ? cohort?.[sort.key]?.ranked_ids : null;
   const ranks = ranked ? new Map(ranked.map((id, index) => [String(id), index])) : null;
   return notes.filter((note) => note.title.toLowerCase().includes(query))
@@ -141,18 +149,17 @@ function renderTable() {
       row.stats ? `${fmt(row.pace.actual)} vs ${fmt(row.pace.typical)} at ${row.pace.age}`
         : loading ? 'Comparing…' : analyzed ? 'Unavailable' : ''));
     const rateLabel = (key) => row.rate_status?.[key] === 'small_sample' ? 'Small sample' : 'Unavailable';
-    for (const [count, key] of [
-      [row.likes, 'likeRate'], [row.replies, 'replyRate'],
-      [row.restacks, 'restackRate'], [row.shares, 'shareRate'],
-    ]) cell(tr, metric(row.stats ? fmt(count) : '—',
-      row.stats ? row[key] == null ? rateLabel(key) : `${row[key].toFixed(1)} / 1k` : ''));
+    for (const [countKey, rateKey] of Object.entries(noteRateFields)) {
+      const count = row[countKey], rate = row[rateKey];
+      const value = noteRates ? rate == null ? '—' : rate.toFixed(1) : fmt(count);
+      const detail = !row.stats ? '' : noteRates
+        ? rate == null ? rateLabel(rateKey) : `${fmt(count)} total`
+        : rate == null ? rateLabel(rateKey) : `${rate.toFixed(1)} / 1k`;
+      cell(tr, metric(value, detail));
+    }
     const supporting = (key, text) => row.stats
       ? row[key] == null ? rateLabel(key) : text
       : '';
-    cell(tr, metric(row.visitRate == null ? '—' : row.visitRate.toFixed(1),
-      supporting('visitRate', row.visits == null ? '' : `${fmt(row.visits)} visits`)));
-    cell(tr, metric(row.clickRate == null ? '—' : row.clickRate.toFixed(1),
-      supporting('clickRate', row.clicks == null ? '' : `${fmt(row.clicks)} clicks`)));
     cell(tr, metric(row.unconnected == null ? '—' : pct(row.unconnected),
       supporting('unconnected', `${fmt(row.unconnectedCount)} of ${fmt(row.audienceCount)} people`)));
     body.append(tr);
@@ -305,6 +312,11 @@ export function updateComparedNote(stats) {
 
 export function setupNotesComparison() {
   setupNotesMap(retryNotesComparison);
+  setupOutcomeMode('note-outcome-mode', (rates) => {
+    noteRates = rates;
+    visibleCount = PAGE_SIZE;
+    renderTable();
+  });
   $('note-compare-more').addEventListener('click', () => {
     visibleCount += PAGE_SIZE;
     renderTable();

@@ -43,49 +43,6 @@
 .period-change, .period-definition { font-size: var(--text-sm); line-height: 1.45; }
 .period-change { margin-top: var(--space-1); color: var(--green-strong); font-weight: 600; }
 .period-definition { margin-top: var(--space-2); color: var(--muted); }
-.editorial-board-label { margin-bottom: var(--space-3); }
-.editorial-board-controls, .editorial-ranking-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2) var(--space-4);
-  flex-wrap: wrap;
-  padding-bottom: var(--space-3);
-}
-.editorial-board-controls .segment-row { margin: 0; }
-.editorial-board-controls .panel-meta { color: var(--muted); margin: 0; }
-.editorial-ranking-controls { padding-top: var(--space-2); border-top: 1px solid var(--line); }
-.editorial-ranking-controls[hidden] { display: none; }
-.editorial-outcomes { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.editorial-outcomes button {
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--muted);
-  padding: 8px 10px;
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.editorial-outcomes button:hover, .editorial-outcomes button.active { background: var(--green-soft); color: var(--green-strong); }
-.editorial-outcomes button.active { font-weight: 700; }
-.editorial-board-scroll { max-height: 670px; }
-.editorial-board-table { min-width: 0; table-layout: fixed; }
-.editorial-board-table th:first-child { width: 54%; }
-.editorial-board-table th:nth-child(2) { width: 22%; }
-.editorial-board-table th:nth-child(3) { width: 24%; text-align: right; }
-.editorial-board-table :is(th, td) { white-space: normal; overflow-wrap: anywhere; }
-.editorial-board-table .sort-header { white-space: normal; }
-.editorial-board-table .sort-header[hidden] { display: none; }
-.editorial-board-table td { vertical-align: middle; }
-.editorial-board-table td:nth-child(n+3) { text-align: right; }
-.editorial-title-cell, .editorial-cell { display: grid; gap: 4px; }
-.editorial-title-cell a { color: var(--green); font-weight: 700; text-decoration: none; }
-.editorial-title-cell a:hover { text-decoration: underline; }
-.editorial-title-cell small, .editorial-cell small { color: #829388; font-size: 10px; }
-.editorial-cell strong { font-size: 14px; font-variant-numeric: tabular-nums; }
-.editorial-more { display: block; margin: 14px auto 0; }
-.editorial-more[hidden] { display: none; }
 @media (max-width: 1000px) {
   .editorial-summary { grid-template-columns: 1fr; }
   .editorial-secondary { border-right: 0; }

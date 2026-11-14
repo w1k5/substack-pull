@@ -33,6 +33,7 @@ def create_note_draft(
     text: str, *, apply: bool = False, config_path: Path = Path(DEFAULT_CONFIG),
     directory: str | None = None, timezone_name: str | None = None,
     timeout: float = 30.0, days: int = 90, minimum_spacing: int = 3,
+    export_runway: bool = True,
 ) -> dict[str, Any]:
     """Preview or create a text draft, then verify the remote and local result."""
     text = normalize_draft_text(text)
@@ -81,7 +82,7 @@ def create_note_draft(
     try:
         summary = PrivateNotesSync(api, output_dir, zone_name=zone_name).sync(
             days=days,
-            minimum_spacing=minimum_spacing,
+            minimum_spacing=minimum_spacing, export_runway=export_runway,
         )
     except PrivateNotesError as exc:
         raise PrivateNotesError(
@@ -129,9 +130,10 @@ def create_note_draft(
             "local_markdown": str(
                 (output_dir / "note-drafts" / f"{created_id}.md").resolve()
             ),
-            "runway_file": summary["runway_file"],
         }
     )
+    if "runway_file" in summary:
+        preview["runway_file"] = summary["runway_file"]
     return preview
 
 
@@ -252,6 +254,7 @@ def schedule_note(
     config_path: Path = Path(DEFAULT_CONFIG), directory: str | None = None,
     timezone_name: str | None = None, timeout: float = 30.0,
     days: int = 90, minimum_spacing: int = 3,
+    export_runway: bool = True,
 ) -> dict[str, Any]:
     """Preview or change a Note's schedule, preserving its body and attachments."""
     config_path = Path(config_path).expanduser().resolve()
@@ -285,7 +288,7 @@ def schedule_note(
     api.patch_json(path, schedule_payload(note, scheduled_at))
     summary = PrivateNotesSync(api, output_dir, zone_name=zone_name).sync(
         days=days,
-        minimum_spacing=minimum_spacing,
+        minimum_spacing=minimum_spacing, export_runway=export_runway,
     )
     refreshed = next(
         (
@@ -306,10 +309,11 @@ def schedule_note(
         {
             "applied": True,
             "verified_scheduled_at": actual_trigger,
-            "runway_file": summary["runway_file"],
         }
     )
     preview.pop("next_step", None)
+    if "runway_file" in summary:
+        preview["runway_file"] = summary["runway_file"]
     return preview
 
 

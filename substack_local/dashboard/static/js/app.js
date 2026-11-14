@@ -13,7 +13,7 @@ import { renderBriefing, renderGrowth } from './views/publication.js';
 import { renderDiscoveryInsight } from './views/subscriber-attribution.js';
 import { renderLatest } from './views/latest.js';
 import { createTables } from './views/tables.js';
-import { renderEditorialOverview, createLeaderboard } from './views/editorial.js';
+import { renderEditorialOverview } from './views/editorial.js';
 import { readComparison } from './stream.js';
 
 let data;
@@ -30,13 +30,6 @@ let latestData = null;
 let latestLoading = false;
 let latestError = null;
 let latestRequest = 0;
-let leaderboardNotes = null;
-let leaderboardNotesDays = null;
-let leaderboardNotesProgress = null;
-let leaderboardNotesStale = false;
-let leaderboardNotesLoading = false;
-let leaderboardNotesError = '';
-let leaderboardNotesRequest = 0;
 
 const updatedLabel = (snapshot) =>
   `Updated ${new Date(snapshot.refreshed_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
@@ -54,7 +47,7 @@ function currentRoute() {
   if (/^\/posts\/\d+$/.test(path)) return { view: 'post-detail', id: path.split('/')[2] };
   if (path === '/notes/compare') return { view: 'notes' };
   if (/^\/notes\/\d+$/.test(path)) return { view: 'notes', id: path.split('/')[2] };
-  if (['/posts', '/notes', '/planner', '/leaderboard'].includes(path))
+  if (['/posts', '/notes', '/planner'].includes(path))
     return { view: path.slice(1) };
   return { view: 'briefing' };
 }
@@ -68,7 +61,7 @@ function renderRoute() {
   $('refresh').hidden = route.view === 'post-detail' || localView(route.view);
   $('updated').hidden = route.view === 'post-detail' || localView(route.view);
   document.querySelector('.top-search').hidden = localView(route.view);
-  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
+  for (const view of ['briefing', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
     $(`view-${view}`).hidden = view !== route.view;
   const primary = route.view === 'post-detail' ? 'posts' : route.view;
   document.querySelectorAll('.side-link').forEach((link) => {
@@ -78,7 +71,7 @@ function renderRoute() {
     else link.removeAttribute('aria-current');
   });
   const titles = {
-    briefing: 'Briefing', leaderboard: 'Leaderboard',
+    briefing: 'Briefing',
     posts: 'Posts', discovery: 'Discovery',
     notes: 'Notes', planner: 'Note planner', 'post-detail': 'Post story',
   };
@@ -91,14 +84,6 @@ function renderRoute() {
     renderEditorialOverview(data, latestData);
     renderLatest({ data: latestData, loading: latestLoading, error: latestError });
   }
-  if (route.view === 'leaderboard') leaderboard.render({
-    data, notes: leaderboardNotes, notesLoading: leaderboardNotesLoading,
-    notesError: leaderboardNotesError, notesProgress: leaderboardNotesProgress,
-    portfolio: postPortfolio, portfolioLoading: postPortfolioLoading,
-    portfolioProgress: postPortfolioProgress,
-  });
-  if (route.view === 'leaderboard' && leaderboardNotesStale) loadLeaderboardNotes();
-  if (route.view === 'leaderboard' && postPortfolioStale) loadPostPortfolio();
   if (route.view === 'posts') {
     tables.renderPosts();
     loadPostPortfolio();
@@ -245,21 +230,8 @@ async function load(force = false) {
       postPortfolioProgress = null;
       postPortfolioError = null;
       postPortfolioLoading = false;
-      leaderboardNotesStale = true;
-      leaderboardNotesProgress = null;
-      leaderboardNotesRequest++;
-      leaderboardNotesLoading = false;
     }
     data = payload;
-    if (priorData && priorData.range.days !== payload.range.days) {
-      leaderboardNotes = null;
-      leaderboardNotesDays = null;
-      leaderboardNotesProgress = null;
-      leaderboardNotesStale = false;
-      leaderboardNotesRequest++;
-      leaderboardNotesLoading = false;
-      leaderboardNotesError = '';
-    }
     activePostId = undefined;
     tables.resetPages();
     // Charts measure their container during render, so reveal the shell first.
@@ -335,8 +307,7 @@ async function loadPostPortfolio(force = false) {
       if (request !== postPortfolioRequest) return;
       postPortfolioProgress = { considered: partial.considered, target: partial.target };
       if (currentRoute().view === 'posts') updatePostPortfolioProgress(postPortfolioProgress);
-      if (currentRoute().view === 'leaderboard') leaderboard.progress({
-        portfolioProgress: postPortfolioProgress });
+
     });
     if (request !== postPortfolioRequest) return;
     postPortfolio = payload;
@@ -350,51 +321,13 @@ async function loadPostPortfolio(force = false) {
       postPortfolioLoading = false;
       postPortfolioProgress = null;
       if (currentRoute().view === 'posts') tables.renderPosts();
-      if (currentRoute().view === 'leaderboard') leaderboard.render({
-        portfolio: postPortfolio, portfolioLoading: false,
-        portfolioProgress: null,
-      });
-    }
-  }
-}
 
-async function loadLeaderboardNotes() {
-  if (!data || leaderboardNotesLoading
-      || (leaderboardNotes && leaderboardNotesDays === data.range.days && !leaderboardNotesStale)) return;
-  const days = data.range.days;
-  const request = ++leaderboardNotesRequest;
-  if (leaderboardNotesDays !== days) leaderboardNotes = null;
-  leaderboardNotesDays = days;
-  leaderboardNotesProgress = null;
-  leaderboardNotesLoading = true;
-  leaderboardNotesError = '';
-  leaderboard.render({ notes: leaderboardNotes, notesLoading: true,
-    notesProgress: null, notesError: '' });
-  try {
-    const response = await fetch('/api/note-comparison?days=' + days + '&stream=1', { cache: 'no-store' });
-    const result = await readComparison(response, (partial) => {
-      if (request !== leaderboardNotesRequest) return;
-      leaderboardNotesProgress = { considered: partial.considered, total: partial.total };
-      leaderboard.progress({ notesProgress: leaderboardNotesProgress });
-    });
-    if (request !== leaderboardNotesRequest) return;
-    leaderboardNotes = result;
-    leaderboardNotesStale = false;
-  } catch (error) {
-    if (request !== leaderboardNotesRequest) return;
-    leaderboardNotesError = error.message;
-    leaderboardNotesStale = false;
-  } finally {
-    if (request === leaderboardNotesRequest) {
-      leaderboardNotesLoading = false;
-      leaderboardNotesProgress = null;
-      leaderboard.render({ notes: leaderboardNotes, notesLoading: false,
-        notesProgress: null, notesError: leaderboardNotesError });
     }
   }
 }
 
 // Old section links open their corresponding views after an upgrade.
+if (location.pathname === '/leaderboard') history.replaceState({}, '', '/posts');
 if (location.pathname === '/notes/compare') history.replaceState({}, '', '/notes');
 if (location.pathname === '/insights') history.replaceState({}, '', '/');
 if (location.pathname === '/local-data') history.replaceState({}, '', '/');
@@ -406,10 +339,6 @@ const tables = createTables({
   getPortfolio: () => ({ data: postPortfolio, progress: postPortfolioProgress,
     error: postPortfolioError, loading: postPortfolioLoading }),
   navigate,
-});
-const leaderboard = createLeaderboard({
-  needNotes: loadLeaderboardNotes,
-  needPostComparison: loadPostPortfolio,
 });
 setupNotesComparison();
 setupPostPortfolio();
@@ -453,7 +382,6 @@ $('global-search').addEventListener('input', () => {
   tables.resetPostPage();
   if (data) {
     tables.renderPosts();
-    if (currentRoute().view === 'leaderboard') leaderboard.search();
     if (currentRoute().view === 'notes') {
       setNoteMapQuery($('global-search').value);
       filterNotesComparison($('global-search').value);

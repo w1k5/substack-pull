@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Clearview.Windows;
 
 internal sealed partial class ClearviewForm
@@ -7,6 +9,20 @@ internal sealed partial class ClearviewForm
         var menu = new MenuStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
 
         var clearview = new ToolStripMenuItem("&Clearview");
+        var aiConnections = new ToolStripMenuItem("AI &Connections");
+        aiConnections.DropDownItems.Add("Install Claude Extension…", null,
+            async (_, _) => await RunAIConnectionAsync("setup-claude"));
+        aiConnections.DropDownItems.Add("Connect to Codex…", null,
+            async (_, _) => await RunAIConnectionAsync("setup-codex"));
+        aiConnections.DropDownItems.Add(new ToolStripSeparator());
+        aiConnections.DropDownItems.Add("Copy Test Prompt", null,
+            async (_, _) => await RunAIConnectionAsync("test-prompt"));
+        clearview.DropDownItems.Add(aiConnections);
+        clearview.DropDownOpening += (_, _) => aiConnections.Enabled = IsDashboardOpen();
+        var changePublication = new ToolStripMenuItem("Change &Publication…", null,
+            async (_, _) => await ChangePublicationAsync());
+        clearview.DropDownItems.Add(changePublication);
+        clearview.DropDownOpening += (_, _) => changePublication.Enabled = IsDashboardOpen() && !changingPublication;
         clearview.DropDownItems.Add(new ToolStripMenuItem("&Reconnect Substack…", null,
             async (_, _) => await BeginSignInAsync()) {
             ShortcutKeys = Keys.Control | Keys.Shift | Keys.R,
@@ -80,6 +96,35 @@ internal sealed partial class ClearviewForm
 
         menu.Items.AddRange(new ToolStripItem[] { clearview, edit, options, view, help });
         return menu;
+    }
+
+    private async Task RunAIConnectionAsync(string action)
+    {
+        if (engine is null) return;
+        try {
+            using var response = await engine.ConnectionAsync(action);
+            var result = response.RootElement;
+            if (result.TryGetProperty("prompt", out var prompt)) {
+                Clipboard.SetText(prompt.GetString()!);
+                return;
+            }
+            if (result.TryGetProperty("path", out var value)) {
+                var path = value.GetString()!;
+                try {
+                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                } catch (System.ComponentModel.Win32Exception) {
+                    var explorer = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+                    explorer.ArgumentList.Add(Path.GetDirectoryName(path)!);
+                    Process.Start(explorer);
+                }
+                MessageBox.Show(this, "Finish installing in Claude Desktop. If the extension didn’t open, " +
+                    "use Claude’s Install Extension command to select Clearview.mcpb.", "AI Connections");
+            } else if (result.TryGetProperty("message", out var message)) {
+                MessageBox.Show(this, message.GetString(), "AI Connections");
+            }
+        } catch (Exception error) {
+            MessageBox.Show(this, error.Message, "AI Connections");
+        }
     }
 
     private bool IsDashboardOpen() => !signingIn && web.CoreWebView2 is not null &&

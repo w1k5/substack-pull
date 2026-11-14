@@ -19,6 +19,7 @@ from ..pullers.posts.api import host_for, normalize_publication, verify_editor_a
 from ..pullers.posts.common import DEFAULT_OUTPUT
 from ..pullers.posts.storage import read_json, save_config
 from ..paths import data_root
+from .ai_connections import TEST_PROMPT, setup_client
 
 
 def publication_url(value: str) -> str:
@@ -110,12 +111,17 @@ def current_publication(config_path: Path) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("current", "discover", "verify", "configure", "connect"))
+    parser.add_argument("action", choices=("current", "discover", "discover-saved", "switch", "verify", "configure", "connect",
+                                           "setup-codex", "setup-claude", "test-prompt"))
     parser.add_argument("--publication")
     parser.add_argument("--config", type=Path, default=data_root() / ".substack-pull.json")
     args = parser.parse_args()
     try:
-        if args.action == "current":
+        if args.action == "test-prompt":
+            result = {"prompt": TEST_PROMPT}
+        elif args.action in {"setup-codex", "setup-claude"}:
+            result = setup_client(args.action.removeprefix("setup-"), data_root())
+        elif args.action == "current":
             publication = current_publication(args.config)
             result = {
                 "publication": publication,
@@ -123,6 +129,21 @@ def main() -> int:
             }
         elif args.action == "discover":
             result = discover(sys.stdin.read().rstrip("\r\n"), current_publication(args.config))
+        elif args.action in {"discover-saved", "switch"}:
+            current = current_publication(args.config)
+            if not current:
+                raise PullError("Sign in to Substack before changing publications.")
+            store = KeychainStore()
+            token = store.get(host_for(current))
+            if args.action == "discover-saved":
+                result = discover(token, current)
+            else:
+                if not args.publication:
+                    raise PullError("Choose a publication.")
+                result = verify(args.publication, token)
+                if result["account"] != host_for(current):
+                    store.save(result["account"], token)
+                configure(args.config, result["publication"])
         elif args.action in {"verify", "connect"}:
             if not args.publication:
                 raise PullError("Enter your publication address.")

@@ -514,6 +514,18 @@ class RunwayTests(unittest.TestCase):
 
 
 class PrivateSyncTests(unittest.TestCase):
+    def test_sync_without_export_saves_backups_without_loading_template(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            engine = PrivateNotesSync(FakeApi([[private_note(10, "Draft")]]), root,
+                                      zone_name="America/New_York")
+            with unittest.mock.patch("substack_local.pullers.private_notes.sync.write_runway",
+                                     side_effect=AssertionError("HTML export should be skipped")):
+                result = engine.sync(export_runway=False)
+            self.assertTrue((root / "note-drafts" / "10.json").is_file())
+            self.assertTrue((root / "notes.md").is_file())
+            self.assertNotIn("runway_file", result)
+
     def test_sync_writes_categories_overview_state_and_runway(self):
         notes = [
             private_note(10, "Draft"),

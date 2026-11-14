@@ -36,7 +36,6 @@
         <div class="side-label">YOUR PUBLICATION</div>
         <nav aria-label="Analytics views">
           <a class="side-link active" data-route href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Briefing</a>
-          <a class="side-link" data-route href="/leaderboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11h4v9M10 20V4h4v16M16 20v-7h4v7M3 20h18"/></svg>Leaderboard</a>
           <a class="side-link" data-route href="/posts"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Posts</a>
           <a class="side-link" data-route href="/discovery"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>Discovery</a>
           <a class="side-link" data-route href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5"/></svg>Notes</a>
@@ -94,7 +93,7 @@
             <div id="editorial-highlights"></div>
           </section>
           <section class="latest-section" aria-labelledby="latest-title">
-            <div class="section-heading"><h2 id="latest-title">Latest writing</h2><a data-route href="/leaderboard">Browse rankings →</a></div>
+            <div class="section-heading"><h2 id="latest-title">Latest writing</h2></div>
             <div id="latest-content" aria-live="polite"></div>
           </section>
           <div class="briefing-section-heading">
@@ -153,49 +152,6 @@
               </div>
             </dl>
           </section>
-          </section>
-          <section class="view" id="view-leaderboard" aria-labelledby="leaderboard-title" hidden>
-            <div class="hero"><div>
-              <h1 id="leaderboard-title">Leaderboard</h1></div></div>
-            <section class="panel editorial-board" aria-label="Rank published writing">
-              <div class="eyebrow editorial-board-label">PERFORMANCE RANKINGS</div>
-              <div class="editorial-board-controls">
-                <div class="segment-row" id="leaderboard-types" role="group" aria-label="Content type">
-                  <button type="button" class="segment active" data-board-type="posts" aria-pressed="true">Posts</button>
-                  <button type="button" class="segment" data-board-type="notes" aria-pressed="false">Notes</button>
-                  <button type="button" class="segment" data-board-type="all" aria-pressed="false">All writing</button>
-                </div>
-                <span id="leaderboard-scope" class="panel-meta"></span>
-              </div>
-              <div class="editorial-ranking-controls" id="leaderboard-ranking-controls">
-              <div class="editorial-outcomes" role="group" aria-label="Rank by outcome">
-                <button type="button" data-board-sort="reach">Reach</button>
-                <button type="button" data-board-sort="growth">Signups</button>
-                <button type="button" data-board-sort="likes">Likes</button>
-                <button type="button" data-board-sort="discussion">Comments / replies</button>
-                <button type="button" data-board-sort="restacks">Restacks</button>
-                <button type="button" data-board-sort="shares">Shares</button>
-                <button type="button" data-board-sort="relative">First week vs peers</button>
-              </div>
-              <button type="button" class="segment" id="leaderboard-rate-toggle" aria-pressed="false">Rank by rate</button>
-              </div>
-              <div id="leaderboard-loading"></div>
-              <div class="table-scroll editorial-board-scroll">
-                <table class="editorial-board-table">
-                  <thead><tr>
-                    <th><button type="button" class="sort-header" data-board-sort="title">Writing <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
-                    <th><button type="button" class="sort-header" data-board-sort="date">Published <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
-                    <th aria-sort="descending">
-                      <button type="button" class="sort-header" data-board-sort="metric"><span id="leaderboard-result-label">Signups</span> <span class="sort-arrow" aria-hidden="true">↓</span></button>
-                      <span id="leaderboard-result-static" hidden>Reach</span>
-                    </th>
-                  </tr></thead>
-                  <tbody id="leaderboard-rows"></tbody>
-                </table>
-              </div>
-              <button type="button" class="refresh editorial-more" id="leaderboard-more" hidden>Show more</button>
-              <details class="method-note"><summary>How rankings work</summary><p id="leaderboard-explainer"></p><p>Notes compare with Substack's typical Note at the same age. Eligible posts compare first-week views with a cohort median of the same post type and audience.</p></details>
-            </section>
           </section>
           <section class="view" id="view-discovery" aria-labelledby="discovery-title" hidden>
             <div class="hero">
@@ -341,7 +297,13 @@
                 <h2>All Posts</h2>
                 <p id="post-table-count" class="note-compare-count"></p>
               </div>
-              <button type="button" class="refresh" id="export-posts" disabled>Export CSV</button>
+              <div class="table-toolbar outcome-controls">
+                <div class="segment-row" id="post-outcome-mode" role="group" aria-label="Display outcomes as totals or rates">
+                  <button type="button" class="segment active" data-mode="total" aria-pressed="true">Totals</button>
+                  <button type="button" class="segment" data-mode="rate" aria-pressed="false">Per 1,000 views</button>
+                </div>
+                <button type="button" class="refresh" id="export-posts" disabled>Export CSV</button>
+              </div>
             </div>
             <p class="table-scroll-hint">Sort any outcome to find the posts that stood out.</p>
             <div class="table-scroll">
@@ -362,7 +324,7 @@
               </table>
             </div>
             <div id="post-pagination" class="table-pagination"></div>
-            <details class="method-note"><summary>About these figures</summary><p>All six outcomes are lifetime totals. Shares and restacks are distinct metrics. Sort a column to compare Posts by that outcome; open a Post for rates, timing, and sources.</p></details>
+            <details class="method-note"><summary>About these figures</summary><p>Views and actions are lifetime figures. Rates use views and require at least 1,000 views. Shares and restacks are distinct metrics. Select a column heading to sort.</p></details>
           </section>
           </section>
           <section class="view" id="view-notes" aria-labelledby="notes-title" hidden>
@@ -422,7 +384,13 @@
                   <h2 id="note-comparison-title">All Notes</h2>
                   <p id="note-compare-count" class="note-compare-count"></p>
                 </div>
-                <button type="button" class="refresh" id="note-compare-export" disabled>Export CSV</button>
+                <div class="table-toolbar outcome-controls">
+                  <div class="segment-row" id="note-outcome-mode" role="group" aria-label="Display outcomes as totals or rates">
+                    <button type="button" class="segment active" data-mode="total" aria-pressed="true">Totals</button>
+                    <button type="button" class="segment" data-mode="rate" aria-pressed="false">Per 1,000 impressions</button>
+                  </div>
+                  <button type="button" class="refresh" id="note-compare-export" disabled>Export CSV</button>
+                </div>
               </div>
               <p id="note-compare-guide" class="note-compare-guide"></p>
               <p id="note-compare-empty" class="empty-state" hidden></p>
@@ -436,8 +404,8 @@
                       <th><button type="button" class="sort-header" data-note-sort="replies">Replies <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="restacks">Restacks <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="shares">Shares <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
-                      <th><button type="button" class="sort-header" data-note-sort="visits">Profile visits / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
-                      <th><button type="button" class="sort-header" data-note-sort="clicks">Link clicks / 1k <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="visits">Profile visits <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
+                      <th><button type="button" class="sort-header" data-note-sort="clicks">Link clicks <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                       <th><button type="button" class="sort-header" data-note-sort="unconnected">Unconnected audience <span class="sort-arrow" aria-hidden="true">↕</span></button></th>
                     </tr></thead>
                     <tbody id="note-compare-rows"></tbody>

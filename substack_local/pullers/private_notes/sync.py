@@ -41,7 +41,8 @@ class PrivateNotesSync:
             raise PrivateNotesError(f"Invalid Notes state in {self.state_path}.")
         return state
 
-    def sync(self, *, days: int = 90, minimum_spacing: int = 3) -> dict[str, Any]:
+    def sync(self, *, days: int = 90, minimum_spacing: int = 3,
+             export_runway: bool = True) -> dict[str, Any]:
         notes = paginate_private_notes(self.api)
         state = self._load_state()
         entries: dict[str, dict[str, Any]] = state["items"]
@@ -109,15 +110,7 @@ class PrivateNotesSync:
             overview_path,
             notes_overview(drafts, scheduled, synced_at, self.zone),
         )
-        runway_path, runway = write_runway(
-            self.output_dir,
-            notes,
-            start=datetime.now(self.zone).date(),
-            days=days,
-            zone_name=self.zone_name,
-            minimum_spacing=minimum_spacing,
-        )
-        return {
+        result = {
             "directory": str(self.output_dir.resolve()),
             "synced_at": synced_at,
             "counts": {
@@ -128,9 +121,19 @@ class PrivateNotesSync:
             "unchanged": unchanged,
             "missing_local_preserved": missing,
             "overview_file": str(overview_path.resolve()),
-            "runway_file": str(runway_path),
-            "runway": {
+        }
+        if export_runway:
+            runway_path, runway = write_runway(
+                self.output_dir,
+                notes,
+                start=datetime.now(self.zone).date(),
+                days=days,
+                zone_name=self.zone_name,
+                minimum_spacing=minimum_spacing,
+            )
+            result["runway_file"] = str(runway_path)
+            result["runway"] = {
                 key: runway[key]
                 for key in ("start", "end", "days", "timezone", "scheduledInWindow")
-            },
-        }
+            }
+        return result

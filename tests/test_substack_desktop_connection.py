@@ -16,6 +16,25 @@ from substack_local.paths import data_root
 
 
 class DesktopConnectionTests(unittest.TestCase):
+    def test_windows_switch_verifies_the_target_with_the_saved_session(self):
+        from substack_local.desktop.connection import main
+        with TemporaryDirectory() as folder:
+            config = Path(folder) / "settings.json"
+            configure(config, "first.substack.com")
+            with patch("sys.argv", ["connection", "switch", "--publication", "second.substack.com",
+                                    "--config", str(config)]), \
+                 patch("sys.stdout", new_callable=StringIO), \
+                 patch("substack_local.desktop.connection.KeychainStore") as store, \
+                 patch("substack_local.desktop.connection.verify") as verify_session:
+                store.return_value.get.return_value = "saved-session"
+                verify_session.return_value = {"account": "second.substack.com",
+                                               "publication": "https://second.substack.com"}
+                self.assertEqual(main(), 0)
+                store.return_value.get.assert_called_once_with("first.substack.com")
+                verify_session.assert_called_once_with("second.substack.com", "saved-session")
+                store.return_value.save.assert_called_once_with("second.substack.com", "saved-session")
+                self.assertEqual(current_publication(config), "https://second.substack.com")
+
     @patch("substack_local.desktop.connection.ApiClient")
     def test_discovery_selects_one_eligible_publication(self, client):
         client.return_value.get_json.return_value = {"publicationUsers": [

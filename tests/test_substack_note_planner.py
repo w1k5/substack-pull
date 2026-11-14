@@ -56,7 +56,7 @@ class NotePlannerSnapshotTests(unittest.TestCase):
             self.assertTrue(started.wait(5))
             second = pool.submit(planner.refresh)
             self.assertIs(first.result(5), second.result(5))
-        notes.PrivateNotesSync.return_value.sync.assert_called_once_with(days=90, minimum_spacing=3)
+        notes.PrivateNotesSync.return_value.sync.assert_called_once_with(days=90, minimum_spacing=3, export_runway=False)
         planner.snapshot.assert_called_once_with(days=90, spacing=3)
 
     def test_drafts_include_complete_text_for_selection(self):
