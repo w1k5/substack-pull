@@ -28,20 +28,24 @@ class PostIndexTests(TestCase):
                       "stats": {"views": 2000, "shares": 5}},
                      {"id": 102, "title": "Two", "post_date": "2026-01-02",
                       "reaction_count": 4, "comment_count": 2, "stats": {"views": 1000}}]
-        archive = ArchiveApi([{"posts": [{"id": 101, "restacks": 7},
-                                         {"id": 102, "restacks": 0}], "total": 2}])
+        archive = ArchiveApi([
+            {"posts": [{"id": 101, "restacks": 7}], "nextCursor": "next:page"},
+            {"posts": [{"id": 102, "restacks": 0}], "nextCursor": None},
+        ])
         with patch("substack_local.analytics.publication.paginate_posts", return_value=published), \
              patch("substack_local.analytics.publication.ApiClient", return_value=archive):
             rows = fetch_posts(type("Auth", (), {"base_url": "https://example.substack.com"})())
         self.assertEqual((rows[0]["likes"], rows[0]["comments"], rows[0]["restacks"], rows[0]["shares"]),
                          (8, 3, 7, 5))
         self.assertEqual(rows[1]["restacks"], 0)
-        self.assertEqual(len(archive.calls), 1)
-        self.assertIn("/api/v1/archive?", archive.calls[0])
+        self.assertEqual(archive.calls, [
+            "/api/v1/archive?sort=new&search=&limit=25",
+            "/api/v1/archive?sort=new&search=&limit=25&cursor=next%3Apage",
+        ])
 
     def test_missing_archive_leaves_restacks_unknown(self):
         published = [{"id": 101, "reaction_count": 9, "comment_count": 3, "stats": {"shares": 5}}]
-        archive = ArchiveApi([{"posts": [], "total": 0}])
+        archive = ArchiveApi([{"posts": [], "nextCursor": None}])
         with patch("substack_local.analytics.publication.paginate_posts", return_value=published), \
              patch("substack_local.analytics.publication.ApiClient", return_value=archive):
             row = fetch_posts(type("Auth", (), {"base_url": "https://example.substack.com"})())[0]

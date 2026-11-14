@@ -18,7 +18,7 @@ export function renderBriefing(data, navigate) {
   }
   $('briefing-period').textContent =
     `${date(data.range.start)} – ${date(data.range.end)} · compared with the preceding ${data.range.days} days · today may be incomplete`;
-  $('period').textContent = `${data.range.days > 90 ? 'Weekly' : 'Daily'} totals`;
+  $('period').textContent = `${data.activity_period.bucket_days === 7 ? 'Weekly' : 'Daily'} totals`;
   $('event-detail').hidden = true;
   renderPublicationTimeline(data, navigate);
 }
@@ -26,14 +26,7 @@ export function renderBriefing(data, navigate) {
 export function renderGrowth(data) {
   const root = $('growth-list');
   root.replaceChildren();
-  const all = (data.growth_sources || []).filter((row) => Number(row.subscribers) > 0);
-  const parents = all.filter((row) => !row.parent)
-    .sort((a, b) => Number(b.subscribers) - Number(a.subscribers));
-  const rows = parents.flatMap((parent) => [
-    parent,
-    ...all.filter((child) => child.parent === parent.name)
-      .sort((a, b) => Number(b.subscribers) - Number(a.subscribers)),
-  ]);
+  const rows = data.ranked_growth_sources || [];
   if (!rows.length) {
     root.append(emptyMessage('No subscriber sources were returned for this period.'));
     return;

@@ -20,11 +20,29 @@
 .editorial-finding-figures dd { margin: 0; color: var(--green-strong); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .editorial-finding-yield { border-top: 1px solid var(--line); padding-top: 7px; }
 .editorial-finding-yield strong { color: var(--ink); }
-.overview-more { margin: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: #fff; }
-.overview-more summary { padding: 11px 16px; color: var(--green); font-size: 11px; font-weight: 700; cursor: pointer; }
-.overview-more .metrics { gap: 0; margin: 0; border-top: 1px solid var(--line); grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.overview-more .metric { min-height: 100px; padding: 15px 16px; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; }
-.overview-more .metric:last-child { border-right: 0; }
+.period-figures h2 { margin: 0 0 var(--space-3); font-size: var(--text-section); }
+.period-figures dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+.period-figures dl > div + div { border-inline-start: 1px solid var(--line); padding-inline-start: var(--space-4); }
+.period-figures dt { color: var(--green-strong); font-size: var(--text-sm); font-weight: 700; }
+.period-figures dd { margin-inline-start: 0; }
+.period-value {
+  margin-top: var(--space-1);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+}
+.period-change, .period-definition { font-size: var(--text-sm); line-height: 1.45; }
+.period-change { margin-top: var(--space-1); color: var(--green-strong); font-weight: 600; }
+.period-definition { margin-top: var(--space-2); color: var(--muted); }
 .editorial-board-label { margin-bottom: var(--space-3); }
 .editorial-board-controls, .editorial-ranking-controls {
   display: flex;
@@ -77,7 +95,12 @@
 @media (max-width: 720px) {
   #editorial-pulse strong { font-size: 26px; }
   .editorial-primary, .editorial-secondary { min-height: 122px; padding: 15px; }
-  .overview-more .metrics { grid-template-columns: 1fr; }
-  .overview-more .metric { border-right: 0; border-bottom: 1px solid var(--line); }
-  .overview-more .metric:last-child { border-bottom: 0; }
+}
+@media (max-width: 820px) {
+  .period-figures dl { grid-template-columns: 1fr; gap: var(--space-3); }
+  .period-figures dl > div + div {
+    border-inline-start: 0;
+    border-top: 1px solid var(--line);
+    padding: var(--space-3) 0 0;
+  }
 }

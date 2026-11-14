@@ -16,6 +16,7 @@ from .cache import (
 from .client import ApiClient, CONFIG, ROOT, KeychainStore, PullError, host_for, load_config
 from .derived import dashboard_metrics, number, post_detail_metrics, post_index_metrics
 from .history import AnalyticsHistory
+from .leaderboard import note_rows
 from .note import note_stats
 from .note_comparison import note_comparison_metrics, summarize_note_cohort
 from .note_shares import post_note_shares, public_note_preview, public_note_text
@@ -23,7 +24,7 @@ from .post import fetch_post, fetch_post_week, first_week_summary
 from .post_comparison import summarize_post_portfolio
 from .publication import fetch_dashboard, fetch_posts, fetch_recent_notes
 
-ALLOWED_DAYS = {7, 30, 90, 180, 365}
+ALLOWED_DAYS = {7, 14, 30, 90, 180, 365}
 MEMORY_ENTRY_LIMIT = 64
 COMPARISON_TTL_SECONDS = 300
 
@@ -112,7 +113,7 @@ class AnalyticsService:
 
     def dashboard(self, days: int = 90, *, refresh: bool = False) -> dict:
         if days not in ALLOWED_DAYS:
-            raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
+            raise ValueError("Choose 7, 14, 30, 90, 180, or 365 days.")
         with self.lock:
             if refresh:
                 self.note_cohort_cache.clear()
@@ -471,7 +472,7 @@ class AnalyticsService:
                     on_progress: Callable[[dict], None] | None = None) -> dict:
         """Compare published Notes in one period, sharing the same result with UI and MCP."""
         if days not in ALLOWED_DAYS:
-            raise ValueError("Choose 7, 30, 90, 180, or 365 days.")
+            raise ValueError("Choose 7, 14, 30, 90, 180, or 365 days.")
         cache_key = (days, _today())
         with self.lock:
             _prune_memory(self.note_cohort_cache, COMPARISON_TTL_SECONDS)
@@ -501,6 +502,7 @@ class AnalyticsService:
                              "lenses": summarize_note_cohort(rows)})
         result = {"days": days, "total": len(events), "considered": len(events), "rows": rows,
                   "unavailable_ids": unavailable_ids,
+                  "leaderboard_rows": note_rows(rows),
                   "lenses": summarize_note_cohort(rows)}
         with self.lock:
             if self.note_cohort_generation == generation:

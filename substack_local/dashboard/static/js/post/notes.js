@@ -1,47 +1,20 @@
 import { fmt, pct, loadingIndicator } from '../shared.js';
+import { detailCard, metricGroup } from './detail-card.js';
 
 const notePace = (stats) => stats.comparison?.pace
   || { actual: null, typical: null, age: 'same age', ratio: null, label: '—' };
 
 export function noteReachCard(stats) {
-  const card = document.createElement('div');
-  card.className = 'note-reach-card';
+  const card = detailCard('Note performance');
   const matched = notePace(stats);
-  const heading = document.createElement('div');
-  heading.className = 'note-reach-heading';
-  const title = document.createElement('strong');
-  title.textContent = 'Note performance';
-  heading.append(title);
-  card.append(heading);
   const response = stats.comparison || {};
-  const metricGroup = (title, rows, kind) => {
-    const section = document.createElement('section');
-    section.className = `note-reach-group ${kind}`;
-    const heading = document.createElement('h3');
-    heading.textContent = title;
-    const metrics = document.createElement('div');
-    metrics.className = 'note-reach-metrics';
-    for (const [label, value, context] of rows) {
-      const item = document.createElement('div');
-      const name = document.createElement('span');
-      name.textContent = label;
-      const amount = document.createElement('strong');
-      amount.textContent = value;
-      const detail = document.createElement('small');
-      detail.textContent = context;
-      item.append(name, amount, detail);
-      metrics.append(item);
-    }
-    section.append(heading, metrics);
-    return section;
-  };
   card.append(metricGroup('Reader response', [
     ['Likes', fmt(response.likes), 'Reader reactions'],
     ['Replies', fmt(response.replies), 'Comments on this Note'],
     ['Restacks', fmt(response.restacks), 'Readers who republished it'],
     ['Shares', fmt(response.shares), 'Recorded share actions'],
-  ], 'response'));
-  card.append(metricGroup('Reach and curiosity', [
+  ]));
+  const reach = metricGroup('Reach and curiosity', [
     ['Impressions', fmt(stats.impressions), 'Total to date'],
     [
       `Pace at ${matched.age}`,
@@ -49,7 +22,9 @@ export function noteReachCard(stats) {
       `${fmt(matched.actual)} impressions · typical ${fmt(matched.typical)}`,
     ],
     ['Profile visits', fmt(response.visits), 'From this Note'],
-  ], 'context'));
+  ]);
+  reach.classList.add('context');
+  card.append(reach);
   const breakdown = document.createElement('div');
   breakdown.className = 'note-reach-breakdown';
   for (const [label, items] of [

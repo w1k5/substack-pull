@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from bisect import bisect_right
+from datetime import date, datetime
 import math
 from zoneinfo import ZoneInfo
+
+from .leaderboard import post_rows
 
 ZONE = ZoneInfo("America/New_York")
 
@@ -55,10 +58,80 @@ def post_index_metrics(rows: list[dict]) -> list[dict]:
             count = number(row.get(name))
             rates[f"{name}_per_1k"] = (1000 * count / views if views is not None and views >= 1000
                                         and count is not None and count >= 0 else None)
-        result.append({**row, "publication_day": day, **rates,
+        result.append({**row, "publication_day": day, "meets_view_floor": views is not None and views >= 1000, **rates,
                        "signup_yield": 1000 * signups / views
                        if views is not None and views >= 1000 and signups is not None else None})
     return result
+
+
+def activity_period(period, series):
+    bucket_days = 7 if period.get("days", 0) > 90 else 1
+    last = series[-1] if series else None
+    try:
+        elapsed = (date.fromisoformat(period["end"]) -
+                   date.fromisoformat(last[0].replace("/", "-"))).days if last else None
+    except (KeyError, ValueError, TypeError, AttributeError):
+        elapsed = None
+    return {"bucket_days": bucket_days,
+            "last_bucket_partial": elapsed is not None and 0 <= elapsed < bucket_days}
+
+
+def publication_buckets(events, views, source_dates, bucket_days):
+    """Match events to their published traffic and subscriber chart buckets."""
+    view_dates = []
+    for index, point in enumerate(views):
+        try:
+            view_dates.append((date.fromisoformat(point[0].replace("/", "-")), index))
+        except (IndexError, KeyError, TypeError, ValueError, AttributeError):
+            continue
+    view_dates.sort()
+    starts = [start for start, _ in view_dates]
+    result = []
+    for event in events:
+        try:
+            day = date.fromisoformat(event["day"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        index = bisect_right(starts, day) - 1
+        view_index = (view_dates[index][1]
+                      if index >= 0 and (day - starts[index]).days < bucket_days else None)
+        source_index = bisect_right(source_dates, event["day"]) - 1
+        source_day = source_dates[source_index] if source_index >= 0 else None
+        if bucket_days == 1 and source_day != event["day"]:
+            source_day = None
+        result.append({**event, "view_bucket_index": view_index, "subscriber_bucket_day": source_day})
+    return result
+
+
+def ranked_growth_sources(growth):
+    children = {}
+    parents = []
+    for row in growth:
+        if (number(row.get("subscribers")) or 0) <= 0:
+            continue
+        if row.get("parent"):
+            children.setdefault(row["parent"], []).append(row)
+        else:
+            parents.append(row)
+    def subscribers(row):
+        return number(row.get("subscribers")) or 0
+    return [item for parent in sorted(parents, key=subscribers, reverse=True)
+            for item in [parent, *sorted(children.get(parent.get("name"), []), key=subscribers, reverse=True)]]
+
+
+def discovery_rankings(data, posts):
+    attribution = data.get("notes_source_attribution") or {}
+    known = {
+        "post": {str(row["id"]) for row in posts if row.get("id") is not None},
+        "note": {str(row["id"]) for row in data.get("publication_events") or []
+                 if row.get("type") == "note" and row.get("id") is not None},
+    }
+    return {kind: [
+        {**item, "in_dashboard": str(item.get("id")) in ids}
+        for item in attribution.get("items") or []
+        if item.get("kind") == kind and item.get("ownership") != "outside_label"
+        and (number(item.get("subscribers")) or 0) > 0
+    ][:3] for kind, ids in known.items()}
 
 
 def dashboard_metrics(data: dict) -> dict:
@@ -77,8 +150,23 @@ def dashboard_metrics(data: dict) -> dict:
         signups = (free or 0) + (paid or 0) if free is not None or paid is not None else None
         sources.append({**row, "signups": signups,
                         "signup_rate": signups / users if signups is not None and users and users > 0 else None})
+    posts = post_index_metrics(data.get("posts") or [])
+    period = data.get("range") or {}
+    for post in posts:
+        day = post["publication_day"]
+        post["published_in_period"] = bool(day and period.get("start", "") <= day <= period.get("end", ""))
+    views = data.get("series") or []
+    activity = activity_period(period, views)
+    source_dates = sorted({point[0] for line in data.get("subscriber_source_series") or []
+                           for point in line["points"]})
     result = {**data,
-            "posts": post_index_metrics(data.get("posts") or []),
+            "posts": posts,
+            "publication_events": publication_buckets(data.get("publication_events") or [], views,
+                                                      source_dates, activity["bucket_days"]),
+            "leaderboard_rows": post_rows(posts),
+            "activity_period": activity,
+            "ranked_growth_sources": ranked_growth_sources(growth),
+            "discovery_rankings": discovery_rankings(data, posts),
             "traffic_sources": sources,
             "briefing": {
                 "changes": {key: change(totals.get(key), previous.get(key))
@@ -173,6 +261,7 @@ def post_detail_metrics(post: dict, *, today=None) -> dict:
             "story": {"after_week": after_week, "performance": performance},
             "insights": {
                 "sources": sources, "attributed_signups": attributed,
+                "signup_sources": [row for row in sources if row["attributed_signups"] > 0],
                 "delivered_share": delivered / sent if delivered is not None and sent and sent > 0 else None,
                 "reading_preview_only": bool(depth and not (engagement.get("scroll_depth") or {}).get("full_post")),
                 "reading_shares": {key: (number(depth.get(key)) or 0) / readers if readers and readers > 0 else None

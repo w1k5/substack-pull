@@ -39,9 +39,11 @@ Substack login or OS credential store.
 ## Desktop sign-in prototype
 
 On macOS, run `./substack-desktop` from this checkout. It builds and opens a small
-Clearview app. Enter your `name.substack.com` publication address, select **Connect
-Substack**, and sign in on Substack's page with your usual email code or password. The
-app checks access to that publication, saves the session in macOS Keychain, and opens
+Clearview app. Select **Sign in to Substack** and sign in on Substack's page with
+your usual email code or password. Clearview opens your publication automatically
+if it finds one, or asks you to choose if you manage several. You can enter the
+publication address if discovery fails. Clearview checks editor access, remembers
+your publication for reconnects, saves the session in macOS Keychain, and opens
 the dashboard. The same saved connection is used by the CLI and MCP tools. Use
 **Clearview → Reconnect Substack…** in the Mac menu if the session expires.
 The Mac menu bar also provides the usual Edit, View, Window, and Help menus.
@@ -168,7 +170,7 @@ Use the sidebar to move between these writer-focused views:
 | Notes | Compare Notes in a chart, select two dots, then use the exact-figures table or open a Note for its detailed results. Note reach is compared with a typical Note at the same age. |
 | Note planner | When are Notes scheduled, where is there room, and which unpublished draft should go next? Create drafts and schedule or reschedule Notes from the calendar. |
 
-The [Note planner](http://127.0.0.1:8765/planner) opens from the sidebar. Its calendar
+The [Note planner](http://127.0.0.1:8765/planner) opens from the sidebar. Its 90-day calendar
 and unscheduled draft list use the local Notes backup, so opening it does not contact
 Substack. **Sync Notes** refreshes that backup on demand. Select a date to inspect its
 scheduled Notes, choose a draft, then preview and confirm a future schedule. You can
@@ -177,8 +179,7 @@ room at the selected spacing; those are planning suggestions, not automatic sche
 All Note times use the configured Notes time zone shown on the page. The planner does not
 publish a Note immediately or edit an existing Note's text.
 
-Search posts and Notes from the header. The activity selector offers 7, 30, 90, 180, or
-365 days. It controls publication traffic, discovery, the leaderboard, and the Notes list. Published post
+Search posts and Notes from the header. The activity selector offers 7, 14, 30, 90, or 180 days. It controls publication traffic, discovery, the leaderboard, and the Notes list. Published post
 index metrics and individual Note reach are lifetime totals; the Posts chart also
 offers first-week comparisons. The **Published in selected period** filter narrows
 posts by publication date. The Briefing compares equal-length current
@@ -261,16 +262,16 @@ not causation.
 
 ### Cache and refresh
 
-Open **Local data** in the sidebar to find the storage folders, check when
-backups last synced, search and preview saved Markdown, and create a ZIP with
-an index and relative links. The ZIP is saved in the local `exports/` folder
-and contains writing backups, which can include private drafts.
+On macOS, use the **Clearview** menu to open the data folder, export writing
+backups, or clear the temporary cache. On Windows and in the browser dashboard,
+use **Options**. Exports include an index and relative links. The ZIP is saved in
+the local `exports/` folder and can include private drafts.
 
 Saved measurements live separately in `substack/.analytics-history/` under
 the current publication and session. Clearview saves Note reach at 6, 24, and
 48 hours when those points are available, completed first-week post results,
-and subscriber sources by date range from normal reads. Browse records in
-**Local data** or use the MCP `saved_analytics` tool. The post comparison can
+and subscriber sources by date range from normal reads. Read records using the MCP
+`saved_analytics` tool. The post comparison can
 reuse a saved week after the temporary cache expires. Clearing the temporary
 cache leaves the writing backups and saved measurements in place.
 

@@ -31,13 +31,15 @@ def number(value) -> float | None:
     return result if math.isfinite(result) else None
 
 
-def _value(items: list, title: str) -> float:
-    return next((number(item.get("value")) or 0 for item in items
-                 if str(item.get("title") or "").lower() == title), 0)
+def _value(items: list, title: str) -> float | None:
+    return next((number(item.get("value")) for item in items
+                 if str(item.get("title") or "").lower() == title), None)
 
 
-def _rate(count: float, denominator: float | None) -> float | None:
-    return 1000 * count / denominator if denominator is not None and denominator >= MIN_RATE_SAMPLE else None
+def _rate_status(count, denominator):
+    if count is None or denominator is None:
+        return "unavailable"
+    return "small_sample" if denominator < MIN_RATE_SAMPLE else "measured"
 
 
 def _pace(stats: dict) -> dict:
@@ -77,10 +79,21 @@ def note_comparison_metrics(stats: dict) -> dict:
     replies = _value(interactions, "reply")
     shares = _value(interactions, "share")
     restacks = _value(interactions, "restack")
-    responses = likes + replies + shares + restacks
+    response_counts = (likes, replies, shares, restacks)
+    responses = sum(response_counts) if all(count is not None for count in response_counts) else None
     clicks = _value(interactions, "link click")
-    audience_count = sum(number(item.get("value")) or 0 for item in audience)
+    audience_counts = [number(item.get("value")) for item in audience]
+    audience_count = (sum(audience_counts)
+                      if audience_counts and all(count is not None for count in audience_counts) else None)
     unconnected_count = _value(audience, "unconnected")
+    inputs = {
+        "likeRate": likes, "replyRate": replies, "shareRate": shares, "restackRate": restacks,
+        "visitRate": visits, "responseRate": responses, "clickRate": clicks,
+    }
+    statuses = {key: _rate_status(count, impressions) for key, count in inputs.items()}
+    rates = {key: 1000 * count / impressions if statuses[key] == "measured" else None
+             for key, count in inputs.items()}
+    statuses["unconnected"] = _rate_status(unconnected_count, audience_count)
     return {
         "impressions": impressions,
         "pace": _pace(stats),
@@ -91,16 +104,11 @@ def note_comparison_metrics(stats: dict) -> dict:
         "shares": shares,
         "restacks": restacks,
         "clicks": clicks,
-        "likeRate": _rate(likes, impressions),
-        "replyRate": _rate(replies, impressions),
-        "shareRate": _rate(shares, impressions),
-        "restackRate": _rate(restacks, impressions),
-        "visitRate": _rate(visits, impressions),
-        "responseRate": _rate(responses, impressions),
-        "clickRate": _rate(clicks, impressions),
+        **rates,
+        "rate_status": statuses,
         "audienceCount": audience_count,
         "unconnectedCount": unconnected_count,
-        "unconnected": unconnected_count / audience_count if audience_count >= MIN_RATE_SAMPLE else None,
+        "unconnected": unconnected_count / audience_count if statuses["unconnected"] == "measured" else None,
     }
 
 

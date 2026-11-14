@@ -35,6 +35,12 @@ class FakeApi:
 
 
 class PublicationPeriodTests(TestCase):
+    @patch.object(AnalyticsService, "posts", return_value=[])
+    def test_fourteen_day_period_works_for_publication_and_notes(self, _posts):
+        service = AnalyticsService(api=FakeApi(), note_api=object())
+        self.assertEqual(service.dashboard(14)["range"]["days"], 14)
+        self.assertEqual(service.note_cohort(14)["days"], 14)
+
     @patch("substack_local.analytics.publication.fetch_posts", return_value=[])
     def test_current_and_previous_periods_do_not_overlap(self, _posts):
         api = FakeApi()

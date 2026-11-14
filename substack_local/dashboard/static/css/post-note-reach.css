@@ -112,7 +112,8 @@
   font-size: 10px;
   line-height: 1.4;
 }
-.note-reach-card > a {
+.note-reach-card > a,
+.discovery-post-growth > a {
   color: var(--green);
   font-size: 10px;
   font-weight: 700;

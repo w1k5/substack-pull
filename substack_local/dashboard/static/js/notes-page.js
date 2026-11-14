@@ -1,3 +1,4 @@
+import { detailHeader } from './post/detail-card.js';
 import { $, fmt, date, loadingIndicator } from './shared.js';
 import { loadNoteStats, noteReachCard } from './post/notes.js';
 import { updateComparedNote } from './notes-compare.js';
@@ -16,7 +17,7 @@ export function renderNotesPage(data, selectedId) {
     displayedId = undefined;
     return;
   }
-  if (!dialog.open) dialog.showModal();
+  if (!dialog.open) dialog.show();
   if (selectedId !== displayedId) {
     displayedId = selectedId;
     renderSelectedNote(notes.find((note) => String(note.id) === selectedId), selectedId);
@@ -34,21 +35,9 @@ async function renderSelectedNote(note, selectedId, refresh = false) {
     oldRefresh.disabled = true;
     slot.querySelector('.note-detail-heading').after(pending);
   } else slot.replaceChildren();
-  const heading = document.createElement('div');
-  heading.className = 'note-detail-heading';
-  const title = document.createElement('h2');
-  title.textContent = 'Note';
-  const meta = document.createElement('p');
-  meta.textContent = note?.day ? `Published ${date(note.day)} · lifetime reach` : 'Lifetime reach';
-  const copy = document.createElement('div');
-  copy.append(title, meta);
-  const refreshButton = document.createElement('button');
-  refreshButton.type = 'button';
-  refreshButton.className = 'refresh';
-  refreshButton.textContent = '↻ Refresh Note';
-  refreshButton.disabled = true;
-  refreshButton.addEventListener('click', () => renderSelectedNote(note, selectedId, true));
-  heading.append(copy, refreshButton);
+  const { heading, meta, button: refreshButton } = detailHeader('Note',
+    note?.day ? `Published ${date(note.day)} · lifetime reach` : 'Lifetime reach',
+    () => renderSelectedNote(note, selectedId, true));
   const noteBody = document.createElement('div');
   noteBody.className = 'note-detail-text';
   const excerpt = document.createElement('p');
@@ -98,17 +87,10 @@ async function renderSelectedNote(note, selectedId, refresh = false) {
   }
 }
 
-export function setupNoteDetail(navigate) {
+export function setupNoteDetail(onClose) {
   const dialog = $('note-detail');
   $('note-detail-close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('click', (event) => {
-    const bounds = dialog.getBoundingClientRect();
-    if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right
-      || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
-  });
-  dialog.addEventListener('close', () => {
-    if (/^\/notes\/\d+$/.test(location.pathname)) navigate('/notes');
-  });
+  dialog.addEventListener('close', onClose);
 }
 
 export function clearNotePageStats() {

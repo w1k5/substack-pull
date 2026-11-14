@@ -41,7 +41,6 @@
           <a class="side-link" data-route href="/discovery"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>Discovery</a>
           <a class="side-link" data-route href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5"/></svg>Notes</a>
           <a class="side-link" data-route href="/planner"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h3M8 18h3"/></svg>Note planner</a>
-          <a class="side-link" data-route href="/local-data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/></svg>Local data</a>
         </nav>
         <div class="side-bottom">
           <span class="live-dot"></span> Private · local<br /><small
@@ -61,16 +60,24 @@
               <label for="range">Activity period</label>
               <select id="range">
                 <option value="7">Last 7 days</option>
+                <option value="14">Last 14 days</option>
                 <option value="30" selected>Last 30 days</option>
                 <option value="90">Last 90 days</option>
                 <option value="180">Last 180 days</option>
-                <option value="365">Last 365 days</option>
               </select>
             </div>
             <span id="lifetime-scope" class="badge" hidden>Lifetime post metrics</span>
             <span id="header-spinner" class="spinner spinner-small" aria-hidden="true" hidden></span
             ><span id="updated" role="status" aria-live="polite">Loading publication data…</span
             ><button id="refresh" class="refresh" type="button">↻ Refresh publication</button>
+            <details class="data-options" id="data-options">
+              <summary class="refresh">Options</summary>
+              <div class="data-options-list">
+                <button type="button" data-local-action="open">Open data folder</button>
+                <button type="button" data-local-action="export">Export writing backups</button>
+                <button type="button" data-local-action="clear-cache">Clear temporary cache</button>
+              </div>
+            </details>
           </div>
         </header>
         <div class="content" id="overview">
@@ -123,40 +130,29 @@
             </div>
             <div id="event-detail" class="event-detail" hidden></div>
           </section>
-          <details class="overview-more"><summary>More period figures and definitions</summary>
-          <section class="metrics" aria-label="Publication metrics">
-            <div class="metric">
-              <div class="metric-label">New subscribers
-                <details class="metric-help">
-                  <summary aria-label="Define new subscribers">?</summary>
-                  <p>Substack's subscriber growth attribution for this period. The comparison uses the preceding period of equal length.</p>
-                </details>
+          <section class="panel period-figures" aria-labelledby="period-figures-title">
+            <h2 id="period-figures-title">Period figures</h2>
+            <dl>
+              <div>
+                <dt>New subscribers</dt>
+                <dd class="period-value" id="subscribers">—</dd>
+                <dd class="period-change" id="subscribers-delta"></dd>
+                <dd class="period-definition">Signups credited by Substack during this period.</dd>
               </div>
-              <div class="metric-value" id="subscribers">—</div>
-              <div class="metric-note" id="subscribers-delta">For selected period</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">Publication views
-                <details class="metric-help">
-                  <summary aria-label="Define publication views">?</summary>
-                  <p>Views summed across reported traffic sources, including web, email, and app.</p>
-                </details>
+              <div>
+                <dt>Publication views</dt>
+                <dd class="period-value" id="views">—</dd>
+                <dd class="period-change" id="views-delta"></dd>
+                <dd class="period-definition">Total views across reported sources, including web, email, and app.</dd>
               </div>
-              <div class="metric-value" id="views">—</div>
-              <div class="metric-note" id="views-delta">Across web, email, and app</div>
-            </div>
-            <div class="metric">
-              <div class="metric-label">Visitors
-                <details class="metric-help">
-                  <summary aria-label="Define visitors">?</summary>
-                  <p>The visitor total reported by Substack's growth attribution response.</p>
-                </details>
+              <div>
+                <dt>Visitors</dt>
+                <dd class="period-value" id="visitors">—</dd>
+                <dd class="period-change" id="visitors-delta"></dd>
+                <dd class="period-definition">Visitor count from Substack’s growth report.</dd>
               </div>
-              <div class="metric-value" id="visitors">—</div>
-              <div class="metric-note" id="visitors-delta">Growth attribution total</div>
-            </div>
+            </dl>
           </section>
-          </details>
           </section>
           <section class="view" id="view-leaderboard" aria-labelledby="leaderboard-title" hidden>
             <div class="hero"><div>
@@ -451,51 +447,6 @@
                 <details class="method-note"><summary>About these figures</summary><p>Counts are lifetime totals. Rates need at least 100 impressions; audience share needs at least 100 people. A dash means data is unavailable or the sample is too small. Pace uses Substack’s age-matched typical series. Likes, replies, restacks, and shares measure different reader behaviors; none alone defines a successful Note.</p></details>
               </div>
             </section>
-            <dialog class="panel note-detail-dialog" id="note-detail" aria-label="Selected Note details">
-              <button type="button" class="refresh note-detail-close" id="note-detail-close" aria-label="Close Note details">Close</button>
-              <div id="note-detail-content"></div>
-            </dialog>
-          </section>
-          <section class="view" id="view-local-data" aria-labelledby="local-data-title" hidden>
-            <div class="hero"><div><h1 id="local-data-title">Local data</h1>
-              <p>Find your saved files or make a copy of your writing.</p></div></div>
-            <section class="panel local-data-panel">
-              <div class="segment-row">
-                <button class="refresh" type="button" data-local-action="open">Open data folder</button>
-                <button class="refresh" type="button" data-local-action="export">Export writing backups</button>
-                <button class="refresh" type="button" data-local-action="clear-cache">Clear temporary cache</button>
-              </div>
-              <p class="detail-context">Clearing the cache keeps your writing and saved measurements. Clearview will fetch fresh stats as needed.</p>
-              <p class="detail-context" id="local-data-status" role="status"></p>
-              <details class="method-note local-storage-details">
-                <summary>Storage details</summary>
-              <div class="table-scroll"><table>
-                <thead><tr><th>Collection</th><th>Location</th><th>Size</th><th>Last saved or synced</th></tr></thead>
-                <tbody id="local-data-groups"></tbody>
-              </table></div>
-              </details>
-            </section>
-            <details class="panel local-data-panel local-data-disclosure">
-              <summary>Browse saved writing</summary>
-              <div class="table-toolbar"><input id="backup-search" type="search" aria-label="Search backups" placeholder="Search backups"></div>
-              <p class="detail-context" id="backup-count"></p>
-              <div class="table-scroll"><table>
-                <thead><tr><th>Writing</th><th>Date</th><th>Collection</th><th>Status</th></tr></thead>
-                <tbody id="backup-rows"></tbody>
-              </table></div>
-            </details>
-            <details class="panel local-data-panel local-data-disclosure">
-              <summary>Browse saved analytics</summary>
-              <p class="detail-context">Completed Note reach, first-week post results, and subscriber sources by date range.</p>
-              <label for="saved-analytics-record">Saved record</label>
-              <select id="saved-analytics-record"><option value="">Choose a record</option></select>
-              <div id="saved-analytics-detail" aria-live="polite"></div>
-            </details>
-            <dialog id="backup-preview" class="note-detail-dialog" aria-labelledby="backup-preview-title">
-              <form method="dialog"><button class="refresh">Close</button></form>
-              <h2 id="backup-preview-title"></h2>
-              <pre id="backup-preview-body"></pre>
-            </dialog>
           </section>
           <section class="view" id="view-planner" aria-labelledby="planner-title" hidden>
             <div class="hero planner-hero">
@@ -515,7 +466,6 @@
               <span><strong id="planner-open-count">—</strong> days with Notes</span>
                 </div>
                 <div class="planner-controls">
-                  <label>Show <select id="planner-days"><option value="30" selected>30 days</option><option value="90">90 days</option><option value="180">180 days</option></select></label>
                   <label>Spacing <select id="planner-spacing"><option value="2">2 days</option><option value="3" selected>3 days</option><option value="4">4 days</option></select></label>
                 </div>
               </div>
@@ -576,6 +526,19 @@
             <div id="detail-content"></div>
           </section>
           </section>
+          <div class="piece-scrim" id="piece-scrim" hidden></div>
+          <dialog class="panel note-detail-dialog" id="note-detail" aria-label="Selected Note details">
+            <button type="button" class="refresh note-detail-close" id="note-detail-close" aria-label="Close Note details">Close</button>
+            <div id="note-detail-content"></div>
+          </dialog>
+          <dialog class="panel note-detail-dialog post-story-dialog" id="post-story-dialog" aria-labelledby="discovery-post-title">
+            <button type="button" class="refresh note-detail-close" id="discovery-post-close">Close</button>
+            <div id="discovery-post-content"></div>
+          </dialog>
+          <div class="action-status" id="local-action-status" hidden>
+            <span role="status" id="local-action-message"></span>
+            <button type="button" class="refresh" id="dismiss-local-action">Dismiss</button>
+          </div>
           <footer>
             Data from your authenticated Substack dashboard · Updated on demand · Local to this device
           </footer>

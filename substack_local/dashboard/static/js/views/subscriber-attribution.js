@@ -29,11 +29,9 @@ function legendItem(label, count, share, kind) {
   return item;
 }
 
-function rankedItems(data, kind, heading, knownIds) {
+function rankedItems(items, kind, heading) {
   const group = element('div', 'notes-source-ranking');
   group.append(element('h3', '', heading));
-  const items = (data.notes_source_attribution.items || [])
-    .filter((item) => item.kind === kind && item.ownership !== 'outside_label' && item.subscribers > 0).slice(0, 3);
   if (!items.length) {
     group.append(element('p', 'notes-source-no-items', 'No individual links reported.'));
     return group;
@@ -41,7 +39,7 @@ function rankedItems(data, kind, heading, knownIds) {
   const list = element('ol');
   for (const item of items) {
     const row = element('li');
-    const path = knownIds.has(String(item.id)) ? `/${kind === 'post' ? 'posts' : 'notes'}/${item.id}` : null;
+    const path = item.in_dashboard ? `/${kind === 'post' ? 'posts' : 'notes'}/${item.id}` : null;
     const title = element(path ? 'a' : 'span', 'notes-source-item-title', item.preview || `${kind === 'post' ? 'Post' : 'Note'} ${item.id}`);
     if (path) {
       title.href = path;
@@ -103,13 +101,10 @@ export function renderDiscoveryInsight(data) {
   );
   split.append(legend);
 
-  const knownPosts = new Set((data.posts || []).map((post) => String(post.id)));
-  const knownNotes = new Set((data.publication_events || [])
-    .filter((event) => event.type === 'note').map((event) => String(event.id)));
   const rankings = element('div', 'notes-source-rankings');
   rankings.append(
-    rankedItems(data, 'post', 'Top shared posts', knownPosts),
-    rankedItems(data, 'note', 'Top Notes', knownNotes),
+    rankedItems(data.discovery_rankings?.post || [], 'post', 'Top shared posts'),
+    rankedItems(data.discovery_rankings?.note || [], 'note', 'Top Notes'),
   );
   content.append(split, rankings);
   root.append(heading, content);

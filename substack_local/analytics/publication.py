@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .client import ApiClient, PullError, paginate_posts, query_path
+from ..pullers.posts.api import iter_public_archive_pages
 from .subscriber_attribution import notes_source_attribution
 
 def metric(row: dict, name: str) -> int | float:
@@ -29,22 +30,13 @@ def fetch_public_restacks(api: ApiClient, post_ids: set[str]) -> dict[str, int]:
         return {}
     archive = ApiClient(api.base_url)
     found: dict[str, int] = {}
-    offset = 0
-    while len(found) < len(post_ids):
-        page = archive.get_json(query_path(
-            "/api/v1/archive", {"sort": "new", "search": "", "offset": offset, "limit": 50},
-        ))
-        posts = page if isinstance(page, list) else page.get("posts") if isinstance(page, dict) else None
-        if not isinstance(posts, list) or any(not isinstance(post, dict) for post in posts):
-            raise PullError("Unexpected public archive response.")
+    for posts in iter_public_archive_pages(archive):
         for post in posts:
             post_id = str(post.get("id") or "")
             restacks = post.get("restacks")
             if post_id in post_ids and isinstance(restacks, int) and not isinstance(restacks, bool):
                 found[post_id] = restacks
-        offset += len(posts)
-        total = page.get("total") if isinstance(page, dict) else None
-        if not posts or (isinstance(total, int) and offset >= total) or (total is None and len(posts) < 50):
+        if len(found) == len(post_ids):
             break
     return found
 

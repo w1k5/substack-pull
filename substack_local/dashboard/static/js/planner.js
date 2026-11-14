@@ -8,12 +8,6 @@ let selectedNoteText;
 let pendingAction;
 
 const dayDate = (value) => new Date(`${value}T00:00:00Z`);
-const ymd = (value) => value.toISOString().slice(0, 10);
-function addDays(value, count) {
-  const next = dayDate(value);
-  next.setUTCDate(next.getUTCDate() + count);
-  return ymd(next);
-}
 const shortDate = (value) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(dayDate(value));
 const longDate = (value) => new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(dayDate(value));
 
@@ -52,12 +46,10 @@ async function loadPlanner(refresh = false) {
   $('planner-loading').hidden = false;
   if (!hadSnapshot) $('planner-draft-list').replaceChildren();
   $('planner-refresh').disabled = true;
-  $('planner-days').disabled = true;
   $('planner-spacing').disabled = true;
   try {
-    const days = $('planner-days').value;
     const spacing = $('planner-spacing').value;
-    snapshot = await api(`/api/planner?days=${days}&spacing=${spacing}${refresh ? '&refresh=1' : ''}`);
+    snapshot = await api(`/api/planner?spacing=${spacing}${refresh ? '&refresh=1' : ''}`);
     if (!selectedDay || selectedDay < snapshot.runway.start || selectedDay > snapshot.runway.end)
       selectedDay = snapshot.runway.start;
     renderPlanner();
@@ -68,53 +60,32 @@ async function loadPlanner(refresh = false) {
     loading = false;
     $('planner-loading').hidden = true;
     $('planner-refresh').disabled = false;
-    $('planner-days').disabled = false;
     $('planner-spacing').disabled = false;
   }
 }
 
-function eventMap() {
-  const map = new Map();
-  for (const event of snapshot.runway.events) {
-    if (!map.has(event.date)) map.set(event.date, []);
-    map.get(event.date).push(event);
-  }
-  return map;
-}
-
 function renderCalendar() {
   const data = snapshot.runway;
-  const map = eventMap();
   const openings = new Set(snapshot.opening_days || []);
-  const weekCount = (week) => Array.from({ length: 7 }, (_, i) => map.get(addDays(week, i))?.length || 0)
-    .reduce((sum, count) => sum + count, 0);
-  const first = dayDate(data.start);
-  const gridStart = addDays(data.start, -((first.getUTCDay() + 6) % 7));
-  const last = dayDate(data.end);
-  const gridEnd = addDays(data.end, 6 - ((last.getUTCDay() + 6) % 7));
   const calendar = $('planner-calendar');
   calendar.replaceChildren();
   const head = node('div', 'planner-week planner-head');
   for (const label of ['Week of', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Load'])
     head.append(node('span', '', label));
   calendar.append(head);
-  for (let week = gridStart; week <= gridEnd; week = addDays(week, 7)) {
+  for (const week of data.weeks) {
     const row = node('div', 'planner-week');
-    const total = weekCount(week);
+    const total = week.total;
     const label = node('div', 'planner-week-label');
-    label.append(node('strong', '', shortDate(week)), node('span', '', total ? `${total} scheduled` : 'open'));
+    label.append(node('strong', '', shortDate(week.start)), node('span', '', total ? `${total} scheduled` : 'open'));
     row.append(label);
-    for (let offset = 0; offset < 7; offset++) {
-      const day = addDays(week, offset);
-      const count = map.get(day)?.length || 0;
+    for (const { date: day, count, in_window, density } of week.days) {
       const button = node('button', 'planner-day');
       button.type = 'button';
       button.append(node('span', '', String(dayDate(day).getUTCDate())));
       if (count) button.append(node('span', 'count', String(count)));
-      if (day < data.start || day > data.end) { button.disabled = true; button.classList.add('outside'); }
-      if (count === 1) button.classList.add('one');
-      if (count === 2) button.classList.add('cluster');
-      if (count >= 3) button.classList.add('busy');
+      if (!in_window) { button.disabled = true; button.classList.add('outside'); }
+      if (density) button.classList.add(density);
       if (openings.has(day)) button.classList.add('opening');
       if (selectedDay === day) button.classList.add('selected');
       button.setAttribute('aria-label', `${longDate(day)}: ${count} scheduled ${count === 1 ? 'Note' : 'Notes'}${openings.has(day) ? ', an open slot' : ''}`);
@@ -123,7 +94,7 @@ function renderCalendar() {
         $('planner-at').value = `${day}T09:00`;
         calendar.querySelectorAll('.planner-day').forEach((cell) => cell.classList.remove('selected'));
         button.classList.add('selected');
-        renderDayDetail(map);
+        renderDayDetail();
       });
       row.append(button);
     }
@@ -136,7 +107,7 @@ function renderCalendar() {
     row.append(load);
     calendar.append(row);
   }
-  renderDayDetail(map);
+  renderDayDetail();
 }
 
 function selectNote(noteId, text) {
@@ -148,11 +119,11 @@ function selectNote(noteId, text) {
   renderDrafts();
 }
 
-function renderDayDetail(map = eventMap()) {
+function renderDayDetail() {
   const slot = $('planner-day-detail');
   slot.replaceChildren();
   slot.append(node('h3', '', longDate(selectedDay)));
-  const events = map.get(selectedDay) || [];
+  const events = snapshot.events_by_day[selectedDay] || [];
   slot.append(node('p', '', events.length
     ? `${events.length} scheduled ${events.length === 1 ? 'Note' : 'Notes'} on this day.`
     : 'No Note scheduled here. Choose a draft below to use this date.'));
@@ -262,7 +233,6 @@ async function applyAction() {
 
 export function setupPlanner() {
   $('planner-refresh').addEventListener('click', () => loadPlanner(true));
-  $('planner-days').addEventListener('change', () => loadPlanner());
   $('planner-spacing').addEventListener('change', () => loadPlanner());
   $('planner-text').addEventListener('input', () => {
     $('planner-char-count').textContent = `${$('planner-text').value.length.toLocaleString()} / 5,000`;

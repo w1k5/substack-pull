@@ -461,6 +461,10 @@ class RunwayTests(unittest.TestCase):
         self.assertEqual(payload["draftCount"], 1)
         self.assertEqual(payload["scheduledInWindow"], 3)
         self.assertEqual(payload["activeDays"], 2)
+        self.assertEqual(payload["weeks"][0]["start"], "2026-10-26")
+        self.assertFalse(payload["weeks"][0]["days"][0]["in_window"])
+        self.assertEqual(payload["weeks"][1]["total"], 2)
+        self.assertEqual(payload["weeks"][1]["days"][5]["density"], "cluster")
         self.assertEqual([event["date"] for event in payload["events"][:2]], ["2026-11-07", "2026-11-07"])
 
     def test_writes_self_contained_interactive_html_with_scheduled_bodies_only(self):

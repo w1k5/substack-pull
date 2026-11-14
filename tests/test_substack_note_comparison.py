@@ -54,6 +54,20 @@ class NoteComparisonTests(TestCase):
         self.assertIsNone(small["visitRate"])
         self.assertIsNone(small["likeRate"])
         self.assertIsNone(small["unconnected"])
+        self.assertEqual(small["rate_status"]["likeRate"], "small_sample")
+        self.assertEqual(small["rate_status"]["unconnected"], "small_sample")
+
+    def test_missing_rate_inputs_are_distinct_from_reported_zero(self):
+        result = note_comparison_metrics({
+            "impressions": 1000,
+            "interactions": {"items": [{"title": "Like", "value": 0}]},
+        })
+        self.assertEqual(result["likeRate"], 0)
+        self.assertEqual(result["rate_status"]["likeRate"], "measured")
+        self.assertIsNone(result["replies"])
+        self.assertIsNone(result["responseRate"])
+        self.assertEqual(result["rate_status"]["replyRate"], "unavailable")
+        self.assertEqual(result["rate_status"]["unconnected"], "unavailable")
 
     def test_cohort_ranking_and_standouts(self):
         rows = [

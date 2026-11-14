@@ -54,12 +54,17 @@ def runway_payload(
     for event in events:
         event.pop("_order", None)
     first_monday = start - timedelta(days=start.weekday())
-    week_totals: list[int] = []
+    weeks = []
     week = first_monday
     while week <= end:
-        week_totals.append(
-            sum(by_date[(week + timedelta(days=offset)).isoformat()] for offset in range(7))
-        )
+        cells = []
+        for offset in range(7):
+            day = week + timedelta(days=offset)
+            key = day.isoformat()
+            count = by_date[key]
+            cells.append({"date": key, "count": count, "in_window": start <= day <= end,
+                          "density": "busy" if count >= 3 else "cluster" if count == 2 else "one" if count == 1 else None})
+        weeks.append({"start": week.isoformat(), "days": cells, "total": sum(cell["count"] for cell in cells)})
         week += timedelta(days=7)
     return {
         "start": start.isoformat(),
@@ -72,7 +77,8 @@ def runway_payload(
         "scheduledTotal": scheduled_total,
         "draftCount": draft_count,
         "activeDays": len(by_date),
-        "busiestWeek": max(week_totals, default=0),
+        "weeks": weeks,
+        "busiestWeek": max((week["total"] for week in weeks), default=0),
         "generatedAt": utc_now(),
     }
 

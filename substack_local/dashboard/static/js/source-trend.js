@@ -16,7 +16,6 @@ const svgElement = (name, attrs = {}) => {
   Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
   return element;
 };
-const dayTime = (day) => Date.parse(`${day}T12:00:00Z`);
 const formatDate = (day) => date(day);
 
 function ceiling(value) {
@@ -123,7 +122,7 @@ function renderChart() {
     $('source-trend-empty').textContent = 'No dated subscriber source history was returned.';
     return;
   }
-  const weekly = data.range.days > 90;
+  const weekly = data.activity_period.bucket_days === 7;
   const series = active.map((line) => ({
     line,
     values: new Map(line.points.map(([day, value]) => [day, Number(value) || 0])),
@@ -146,9 +145,7 @@ function renderChart() {
   }
   const eventDays = new Map();
   (data.publication_events || []).forEach((event) => {
-    const index = weekly
-      ? days.findLastIndex((day) => dayTime(day) <= dayTime(event.day))
-      : days.indexOf(event.day);
+    const index = days.indexOf(event.subscriber_bucket_day);
     if (index < 0) return;
     const bucket = eventDays.get(index) || { notes: [], posts: [] };
     if (event.type === 'note') bucket.notes.push(event);

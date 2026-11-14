@@ -2,14 +2,55 @@
 
 from unittest import TestCase
 
-from substack_local.analytics.derived import dashboard_metrics, post_detail_metrics
+from substack_local.analytics.derived import activity_period, dashboard_metrics, post_detail_metrics, publication_buckets
+from substack_local.analytics.leaderboard import note_rows
 from substack_local.analytics.post_comparison import summarize_post_portfolio
 from substack_local.workflows.notes import suggested_openings
 
 
 class DerivedMetricsTests(TestCase):
+    def test_events_use_the_bucket_dates_returned_by_each_series(self):
+        events = [{"day": "2026-11-11"}, {"day": "2026-11-06"}]
+        shown, earlier = publication_buckets(events, [["2026/11/09", 10]], ["2026-11-08"], 7)
+        self.assertEqual(shown["view_bucket_index"], 0)
+        self.assertEqual(shown["subscriber_bucket_day"], "2026-11-08")
+        self.assertIsNone(earlier["view_bucket_index"])
+        self.assertIsNone(earlier["subscriber_bucket_day"])
+
+    def test_activity_bucket_is_partial_only_if_it_contains_period_end(self):
+        for days, last, partial in ((30, "2026/11/14", True), (30, "2026/11/13", False),
+                                    (180, "2026/11/08", True), (180, "2026/11/07", False)):
+            with self.subTest(days=days, last=last):
+                result = activity_period({"days": days, "end": "2026-11-14"}, [[last, 20]])
+                self.assertEqual(result["last_bucket_partial"], partial)
+        self.assertFalse(activity_period({"days": 30, "end": "2026-11-14"}, [])["last_bucket_partial"])
+
+    def test_note_ranking_preserves_missing_counts_and_age_matched_reach(self):
+        row, = note_rows([{"id": 2, "title": "Note", "day": "2026-11-04",
+                           "likes": 0, "pace": {"ratio": 2.2}}])
+        self.assertEqual(row["likes"], 0)
+        self.assertIsNone(row["growth"])
+        self.assertIsNone(row["discussion"])
+        self.assertEqual(row["relative"], 2.2)
+
+    def test_discovery_ranking_omits_outside_labels_and_marks_dashboard_links(self):
+        data = dashboard_metrics({
+            "publication_events": [{"type": "note", "id": 3}],
+            "notes_source_attribution": {"items": [
+                {"kind": "note", "id": "1", "ownership": "outside_label", "subscribers": 10},
+                {"kind": "note", "id": "2", "subscribers": 6},
+                {"kind": "note", "id": "3", "subscribers": 5},
+                {"kind": "note", "id": "4", "subscribers": 1},
+                {"kind": "note", "id": "5", "subscribers": 1},
+            ]},
+        })
+        rows = data["discovery_rankings"]["note"]
+        self.assertEqual([row["id"] for row in rows], ["2", "3", "4"])
+        self.assertEqual([row["in_dashboard"] for row in rows], [False, True, False])
+
     def test_publication_metrics_use_new_york_day_and_source_denominators(self):
         data = dashboard_metrics({
+            "range": {"start": "2026-11-01", "end": "2026-11-14", "days": 14},
             "totals": {"views": 120, "visitors": 90, "subscribers": 10},
             "previous": {"totals": {"views": 100, "visitors": 0, "subscribers": 5}},
             "growth_sources": [{"name": "Substack", "subscribers": 8, "parent": None},
@@ -19,6 +60,8 @@ class DerivedMetricsTests(TestCase):
                        "signups": 2, "likes": 25, "comments": 5, "restacks": 4, "shares": 10}],
         })
         self.assertEqual(data["posts"][0]["publication_day"], "2026-11-03")
+        self.assertTrue(data["posts"][0]["published_in_period"])
+        self.assertTrue(data["posts"][0]["meets_view_floor"])
         self.assertEqual(data["posts"][0]["signup_yield"], 2)
         self.assertEqual(data["posts"][0]["likes_per_1k"], 25)
         self.assertEqual(data["posts"][0]["restacks_per_1k"], 4)
@@ -26,6 +69,8 @@ class DerivedMetricsTests(TestCase):
         self.assertEqual(data["briefing"]["changes"]["views"]["percent"], 20)
         self.assertEqual(data["briefing"]["changes"]["visitors"]["status"], "new")
         self.assertEqual(data["briefing"]["notes_share"], .3)
+        self.assertEqual(data["leaderboard_rows"][0]["signupYield"], 2)
+        self.assertEqual([row["name"] for row in data["ranked_growth_sources"]], ["Substack", "Notes"])
 
     def test_post_story_excludes_today_and_precomputes_daily_and_source_rates(self):
         post = post_detail_metrics({

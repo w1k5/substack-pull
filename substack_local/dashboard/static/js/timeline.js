@@ -15,16 +15,12 @@ const CHART_LEFT = 58,
 let chartWidth = 1000;
 let chartRight = 990;
 const parseDay = (value) => Date.parse(`${String(value).replaceAll('/', '-')}T12:00:00Z`);
-const weekly = () => Number(currentData?.range?.days) > 90;
+const weekly = () => currentData.activity_period.bucket_days === 7;
 function chartX(value) {
   const start = parseDay(currentData.range.start),
     end = parseDay(currentData.range.end);
   return CHART_LEFT + ((parseDay(value) - start) / Math.max(DAY_MS, end - start))
     * (chartRight - CHART_LEFT);
-}
-function isPartialLast(series) {
-  const daysSinceStart = (parseDay(currentData.range.end) - parseDay(series.at(-1)?.[0])) / DAY_MS;
-  return daysSinceStart >= 0 && daysSinceStart < (weekly() ? 7 : 1);
 }
 function drawAxis() {
   const axis = $('chart-axis');
@@ -50,7 +46,7 @@ function drawChart(series) {
   svg.onpointerleave = null;
   const points = series || [];
   const isWeekly = weekly();
-  const partial = points.length > 0 && isPartialLast(points);
+  const partial = currentData.activity_period.last_bucket_partial;
   const complete = partial ? points.slice(0, -1) : points;
   const values = complete.map((point) => Number(point[1]) || 0);
   $('chart-hover').hidden = true;
@@ -249,14 +245,12 @@ function showPublicationDay(day, items, series) {
   heading.textContent = date(day);
   root.append(heading);
   const isWeekly = weekly();
-  const point = series.find(([start]) => {
-    const elapsed = parseDay(day) - parseDay(start);
-    return elapsed >= 0 && elapsed < (isWeekly ? 7 * DAY_MS : DAY_MS);
-  });
+  const index = items[0]?.view_bucket_index;
+  const point = series[index];
   if (point) {
     const views = document.createElement('span');
     views.className = 'event-views';
-    const partial = point === series.at(-1) && isPartialLast(series);
+    const partial = point === series.at(-1) && currentData.activity_period.last_bucket_partial;
     views.textContent = isWeekly
       ? `${fmt(point[1])} views ${partial ? 'this week so far' : `in the week of ${date(point[0].replaceAll('/', '-'))}`}`
       : `${fmt(point[1])} views ${partial ? 'so far today' : 'that day'}`;

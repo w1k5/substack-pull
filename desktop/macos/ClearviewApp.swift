@@ -123,6 +123,9 @@ private final class AppModel: ObservableObject {
     @Published var message: String?
     @Published var busy = false
     @Published var dashboardURL: URL?
+    @Published var choices: [[String: String]] = []
+    @Published var showManualPublication = false
+    private var selectionSession: String?
     weak var activeWebView: WKWebView?
     private var dashboardProcess: Process?
     private var pendingSessions: [String] = []
@@ -150,15 +153,13 @@ private final class AppModel: ObservableObject {
     }
 
     func beginSignIn() {
-        let address = publication.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.isEmpty else {
-            message = "Enter your publication address first."
-            return
-        }
-        publication = address
         signInGeneration += 1
         pendingSessions.removeAll()
         attemptedSessions.removeAll()
+        selectionSession = nil
+        choices = []
+        showManualPublication = false
+        busy = false
         message = nil
         activeWebView = nil
         screen = .signIn
@@ -167,6 +168,8 @@ private final class AppModel: ObservableObject {
     func cancelSignIn() {
         signInGeneration += 1
         pendingSessions.removeAll()
+        attemptedSessions.removeAll()
+        selectionSession = nil
         busy = false
         message = nil
         activeWebView = nil
@@ -180,12 +183,40 @@ private final class AppModel: ObservableObject {
         tryNextSession()
     }
 
+    func choosePublication(_ address: String) {
+        guard !busy, let session = selectionSession else { return }
+        connect(session, address: address)
+    }
+
     private func tryNextSession() {
-        guard screen == .signIn, !busy, !pendingSessions.isEmpty else { return }
+        guard screen == .signIn, !busy, choices.isEmpty, !pendingSessions.isEmpty else { return }
+        busy = true
+        message = "Finding your publications…"
+        let session = pendingSessions.removeFirst()
+        let generation = signInGeneration
+        Task.detached {
+            let result = try? LocalEngine().command("discover", session: session)
+            await MainActor.run {
+                guard self.signInGeneration == generation else { return }
+                self.busy = false
+                self.selectionSession = session
+                self.choices = result?["publications"] as? [[String: String]] ?? []
+                if let selected = result?["selected"] as? String {
+                    self.connect(session, address: selected)
+                } else {
+                    self.showManualPublication = self.choices.isEmpty
+                    self.message = self.choices.isEmpty
+                        ? "Couldn’t find a publication automatically. You can enter its address below."
+                        : "Choose a publication to open."
+                    self.tryNextSession()
+                }
+            }
+        }
+    }
+
+    private func connect(_ session: String, address: String) {
         busy = true
         message = "Checking publication access…"
-        let session = pendingSessions.removeFirst()
-        let address = publication
         let generation = signInGeneration
         Task.detached {
             do {
@@ -205,6 +236,9 @@ private final class AppModel: ObservableObject {
                     guard self.signInGeneration == generation else { return }
                     self.busy = false
                     self.message = nil
+                    self.selectionSession = nil
+                    self.pendingSessions.removeAll()
+                    self.attemptedSessions.removeAll()
                     self.publication = account
                     self.startDashboard()
                 }
@@ -219,6 +253,7 @@ private final class AppModel: ObservableObject {
                     guard self.signInGeneration == generation else { return }
                     self.busy = false
                     self.message = detail
+                    self.showManualPublication = true
                     self.tryNextSession()
                 }
             }
@@ -328,10 +363,10 @@ private struct DashboardWebView: NSViewRepresentable {
         config.userContentController.addUserScript(WKUserScript(
             source: """
                 if (document.documentElement) {
-                    document.documentElement.classList.add('mac-desktop');
+                    document.documentElement.classList.add('mac-desktop', 'desktop-menu');
                 } else {
                     document.addEventListener('DOMContentLoaded', () => {
-                        document.documentElement.classList.add('mac-desktop');
+                        document.documentElement.classList.add('mac-desktop', 'desktop-menu');
                     }, { once: true });
                 }
                 """,
@@ -391,48 +426,105 @@ private struct DashboardWebView: NSViewRepresentable {
 
 private struct ContentView: View {
     @ObservedObject var model: AppModel
+    // Match the dashboard's sidebar, brand mark, and page background.
+    private let forest = Color(red: 18.0 / 255, green: 53.0 / 255, blue: 46.0 / 255)
+    private let lime = Color(red: 217.0 / 255, green: 237.0 / 255, blue: 171.0 / 255)
+    private let canvas = Color(red: 248.0 / 255, green: 250.0 / 255, blue: 247.0 / 255)
+
+    private var brandMark: some View {
+        Image(systemName: "arrow.up.right")
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(forest)
+            .frame(width: 37, height: 37)
+            .background(lime, in: RoundedRectangle(cornerRadius: 11))
+            .accessibilityHidden(true)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             switch model.screen {
             case .loading:
                 ProgressView(model.message ?? "Opening Clearview…")
+                    .tint(forest)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(canvas)
             case .welcome:
                 VStack(alignment: .leading, spacing: 18) {
+                    brandMark
                     Text("Clearview").font(.largeTitle).bold()
                     Text("Connect your Substack publication to see its posts, Notes, and analytics.")
                         .foregroundStyle(.secondary)
                     Text("Your connection is saved in macOS Keychain for this dashboard and its MCP tools.")
                         .font(.footnote).foregroundStyle(.secondary)
-                    TextField("name.substack.com", text: $model.publication)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                        .frame(maxWidth: 420)
-                    Button("Connect Substack") { model.beginSignIn() }
+                    Button("Sign in to Substack") { model.beginSignIn() }
                         .buttonStyle(.borderedProminent)
+                        .tint(forest)
                     if let message = model.message { Text(message).foregroundStyle(.secondary) }
                 }
-                .padding(44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .frame(maxWidth: 340, alignment: .leading)
+                .padding(32)
+                .background(.white, in: RoundedRectangle(cornerRadius: 13))
+                .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(forest.opacity(0.12)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(canvas)
             case .signIn:
                 VStack(spacing: 0) {
-                    HStack {
-                        Text("Sign in to Substack").font(.headline)
+                    HStack(spacing: 12) {
+                        brandMark
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Clearview").font(.headline)
+                            Text("Sign in to Substack").font(.caption).foregroundStyle(lime)
+                        }
                         Spacer()
-                        if model.busy { ProgressView().controlSize(.small) }
                         Button("Back") { model.cancelSignIn() }
+                            .buttonStyle(.bordered)
+                            .tint(.white)
                     }
-                    .padding(14)
-                    Text("This is Substack's sign-in page. Clearview saves the resulting session in macOS Keychain.")
-                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
-                    if let message = model.message {
-                        Text(message).font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 34)
+                    .padding(.bottom, 12)
+                    .background(forest)
+                    VStack(spacing: 8) {
+                        Text("Your Substack session stays in macOS Keychain.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let message = model.message {
+                            HStack(spacing: 8) {
+                                if model.busy { ProgressView().controlSize(.small) }
+                                Text(message).font(.callout)
+                            }
+                        }
+                        if !model.choices.isEmpty {
+                            Menu("Choose publication") {
+                                ForEach(model.choices, id: \.self) { choice in
+                                    if let address = choice["address"] {
+                                        Button(choice["name"] ?? address) { model.choosePublication(address) }
+                                    }
+                                }
+                            }.disabled(model.busy)
+                        }
+                        if !model.choices.isEmpty && !model.showManualPublication {
+                            Button("Enter publication address") { model.showManualPublication = true }
+                                .disabled(model.busy)
+                        }
+                        if model.showManualPublication {
+                            HStack {
+                                TextField("name.substack.com", text: $model.publication)
+                                    .textFieldStyle(.roundedBorder)
+                                    .autocorrectionDisabled()
+                                    .frame(maxWidth: 270)
+                                Button("Connect") { model.choosePublication(model.publication) }
+                                    .disabled(model.busy || model.publication.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
                     }
+                    .padding(12)
+                    .frame(maxWidth: .infinity)
+                    .background(canvas)
+                    .tint(forest)
                     SignInWebView(onSession: model.receivedSession,
                                   onCreate: { model.activeWebView = $0 })
                 }
-                .padding(.top, 30)
             case .dashboard:
                 if let url = model.dashboardURL {
                     DashboardWebView(url: url, onCreate: { model.activeWebView = $0 })
@@ -441,6 +533,7 @@ private struct ContentView: View {
         }
         .frame(minWidth: 920, minHeight: 620)
         .ignoresSafeArea(edges: .top)
+        .preferredColorScheme(.light)
         .task { model.load() }
     }
 }
@@ -488,6 +581,10 @@ private func installMenus(delegate: ClearviewDelegate) {
     add("Reconnect Substack…", to: appMenu,
         action: #selector(ClearviewDelegate.reconnectSubstack(_:)), key: "r",
         modifiers: [.command, .shift], target: delegate)
+    appMenu.addItem(.separator())
+    add("Open data folder", to: appMenu, action: #selector(ClearviewDelegate.openDataFolder(_:)), target: delegate)
+    add("Export writing backups", to: appMenu, action: #selector(ClearviewDelegate.exportBackups(_:)), target: delegate)
+    add("Clear temporary cache", to: appMenu, action: #selector(ClearviewDelegate.clearCache(_:)), target: delegate)
     appMenu.addItem(.separator())
     add("Quit Clearview", to: appMenu, action: #selector(NSApplication.terminate(_:)), key: "q")
 
@@ -567,6 +664,13 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
     init(model: AppModel) { self.model = model }
 
     @MainActor @objc func reconnectSubstack(_ sender: Any?) { model.beginSignIn() }
+    @MainActor @objc func openDataFolder(_ sender: Any?) { runDataAction("open") }
+    @MainActor @objc func exportBackups(_ sender: Any?) { runDataAction("export") }
+    @MainActor @objc func clearCache(_ sender: Any?) { runDataAction("clear-cache") }
+    @MainActor private func runDataAction(_ action: String) {
+        guard model.screen == .dashboard, let view = model.activeWebView else { return }
+        view.evaluateJavaScript("document.querySelector('[data-local-action=\"\(action)\"]')?.click()", completionHandler: nil)
+    }
     @MainActor @objc func reloadPage(_ sender: Any?) { model.activeWebView?.reload() }
     @MainActor @objc func zoomIn(_ sender: Any?) {
         guard let view = model.activeWebView else { return }
@@ -582,6 +686,8 @@ private final class ClearviewDelegate: NSObject, NSApplicationDelegate, NSWindow
     }
     @MainActor func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(openDataFolder(_:)), #selector(exportBackups(_:)), #selector(clearCache(_:)):
+            return model.screen == .dashboard && model.activeWebView != nil
         case #selector(reloadPage(_:)), #selector(zoomIn(_:)),
              #selector(zoomOut(_:)), #selector(resetZoom(_:)):
             return model.activeWebView != nil

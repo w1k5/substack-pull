@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 import ssl
 from urllib.error import HTTPError, URLError
@@ -28,10 +29,44 @@ def publication_url(value: str) -> str:
     return publication
 
 
-def verify(publication: str, token: str) -> dict[str, str]:
-    publication = publication_url(publication)
+def require_session(token: str) -> None:
     if not token or "\n" in token or "\r" in token:
         raise PullError("Substack did not provide a usable sign-in session.")
+
+
+def discover(token: str, preferred: str | None = None) -> dict:
+    require_session(token)
+    try:
+        profile = ApiClient("https://substack.com", token).get_json("/api/v1/user/profile/self")
+    except PullError as exc:
+        raise PullError("Clearview could not find your publications automatically.") from exc
+    memberships = profile.get("publicationUsers") if isinstance(profile, dict) else None
+    if not isinstance(memberships, list):
+        raise PullError("Substack did not return a publication list.")
+    choices = {}
+    for membership in memberships:
+        if not isinstance(membership, dict) or membership.get("is_byline_only"):
+            continue
+        if membership.get("role") not in ("admin", "owner", "editor"):
+            continue
+        publication = membership.get("publication")
+        if not isinstance(publication, dict):
+            continue
+        subdomain = publication.get("subdomain")
+        if not isinstance(subdomain, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", subdomain):
+            continue
+        address = f"{subdomain}.substack.com"
+        name = publication.get("name")
+        choices[address] = {"address": address, "name": name if isinstance(name, str) and name.strip() else address}
+    selected = host_for(publication_url(preferred)) if preferred else None
+    if selected not in choices:
+        selected = next(iter(choices)) if len(choices) == 1 else None
+    return {"publications": list(choices.values()), "selected": selected}
+
+
+def verify(publication: str, token: str) -> dict[str, str]:
+    publication = publication_url(publication)
+    require_session(token)
     try:
         verify_editor_access(ApiClient(publication, token))
     except PullError as exc:
@@ -75,7 +110,7 @@ def current_publication(config_path: Path) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("current", "verify", "configure", "connect"))
+    parser.add_argument("action", choices=("current", "discover", "verify", "configure", "connect"))
     parser.add_argument("--publication")
     parser.add_argument("--config", type=Path, default=data_root() / ".substack-pull.json")
     args = parser.parse_args()
@@ -86,6 +121,8 @@ def main() -> int:
                 "publication": publication,
                 "connected": bool(publication and KeychainStore().exists(host_for(publication))),
             }
+        elif args.action == "discover":
+            result = discover(sys.stdin.read().rstrip("\r\n"), current_publication(args.config))
         elif args.action in {"verify", "connect"}:
             if not args.publication:
                 raise PullError("Enter your publication address.")

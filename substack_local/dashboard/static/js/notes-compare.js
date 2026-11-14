@@ -140,17 +140,21 @@ function renderTable() {
     cell(tr, metric(row.stats ? row.pace.label : '—',
       row.stats ? `${fmt(row.pace.actual)} vs ${fmt(row.pace.typical)} at ${row.pace.age}`
         : loading ? 'Comparing…' : analyzed ? 'Unavailable' : ''));
-    for (const [count, rate] of [
-      [row.likes, row.likeRate], [row.replies, row.replyRate],
-      [row.restacks, row.restackRate], [row.shares, row.shareRate],
+    const rateLabel = (key) => row.rate_status?.[key] === 'small_sample' ? 'Small sample' : 'Unavailable';
+    for (const [count, key] of [
+      [row.likes, 'likeRate'], [row.replies, 'replyRate'],
+      [row.restacks, 'restackRate'], [row.shares, 'shareRate'],
     ]) cell(tr, metric(row.stats ? fmt(count) : '—',
-      row.stats ? rate == null ? 'Small sample' : `${rate.toFixed(1)} / 1k` : ''));
+      row.stats ? row[key] == null ? rateLabel(key) : `${row[key].toFixed(1)} / 1k` : ''));
+    const supporting = (key, text) => row.stats
+      ? row[key] == null ? rateLabel(key) : text
+      : '';
     cell(tr, metric(row.visitRate == null ? '—' : row.visitRate.toFixed(1),
-      row.stats ? `${fmt(row.visits)} visits${row.visitRate == null ? ' · small sample' : ''}` : ''));
+      supporting('visitRate', row.visits == null ? '' : `${fmt(row.visits)} visits`)));
     cell(tr, metric(row.clickRate == null ? '—' : row.clickRate.toFixed(1),
-      row.stats ? `${fmt(row.clicks)} clicks${row.clickRate == null ? ' · small sample' : ''}` : ''));
+      supporting('clickRate', row.clicks == null ? '' : `${fmt(row.clicks)} clicks`)));
     cell(tr, metric(row.unconnected == null ? '—' : pct(row.unconnected),
-      row.stats ? `${fmt(row.unconnectedCount)} of ${fmt(row.audienceCount)} people${row.unconnected == null ? ' · small sample' : ''}` : ''));
+      supporting('unconnected', `${fmt(row.unconnectedCount)} of ${fmt(row.audienceCount)} people`)));
     body.append(tr);
   });
   const more = $('note-compare-more');

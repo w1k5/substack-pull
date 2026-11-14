@@ -114,9 +114,8 @@ export function createTables({ getData, getPortfolio, navigate }) {
     const query = $('global-search').value.toLowerCase().trim();
     return (data.posts || []).filter((row) => {
       if (query && !row.title.toLowerCase().includes(query)) return false;
-      const day = row.publication_day || '';
-      if ($('posts-in-period').checked && !(day >= data.range.start && day <= data.range.end)) return false;
-      if ($('posts-min-views').checked && Number(row.views) < 1000) return false;
+      if ($('posts-in-period').checked && !row.published_in_period) return false;
+      if ($('posts-min-views').checked && !row.meets_view_floor) return false;
       return true;
     });
   }

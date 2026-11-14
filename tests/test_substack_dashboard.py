@@ -91,6 +91,7 @@ class DashboardRoutesTests(unittest.TestCase):
     def test_dashboard_and_detail_api_routes(self):
         for route, expected in (
             ("/api/dashboard?days=30&refresh=1", {"days": 30, "refresh": True}),
+            ("/api/dashboard?days=14", {"days": 14, "refresh": False}),
             ("/api/latest", {"latest": True, "refresh": False}),
             ("/api/latest?refresh=1", {"latest": True, "refresh": True}),
             ("/api/post/123", {"post_id": "123", "refresh": False}),
@@ -101,6 +102,7 @@ class DashboardRoutesTests(unittest.TestCase):
             ("/api/note-comparison?days=30", {"days": 30, "rows": [], "lenses": {}, "retry": False}),
             ("/api/note-comparison?days=30&retry=1", {"days": 30, "rows": [], "lenses": {}, "retry": True}),
             ("/api/planner?days=30&spacing=4", {"days": 30, "spacing": 4, "refreshed": False}),
+            ("/api/planner?spacing=4", {"days": 90, "spacing": 4, "refreshed": False}),
             ("/api/planner?refresh=1", {"days": 90, "spacing": 3, "refreshed": True}),
         ):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
@@ -118,11 +120,20 @@ class DashboardRoutesTests(unittest.TestCase):
 
     def test_each_view_can_be_opened_directly(self):
         for route in ("/posts", "/discovery", "/notes", "/planner", "/leaderboard",
-                      "/insights", "/notes/compare", "/posts/123", "/notes/456", "/local-data"):
+                      "/insights", "/notes/compare", "/posts/123", "/notes/456", "/local-data",
+                      "/discovery?piece=post-123", "/discovery?piece=note-456"):
             with self.subTest(route=route), urlopen(self.base_url + route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn("text/html", response.headers["Content-Type"])
                 self.assertIn(b'id="view-briefing"', response.read())
+
+    def test_header_offers_the_new_periods_and_data_actions(self):
+        index = (STATIC / "index.html").read_text(encoding="utf-8")
+        picker = re.search(r'<select id="range">(.*?)</select>', index, re.S)[1]
+        self.assertEqual(re.findall(r'<option value="(\d+)"', picker), ["7", "14", "30", "90", "180"])
+        self.assertEqual(re.findall(r'data-local-action="([^"]+)"', index), ["open", "export", "clear-cache"])
+        self.assertNotIn('id="view-local-data"', index)
+        self.assertNotIn('href="/local-data"', index)
 
     def test_note_actions_require_same_origin_json_and_route_to_planner(self):
         for route, body, expected in (

@@ -10,12 +10,45 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from substack_local.desktop.connection import configure, current_publication, publication_url, verify
+from substack_local.desktop.connection import configure, current_publication, discover, publication_url, verify
 from substack_local.pullers.posts import PullError
 from substack_local.paths import data_root
 
 
 class DesktopConnectionTests(unittest.TestCase):
+    @patch("substack_local.desktop.connection.ApiClient")
+    def test_discovery_selects_one_eligible_publication(self, client):
+        client.return_value.get_json.return_value = {"publicationUsers": [
+            {"role": "admin", "publication": {"subdomain": "writer", "name": "Writing"}},
+            {"role": "contributor", "publication": {"subdomain": "other"}},
+            {"role": "editor", "is_byline_only": True, "publication": {"subdomain": "byline"}},
+            {"role": "admin", "publication": {"subdomain": "outside.example"}},
+        ]}
+        self.assertEqual(discover("sample"), {
+            "publications": [{"name": "Writing", "address": "writer.substack.com"}],
+            "selected": "writer.substack.com",
+        })
+        client.assert_called_once_with("https://substack.com", "sample")
+        client.return_value.get_json.assert_called_once_with("/api/v1/user/profile/self")
+
+    @patch("substack_local.desktop.connection.ApiClient")
+    def test_multiple_publications_prompt_unless_saved_choice_is_available(self, client):
+        client.return_value.get_json.return_value = {"publicationUsers": [
+            {"role": "admin", "publication": {"subdomain": "first"}},
+            {"role": "editor", "publication": {"subdomain": "second"}},
+        ]}
+        self.assertIsNone(discover("sample")["selected"])
+        self.assertIsNone(discover("sample", "old.substack.com")["selected"])
+        self.assertEqual(discover("sample", "https://second.substack.com")["selected"], "second.substack.com")
+
+    @patch("substack_local.desktop.connection.ApiClient")
+    def test_discovery_returns_empty_choices_or_safe_error_for_manual_fallback(self, client):
+        client.return_value.get_json.return_value = {"publicationUsers": []}
+        self.assertEqual(discover("sample"), {"publications": [], "selected": None})
+        client.return_value.get_json.side_effect = PullError("Upstream request details")
+        with self.assertRaisesRegex(PullError, "could not find your publications automatically"):
+            discover("sample")
+
     def test_packaged_data_location_is_separate_from_code(self):
         with TemporaryDirectory() as folder, patch.dict(os.environ, {"CLEARVIEW_DATA_DIR": folder}):
             self.assertEqual(data_root(), Path(folder).resolve())

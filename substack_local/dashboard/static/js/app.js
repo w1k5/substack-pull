@@ -5,7 +5,8 @@ import { renderSubscriberSourceTrend } from './source-trend.js';
 import { renderNotesPage, setupNoteDetail, clearNotePageStats } from './notes-page.js';
 import { renderNotesComparison, filterNotesComparison, clearNotesComparison, setupNotesComparison } from './notes-compare.js';
 import { setNoteMapQuery } from './notes-map.js';
-import { renderLocalData, setupLocalData } from './views/local-data.js';
+import { renderDiscoveryPost } from './post/discovery.js';
+import { setupDataOptions } from './data-options.js';
 import { renderPlannerRoute, setupPlanner } from './planner.js';
 import { setupPostPortfolio, updatePostPortfolioProgress } from './post/portfolio.js';
 import { renderBriefing, renderGrowth } from './views/publication.js';
@@ -46,25 +47,28 @@ function render() {
 }
 function currentRoute() {
   const path = location.pathname;
+  if (path === '/discovery') {
+    const detail = new URLSearchParams(location.search).get('piece')?.match(/^(post|note)-(\d+)$/);
+    return { view: 'discovery', kind: detail?.[1], id: detail?.[2] };
+  }
   if (/^\/posts\/\d+$/.test(path)) return { view: 'post-detail', id: path.split('/')[2] };
   if (path === '/notes/compare') return { view: 'notes' };
   if (/^\/notes\/\d+$/.test(path)) return { view: 'notes', id: path.split('/')[2] };
-  if (['/posts', '/discovery', '/notes', '/planner', '/leaderboard', '/local-data'].includes(path))
+  if (['/posts', '/notes', '/planner', '/leaderboard'].includes(path))
     return { view: path.slice(1) };
   return { view: 'briefing' };
 }
-const localView = (view) => view === 'planner' || view === 'local-data';
+const localView = (view) => view === 'planner';
 
 function renderRoute() {
   const route = currentRoute();
   renderedPath = location.pathname;
-  if (route.view !== 'notes' && $('note-detail').open) $('note-detail').close();
   $('period-control').hidden = route.view === 'post-detail' || localView(route.view);
   $('lifetime-scope').hidden = route.view !== 'post-detail';
   $('refresh').hidden = route.view === 'post-detail' || localView(route.view);
   $('updated').hidden = route.view === 'post-detail' || localView(route.view);
   document.querySelector('.top-search').hidden = localView(route.view);
-  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'local-data', 'post-detail'])
+  for (const view of ['briefing', 'leaderboard', 'posts', 'discovery', 'notes', 'planner', 'post-detail'])
     $(`view-${view}`).hidden = view !== route.view;
   const primary = route.view === 'post-detail' ? 'posts' : route.view;
   document.querySelectorAll('.side-link').forEach((link) => {
@@ -76,11 +80,10 @@ function renderRoute() {
   const titles = {
     briefing: 'Briefing', leaderboard: 'Leaderboard',
     posts: 'Posts', discovery: 'Discovery',
-    notes: 'Notes', planner: 'Note planner', 'local-data': 'Local data', 'post-detail': 'Post story',
+    notes: 'Notes', planner: 'Note planner', 'post-detail': 'Post story',
   };
   document.title = `${titles[route.view]} · Clearview`;
   if (route.view === 'planner') renderPlannerRoute();
-  if (route.view === 'local-data') renderLocalData();
   if (!data) return;
   if (route.view === 'briefing') {
     if (!latestData && !latestLoading && !latestError) loadLatest();
@@ -108,30 +111,64 @@ function renderRoute() {
   }
   if (route.view === 'notes') {
     renderNotesComparison(data, navigate, route.id);
-    renderNotesPage(data, route.id);
   }
-  if (route.view === 'post-detail' && route.id !== activePostId) {
-    activePostId = route.id;
-    const row = (data.posts || []).find((post) => String(post.id) === route.id);
-    if (row) showPost(row, data.publication);
-    else {
-      $('detail-title').textContent = 'Post unavailable';
-      $('detail-content').replaceChildren(emptyMessage('This post is not in the published post list.'));
+  renderPieceDetail(route);
+}
+
+function renderPieceDetail(route = currentRoute()) {
+  const noteId = route.view === 'notes' || route.kind === 'note' ? route.id : undefined;
+  const postDialog = $('post-story-dialog');
+  const discoveryPostId = route.kind === 'post' ? route.id : undefined;
+  if (!data) return;
+  renderNotesPage(data, noteId);
+  if (discoveryPostId) {
+    const row = data.posts?.find((post) => String(post.id) === discoveryPostId);
+    renderDiscoveryPost(discoveryPostId, row?.title || 'Post');
+    if (!postDialog.open) {
+      postDialog.scrollTop = 0;
+      postDialog.show();
     }
+  } else {
+    if (postDialog.open) postDialog.close();
+    renderDiscoveryPost();
+  }
+  syncPieceDialog();
+  const postId = route.view === 'post-detail' ? route.id : undefined;
+  if (postId !== activePostId) {
+    activePostId = postId;
+    if (postId) showPost({ id: postId, title: data.posts?.find((post) => String(post.id) === postId)?.title || 'Post' },
+      data.publication);
   }
 }
 const isNoteLibraryPath = (path) => /^\/notes(?:\/\d+)?$/.test(path);
+function keepPosition(from, to) {
+  return (from === '/discovery' && to === '/discovery')
+    || (isNoteLibraryPath(from) && isNoteLibraryPath(to));
+}
 function navigate(path) {
-  const keepNotePosition = isNoteLibraryPath(location.pathname) && isNoteLibraryPath(path);
-  if (location.pathname !== path) history.pushState({}, '', path);
+  const current = location.pathname;
+  const piece = current === '/discovery' && path.match(/^\/(post|note)s\/(\d+)$/);
+  if (piece) path = `/discovery?piece=${piece[1]}-${piece[2]}`;
+  const preservePosition = keepPosition(current, path.split('?')[0]);
+  if (current + location.search !== path) history.pushState({ discoveryDetail: Boolean(piece) }, '', path);
   $('search-results').hidden = true;
-  if (!keepNotePosition) {
+  if (!preservePosition) {
     $('global-search').value = '';
     setNoteMapQuery('');
   }
-  renderRoute();
+  if (current === '/discovery' && preservePosition) renderPieceDetail();
+  else renderRoute();
   if (!localView(currentRoute().view) && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
-  if (!keepNotePosition) window.scrollTo({ top: 0, behavior: 'instant' });
+  if (!preservePosition) window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function closeDiscoveryDetail(kind) {
+  if (currentRoute().kind !== kind) return;
+  if (history.state?.discoveryDetail) history.back();
+  else {
+    history.replaceState({}, '', '/discovery');
+    renderPieceDetail();
+  }
 }
 function renderSearchResults() {
   const q = $('global-search').value.toLowerCase().trim();
@@ -360,6 +397,7 @@ async function loadLeaderboardNotes() {
 // Old section links open their corresponding views after an upgrade.
 if (location.pathname === '/notes/compare') history.replaceState({}, '', '/notes');
 if (location.pathname === '/insights') history.replaceState({}, '', '/');
+if (location.pathname === '/local-data') history.replaceState({}, '', '/');
 if (location.pathname === '/' && ['#posts', '#sources', '#overview'].includes(location.hash)) {
   history.replaceState({}, '', { '#posts': '/posts', '#sources': '/discovery', '#overview': '/' }[location.hash]);
 }
@@ -375,9 +413,37 @@ const leaderboard = createLeaderboard({
 });
 setupNotesComparison();
 setupPostPortfolio();
-setupNoteDetail(navigate);
+const postStory = $('post-story-dialog');
+setupNoteDetail(() => {
+  syncPieceDialog();
+  if (currentRoute().kind === 'note') closeDiscoveryDetail('note');
+  else if (currentRoute().view === 'notes' && currentRoute().id) navigate('/notes');
+});
+postStory.addEventListener('close', () => {
+  syncPieceDialog();
+  closeDiscoveryDetail('post');
+});
+$('discovery-post-close').addEventListener('click', () => postStory.close());
+function syncPieceDialog() {
+  const open = Boolean(document.querySelector('.note-detail-dialog[open]'));
+  $('piece-scrim').hidden = !open;
+  document.querySelectorAll('main > .topbar, #overview > .view').forEach((element) => {
+    element.inert = open;
+  });
+}
+function closePieceDialog() {
+  const dialog = document.querySelector('.note-detail-dialog[open]');
+  if (!dialog) return false;
+  dialog.close();
+  syncPieceDialog();
+  return true;
+}
+$('piece-scrim').addEventListener('click', closePieceDialog);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !event.defaultPrevented && closePieceDialog()) event.preventDefault();
+});
 setupPlanner();
-setupLocalData();
+setupDataOptions();
 if (localView(currentRoute().view)) document.body.classList.remove('boot-loading');
 renderRoute();
 $('range').addEventListener('change', () => load());
@@ -408,10 +474,11 @@ document.addEventListener('click', (event) => {
   if (!event.target.closest('.top-search')) $('search-results').hidden = true;
 });
 window.addEventListener('popstate', () => {
-  const keepNotePosition = isNoteLibraryPath(renderedPath) && isNoteLibraryPath(location.pathname);
-  renderRoute();
+  const preservePosition = keepPosition(renderedPath, location.pathname);
+  if (renderedPath === '/discovery' && preservePosition) renderPieceDetail();
+  else renderRoute();
   if (!localView(currentRoute().view) && !data && $('overview').getAttribute('aria-busy') !== 'true') load();
-  if (!keepNotePosition) window.scrollTo(0, 0);
+  if (!preservePosition) window.scrollTo(0, 0);
 });
 let chartResizeFrame;
 window.addEventListener('resize', () => {
@@ -424,9 +491,8 @@ window.addEventListener('resize', () => {
   });
 });
 $('detail-refresh').addEventListener('click', () => {
-  const id = currentRoute().id;
-  const row = (data?.posts || []).find((post) => String(post.id) === id);
-  if (row) showPost(row, data.publication, true);
+  const { view, id } = currentRoute();
+  if (view === 'post-detail' && id && data) showPost({ id, title: $('detail-title').textContent }, data.publication, true);
 });
 if (!localView(currentRoute().view)) {
   load();

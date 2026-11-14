@@ -118,26 +118,13 @@ export function createLeaderboard({ needNotes, needPostComparison }) {
       return;
     }
     const postRatios = portfolio?.comparison?.lenses?.staying?.reach_multiple || {};
-    const posts = (data.posts || []).filter((post) => post.publication_day >= data.range.start
-      && post.publication_day <= data.range.end).map((post) => ({
-      kind: 'Post', id: post.id, title: post.title || 'Untitled post',
-      date: post.publication_day, reach: post.views, growth: post.signups,
-      likes: post.likes, discussion: post.comments, restacks: post.restacks, shares: post.shares,
-      likeRate: post.likes_per_1k, discussionRate: post.comments_per_1k,
-      restackRate: post.restacks_per_1k, shareRate: post.shares_per_1k,
-      signupYield: post.signup_yield, relative: postRatios[String(post.id)] ?? null,
-    }));
-    const noteRows = (notes?.rows || []).map((note) => ({
-      kind: 'Note', id: note.id, title: note.title || 'Note',
-      date: note.day, reach: note.impressions, growth: null,
-      likes: note.likes, discussion: note.replies, restacks: note.restacks, shares: note.shares,
-      likeRate: note.likeRate, discussionRate: note.replyRate,
-      restackRate: note.restackRate, shareRate: note.shareRate,
-      signupYield: null, relative: note.pace?.ratio ?? null,
-    }));
+    const posts = data.leaderboard_rows || [];
+    const noteRows = notes?.leaderboard_rows || [];
     const query = $('global-search').value.toLowerCase().trim();
     const rateKey = rankRates ? rateFields[sort] : null;
-    const rankValue = (row) => row[rateKey || sort];
+    const valueFor = (row, field) => field === 'relative' && row.kind === 'Post'
+      ? postRatios[String(row.id)] ?? null : row[field];
+    const rankValue = (row) => valueFor(row, rateKey || sort);
     const rows = (type === 'posts' ? posts : type === 'notes' ? noteRows : [...posts, ...noteRows])
       .filter((row) => row.title.toLowerCase().includes(query))
       .sort((a, b) => {
@@ -167,7 +154,7 @@ export function createLeaderboard({ needNotes, needPostComparison }) {
       if (type === 'all') title.append(element('small', '', row.kind));
       cell(tr, title);
       cell(tr, date(row.date));
-      cell(tr, result(row));
+      cell(tr, result({ ...row, relative: valueFor(row, 'relative') }));
       body.append(tr);
     }
     if (!rows.length && !notesLoading) {

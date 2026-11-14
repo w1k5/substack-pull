@@ -29,7 +29,7 @@ def saved_analytics(kind: str = "", key: str = "") -> dict:
 
 @mcp.tool(annotations=READ_ONLY)
 def publication_summary(days: int = 90, refresh: bool = False) -> dict:
-    """Get publication totals for 7, 30, 90, 180, or 365 days. Refresh bypasses the five-minute shared cache."""
+    """Get publication totals for 7, 14, 30, 90, 180, or 365 days. Refresh bypasses the five-minute shared cache."""
     data = service().dashboard(days, refresh=refresh)
     return {key: data[key] for key in ("publication", "refreshed_at", "range", "totals", "previous")}
 
@@ -38,7 +38,7 @@ def publication_summary(days: int = 90, refresh: bool = False) -> dict:
 def publication_timeline(days: int = 90, refresh: bool = False) -> dict:
     """Get publication traffic and dated post/Note events. Refresh bypasses the five-minute shared cache."""
     data = service().dashboard(days, refresh=refresh)
-    return {key: data[key] for key in ("refreshed_at", "range", "series", "publication_events")}
+    return {key: data[key] for key in ("refreshed_at", "range", "series", "publication_events", "activity_period")}
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -56,6 +56,8 @@ def publication_sources(days: int = 90, limit: int = 20, refresh: bool = False) 
         "refreshed_at": data["refreshed_at"],
         "range": data["range"],
         "growth_sources": data["growth_sources"][:limit],
+        "ranked_growth_sources": data["ranked_growth_sources"][:limit],
+        "discovery_rankings": data["discovery_rankings"],
         "notes_source_attribution": {
             **data["notes_source_attribution"],
             "items": data["notes_source_attribution"]["items"][:limit],

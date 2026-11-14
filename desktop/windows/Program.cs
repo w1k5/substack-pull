@@ -16,10 +16,18 @@ internal static class Program
 
 internal sealed partial class ClearviewForm : Form
 {
+    // Match the dashboard's sidebar, brand mark, and page background.
+    private static readonly Color Forest = Color.FromArgb(18, 53, 46);
+    private static readonly Color Lime = Color.FromArgb(217, 237, 171);
+    private static readonly Color Canvas = Color.FromArgb(248, 250, 247);
     private readonly Label heading = new() { AutoSize = true, Text = "Clearview", Font = new Font("Segoe UI", 15, FontStyle.Bold) };
     private readonly Label status = new() { AutoSize = true, Text = "Opening Clearview…" };
-    private readonly TextBox publication = new() { Width = 250, PlaceholderText = "name.substack.com" };
-    private readonly Button connect = new() { AutoSize = true, Text = "Connect Substack" };
+    private readonly TextBox publication = new() { Width = 250, Visible = false, PlaceholderText = "name.substack.com" };
+    private readonly Button connect = new() { AutoSize = true, Text = "Sign in to Substack" };
+    private sealed record PublicationChoice(string Name, string Address);
+    private readonly ComboBox publications = new() { Width = 260, Visible = false, DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
+    private readonly Button manual = new() { AutoSize = true, Visible = false, Text = "Enter publication address" };
+    private string? selectionSession;
     private readonly WebView2 web = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly System.Windows.Forms.Timer cookieTimer = new() { Interval = 1200 };
     private readonly HashSet<string> attemptedSessions = new(StringComparer.Ordinal);
@@ -28,6 +36,7 @@ internal sealed partial class ClearviewForm : Form
     private Uri? dashboardUrl;
     private bool signingIn;
     private bool checkingSession;
+    private bool choosingPublication;
 
     public ClearviewForm()
     {
@@ -35,17 +44,43 @@ internal sealed partial class ClearviewForm : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         MinimumSize = new Size(920, 650);
         Size = new Size(1120, 760);
+        BackColor = Canvas;
         var header = new FlowLayoutPanel {
             Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(18),
-            WrapContents = true, FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = Forest,
         };
-        header.Controls.AddRange([heading, publication, connect, status]);
+        var mark = new Label {
+            Text = "↗", Size = new Size(34, 34), BackColor = Lime, ForeColor = Forest,
+            TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 14, FontStyle.Bold),
+            Margin = new Padding(0, 0, 8, 0),
+        };
+        heading.ForeColor = Color.White;
+        heading.Margin = new Padding(0, 3, 16, 0);
+        status.ForeColor = Lime;
+        status.Margin = new Padding(8, 8, 0, 0);
+        StyleHeaderButton(connect, Lime, Forest);
+        StyleHeaderButton(manual, Forest, Color.White);
+        header.Controls.AddRange([mark, heading, publications, publication, connect, manual, status]);
         Controls.Add(web);
         Controls.Add(header);
         var menu = CreateMenu();
         Controls.Add(menu);
         MainMenuStrip = menu;
-        connect.Click += async (_, _) => await BeginSignInAsync();
+        connect.Click += async (_, _) => {
+            if (selectionSession is null) await BeginSignInAsync();
+            else {
+                var address = publication.Visible ? publication.Text.Trim()
+                    : (publications.SelectedItem as PublicationChoice)?.Address;
+                if (string.IsNullOrEmpty(address)) status.Text = "Choose a publication or enter its address.";
+                else await ConnectPublicationAsync(address, selectionSession);
+            }
+        };
+        manual.Click += (_, _) => ShowManualPublication();
+        publications.SelectionChangeCommitted += (_, _) => {
+            publication.Visible = false;
+            manual.Visible = true;
+            connect.Text = "Open publication";
+        };
         cookieTimer.Tick += async (_, _) => await CheckCookiesAsync();
         FormClosing += (_, _) => {
             cookieTimer.Stop();
@@ -53,6 +88,15 @@ internal sealed partial class ClearviewForm : Form
             dashboardProcess?.Dispose();
         };
         Shown += async (_, _) => await OpenAsync();
+    }
+
+    private static void StyleHeaderButton(Button button, Color background, Color foreground)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderColor = Lime;
+        button.BackColor = background;
+        button.ForeColor = foreground;
+        button.Padding = new Padding(8, 3, 8, 3);
     }
 
     private async Task OpenAsync()
@@ -80,6 +124,9 @@ internal sealed partial class ClearviewForm : Form
             userDataFolder: Path.Combine(engine.DataDirectory, "WebView2"));
         await web.EnsureCoreWebView2Async(environment);
         var core = web.CoreWebView2 ?? throw new InvalidOperationException("WebView2 did not start.");
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(
+            "if (location.hostname === '127.0.0.1') " +
+            "document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('desktop-menu'), { once: true });");
         core.NavigationStarting += (_, args) => {
             if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var url)) {
                 args.Cancel = true;
@@ -118,12 +165,13 @@ internal sealed partial class ClearviewForm : Form
 
     private async Task BeginSignInAsync()
     {
-        if (string.IsNullOrWhiteSpace(publication.Text)) {
-            status.Text = "Enter your publication address first.";
-            return;
-        }
+        if (checkingSession || choosingPublication) return;
         try {
             signingIn = true;
+            selectionSession = null;
+            publications.Items.Clear();
+            publications.Visible = publication.Visible = manual.Visible = false;
+            connect.Text = "Sign in to Substack";
             attemptedSessions.Clear();
             connect.Enabled = false;
             await EnsureWebAsync();
@@ -140,26 +188,88 @@ internal sealed partial class ClearviewForm : Form
 
     private async Task CheckCookiesAsync()
     {
-        if (!signingIn || checkingSession || web.CoreWebView2 is null || engine is null) return;
+        if (!signingIn || checkingSession || choosingPublication || publications.Items.Count > 0 || web.CoreWebView2 is null || engine is null) return;
         checkingSession = true;
+        string? fallbackSession = null;
         try {
             var cookies = await web.CoreWebView2.CookieManager.GetCookiesAsync("https://substack.com/");
             foreach (var cookie in cookies) {
                 if (cookie.Name is not ("substack.sid" or "connect.sid") ||
                     cookie.Domain.TrimStart('.') != "substack.com" ||
                     string.IsNullOrEmpty(cookie.Value) || !attemptedSessions.Add(cookie.Value)) continue;
-                status.Text = "Checking publication access…";
-                using var result = await engine.ConnectionAsync("connect", publication.Text, cookie.Value);
-                signingIn = false;
-                cookieTimer.Stop();
-                await web.CoreWebView2.Profile.ClearBrowsingDataAsync();
-                await ShowDashboardAsync();
-                return;
+                status.Text = "Finding your publications…";
+                selectionSession = cookie.Value;
+                try {
+                    using var discovery = await engine.ConnectionAsync("discover", session: cookie.Value);
+                    var result = discovery.RootElement;
+                    foreach (var entry in result.GetProperty("publications").EnumerateArray()) {
+                        publications.Items.Add(new PublicationChoice(
+                            entry.GetProperty("name").GetString()!,
+                            entry.GetProperty("address").GetString()!));
+                    }
+                    var selected = result.GetProperty("selected").GetString();
+                    if (selected is not null) {
+                        await ConnectPublicationAsync(selected, cookie.Value);
+                        return;
+                    }
+                    if (publications.Items.Count > 0) {
+                        publications.Visible = manual.Visible = connect.Enabled = true;
+                        connect.Text = "Open publication";
+                        status.Text = "Choose a publication to open.";
+                        return;
+                    }
+                } catch (InvalidOperationException) {
+                    // The current session may still work with a manually entered address.
+                }
+                selectionSession = null;
+                fallbackSession = cookie.Value;
             }
         } catch (Exception error) {
             connect.Enabled = true;
             status.Text = $"Could not connect: {error.Message}";
         } finally { checkingSession = false; }
+        if (fallbackSession is not null) {
+            selectionSession = fallbackSession;
+            status.Text = "Couldn’t find a publication automatically.";
+            ShowManualPublication();
+        }
+    }
+
+    private void ShowManualPublication()
+    {
+        publications.Visible = manual.Visible = false;
+        publication.Visible = connect.Enabled = true;
+        connect.Text = "Connect";
+        publication.Focus();
+    }
+
+    private async Task ConnectPublicationAsync(string address, string session)
+    {
+        if (engine is null) return;
+        choosingPublication = true;
+        connect.Enabled = manual.Enabled = publications.Enabled = false;
+        status.Text = "Checking publication access…";
+        try {
+            using var result = await engine.ConnectionAsync("connect", address, session);
+            signingIn = false;
+            selectionSession = null;
+            attemptedSessions.Clear();
+            cookieTimer.Stop();
+            publications.Visible = publication.Visible = manual.Visible = false;
+            try { await web.CoreWebView2.Profile.ClearBrowsingDataAsync(); }
+            catch (InvalidOperationException) { /* The verified connection is already saved. */ }
+            await ShowDashboardAsync();
+        } catch (Exception error) {
+            status.Text = $"Could not connect: {error.Message}";
+            ShowManualPublication();
+            if (publications.Items.Count > 0) {
+                publications.Visible = true;
+                publications.SelectedIndex = -1;
+            }
+        } finally {
+            choosingPublication = false;
+            manual.Enabled = publications.Enabled = true;
+        }
     }
 
     private async Task ShowDashboardAsync()

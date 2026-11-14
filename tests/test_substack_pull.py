@@ -97,9 +97,14 @@ class MockHandler(BaseHTTPRequestHandler):
         }
         if path == "/api/v1/archive":
             items = self.server.state.published
-            offset = int(query.get("offset", [0])[0])
-            limit = int(query.get("limit", [50])[0])
-            self.send_json(items[offset : offset + limit])
+            offset = int(query.get("cursor", ["start:0"])[0].split(":")[1])
+            limit = int(query["limit"][0])
+            if "offset" in query or limit > 25:
+                self.send_json({"error": "Invalid archive pagination"}, status=400)
+                return
+            next_offset = offset + limit
+            self.send_json({"posts": items[offset:next_offset],
+                            "nextCursor": f"start:{next_offset}" if next_offset < len(items) else None})
             return
         if path in lists:
             items = lists[path]

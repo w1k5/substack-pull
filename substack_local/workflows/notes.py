@@ -68,8 +68,12 @@ class NotePlanner:
                 })
             drafts.sort(key=lambda item: (str(item["edited_at"] or ""), item["id"]), reverse=True)
             state = notes.read_json(directory / ".private-sync" / "state.json", {})
+            events_by_day = {}
+            for event in payload["events"]:
+                events_by_day.setdefault(event["date"], []).append(event)
             return {
                 "runway": payload,
+                "events_by_day": events_by_day,
                 "opening_days": suggested_openings(payload),
                 "drafts": drafts,
                 "last_sync_at": state.get("last_sync_at") if isinstance(state, dict) else None,

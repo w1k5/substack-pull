@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -309,41 +309,32 @@ def paginate_posts(
             break
     return collected
 
-def paginate_public_posts(
+def iter_public_archive_pages(
     api: ApiClient,
     *,
-    limit: int = 50,
-) -> list[dict[str, Any]]:
-    """List only posts exposed by a publication's anonymous public archive."""
-    offset = 0
-    collected: list[dict[str, Any]] = []
+    limit: int = 25,
+) -> Iterator[list[dict[str, Any]]]:
+    """Read the anonymous archive using Substack's cursor and page size limit."""
+    params: dict[str, Any] = {"sort": "new", "search": "", "limit": min(limit, 25)}
+    seen_cursors: set[str] = set()
     while True:
-        endpoint = query_path(
-            "/api/v1/archive",
-            {
-                "sort": "new",
-                "search": "",
-                "offset": offset,
-                "limit": limit,
-            },
-        )
-        payload = api.get_json(endpoint)
-        if isinstance(payload, dict):
-            posts = payload.get("posts", [])
-            total = payload.get("total")
-        elif isinstance(payload, list):
-            posts = payload
-            total = None
-        else:
+        payload = api.get_json(query_path("/api/v1/archive", params))
+        if not isinstance(payload, dict):
             raise PullError("Unexpected response shape from /api/v1/archive.")
+        posts = payload.get("posts")
         if not isinstance(posts, list) or any(not isinstance(item, dict) for item in posts):
             raise PullError("Unexpected posts list from /api/v1/archive.")
-        collected.extend(posts)
-        offset += len(posts)
-        if not posts:
-            break
-        if isinstance(total, int) and offset >= total:
-            break
-        if len(posts) < limit:
-            break
-    return collected
+        cursor = payload.get("nextCursor")
+        if cursor is not None:
+            if not isinstance(cursor, str) or not cursor or not posts or cursor in seen_cursors:
+                raise PullError("Unexpected pagination cursor from /api/v1/archive.")
+            seen_cursors.add(cursor)
+            params["cursor"] = cursor
+        yield posts
+        if cursor is None:
+            return
+
+
+def paginate_public_posts(api: ApiClient, *, limit: int = 50) -> list[dict[str, Any]]:
+    """List only posts exposed by a publication's anonymous public archive."""
+    return [post for page in iter_public_archive_pages(api, limit=limit) for post in page]

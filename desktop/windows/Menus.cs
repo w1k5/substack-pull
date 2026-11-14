@@ -22,6 +22,14 @@ internal sealed partial class ClearviewForm
         edit.DropDownItems.Add(new ToolStripSeparator());
         AddEdit(edit, "Select &All", "^a", "Ctrl+A");
 
+        var options = new ToolStripMenuItem("&Options");
+        AddDataAction(options, "Open data folder", "open");
+        AddDataAction(options, "Export writing backups", "export");
+        AddDataAction(options, "Clear temporary cache", "clear-cache");
+        options.DropDownOpening += (_, _) => {
+            foreach (ToolStripItem item in options.DropDownItems) item.Enabled = IsDashboardOpen();
+        };
+
         var view = new ToolStripMenuItem("&View");
         var reload = new ToolStripMenuItem("&Reload", null, (_, _) => web.Reload()) {
             ShortcutKeys = Keys.Control | Keys.R,
@@ -70,8 +78,23 @@ internal sealed partial class ClearviewForm
             MessageBox.Show(this, "Clearview beta · Substack analytics on this device.",
                 "About Clearview", MessageBoxButtons.OK, MessageBoxIcon.Information)));
 
-        menu.Items.AddRange(new ToolStripItem[] { clearview, edit, view, help });
+        menu.Items.AddRange(new ToolStripItem[] { clearview, edit, options, view, help });
         return menu;
+    }
+
+    private bool IsDashboardOpen() => !signingIn && web.CoreWebView2 is not null &&
+        Uri.TryCreate(web.Source?.AbsoluteUri, UriKind.Absolute, out var url) && IsDashboardUrl(url);
+
+    private void AddDataAction(ToolStripMenuItem menu, string label, string action)
+    {
+        menu.DropDownItems.Add(new ToolStripMenuItem(label, null, async (_, _) => {
+            if (!IsDashboardOpen()) return;
+            try {
+                await web.ExecuteScriptAsync($"document.querySelector('[data-local-action=\"{action}\"]')?.click()");
+            } catch (InvalidOperationException) {
+                status.Text = "The dashboard is unavailable.";
+            }
+        }));
     }
 
     private void AddEdit(ToolStripMenuItem parent, string label, string keys, string shortcut)
