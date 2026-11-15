@@ -46,6 +46,37 @@ def read_post_copy(post_id: str, publication_url: str | None = None,
 
 
 @mcp.tool(annotations=LOCAL_WRITE)
+def pull_post_conversation(post: str) -> dict:
+    """Back up visible Note replies on a Substack post by numeric ID or /note/p-ID URL, using the saved account session."""
+    return workflows.pull_post_conversation(post)
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def post_conversation_status(post: str) -> dict:
+    """Report saved reply counts, pull time, and any child-count gaps for a post conversation."""
+    return workflows.post_conversation_status(post)
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def find_post_replies(post: str, query: str = "", limit: int = 20,
+                      offset: int = 0, include_preview: bool = False) -> dict:
+    """Search and page through locally saved post replies; body previews are opt-in."""
+    return workflows.find_post_replies(post, query, limit, offset, include_preview)
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def read_post_reply(post: str, reply_id: str) -> dict:
+    """Read one full reply from a locally saved post conversation."""
+    return workflows.read_post_reply(post, reply_id)
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def read_post_thread(post: str, reply_id: str, limit: int = 100, offset: int = 0) -> dict:
+    """Page through the saved thread containing a reply, including its root and descendants."""
+    return workflows.read_post_thread(post, reply_id, limit, offset)
+
+
+@mcp.tool(annotations=LOCAL_WRITE)
 def pull_notes(days: int = 90, minimum_spacing: int = 3) -> dict:
     """Back up this account's draft and scheduled Notes and rebuild the planning runway. No Note is published or scheduled."""
     return workflows.pull_notes(days, minimum_spacing)

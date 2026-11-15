@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 
+from ..pullers import post_conversations
 from .modules import (
     NOTE_CONFIG, POST_CONFIG, ROOT, post_puller, private_notes, public_notes,
 )
@@ -31,6 +32,10 @@ def _profile(value: str) -> str:
 
 def _public_note_dir(profile: str) -> Path:
     return ROOT / "substack" / "published-notes" / _profile(profile)[1:]
+
+
+def _post_conversation_dir() -> Path:
+    return ROOT / "substack" / "post-conversations"
 
 
 def _bounded_limit(limit: int) -> int:
@@ -186,6 +191,65 @@ def read_post_copy(post_id: str, publication_url: str | None = None,
     return {key: item[key] for key in ("id", "title", "category", "updated_at")} | _read_markdown(
         item["readable_file"], str(directory), max_chars
     )
+
+
+def pull_post_conversation(post: str) -> dict:
+    """Save every visible page of a post's Note replies using the connected session."""
+    private = private_notes()
+    config = private.load_config(NOTE_CONFIG)
+    token = private.reusable_session(NOTE_CONFIG, config)
+    api = private.PrivateApiClient(token, request_delay=0.25)
+    return post_conversations.pull_conversation(post, _post_conversation_dir(), api=api)
+
+
+def post_conversation_status(post: str) -> dict:
+    saved = post_conversations.load_conversation(post, _post_conversation_dir())
+    return {
+        "post": saved["post"], "pulled_at": saved["pulled_at"],
+        "pages": len(saved["pages"]), "replies": len(saved["comments"]),
+        "pagination_complete": saved["pagination_complete"],
+        "reported_unreturned_children": saved["reported_unreturned_children"],
+        "unresolved_parent_ids": saved["unresolved_parent_ids"],
+        "short_branches": saved["short_branches"],
+    }
+
+
+def find_post_replies(post: str, query: str = "", limit: int = 20,
+                      offset: int = 0, include_preview: bool = False) -> dict:
+    saved = post_conversations.load_conversation(post, _post_conversation_dir())
+    needle = query.casefold().strip()
+    rows = [row for row in saved["comments"]
+            if not needle or needle in f"{row['id']} {row.get('name') or ''} {row.get('body') or ''}".casefold()]
+    page = _page(rows, limit, offset)
+    items = []
+    for row in page["items"]:
+        item = {key: value for key, value in row.items() if key != "body"}
+        if include_preview:
+            item["preview"] = " ".join((row.get("body") or "").split())[:240]
+        items.append(item)
+    page["items"] = items
+    return {"post": saved["post"], "pulled_at": saved["pulled_at"],
+            "query": query, **page}
+
+
+def read_post_reply(post: str, reply_id: str) -> dict:
+    if not re.fullmatch(r"(?:c-)?[0-9]+", reply_id):
+        raise ValueError("Use a numeric or c-prefixed reply ID.")
+    saved = post_conversations.load_conversation(post, _post_conversation_dir())
+    item = next((row for row in saved["comments"] if row["id"] == reply_id.removeprefix("c-")), None)
+    if item is None:
+        raise LookupError("Reply ID is not in the saved post conversation.")
+    return {"post": saved["post"], "pulled_at": saved["pulled_at"], "reply": item}
+
+
+def read_post_thread(post: str, reply_id: str, limit: int = 100, offset: int = 0) -> dict:
+    """Page through the saved branch containing any given reply ID."""
+    found = read_post_reply(post, reply_id)
+    saved = post_conversations.load_conversation(post, _post_conversation_dir())
+    branch_id = found["reply"]["branch_id"]
+    rows = [row for row in saved["comments"] if row["branch_id"] == branch_id]
+    return {"post": saved["post"], "pulled_at": saved["pulled_at"],
+            "branch_id": branch_id, **_page(rows, limit, offset)}
 
 
 def pull_notes(days: int = 90, minimum_spacing: int = 3) -> dict:

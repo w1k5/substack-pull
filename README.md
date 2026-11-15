@@ -356,6 +356,14 @@ functions. MCP runs over local standard input/output and has no network listener
 tools write to the ignored local backup directories; their Substack requests are
 read-only.
 
+For a post's Note conversation, call `pull_post_conversation(post=...)` with a numeric
+post ID or a `https://substack.com/@handle/note/p-ID` URL. It uses the saved Substack
+session to page through the replies and saves the raw pages plus a searchable local
+copy in `substack/post-conversations/`. Use `post_conversation_status`,
+`find_post_replies`, `read_post_reply`, and `read_post_thread` to inspect that copy.
+The status includes child-count gaps when Substack reports replies that its reader
+endpoint did not return. Pulling again refreshes the saved conversation.
+
 The `publication_sources` tool includes dated subscriber source lines and a breakdown
 of Substack's **Notes** source into credits from Note links, post links shared in Notes,
 and an unclassified remainder. Its item IDs and counts come from the same source
