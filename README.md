@@ -438,3 +438,34 @@ The tests use local fixtures and do not contact Substack or read Keychain:
 ```sh
 python3 -m unittest discover -s tests -v
 ```
+
+
+## Demo screenshots
+
+Capture Briefing, Discovery, Notes, and the Note planner using a fictional
+publication. The capture runs the real dashboard against local sample data
+without reading Substack credentials or backups. It blocks external browser
+requests and does not allow writes.
+
+Run **Clearview UX screenshots** in GitHub Actions and download the
+`clearview-ux-screenshots` artifact. To run it from the checkout:
+
+```sh
+python3 -m pip install -r tools/screenshots/requirements.txt
+python3 -m playwright install chromium
+python3 -m tools.screenshots.capture
+```
+
+The PNGs are written to `output/ux-screenshots/`. Use `--output` to choose
+another directory.
+
+The [product tour](https://w1k5.github.io/substack-pull/tour.html) uses the same
+captures as lossless WebP files. To update the published images with `cwebp`
+installed:
+
+```sh
+for shot in output/ux-screenshots/*.png; do
+  name=${shot##*/}
+  cwebp -lossless "$shot" -o "site/screenshots/${name%.png}.webp"
+done
+```

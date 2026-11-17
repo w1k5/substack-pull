@@ -1,0 +1,28 @@
+name: Clearview UX screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install -r tools/screenshots/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Capture the fictional dashboard
+        run: python -m tools.screenshots.capture
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clearview-ux-screenshots
+          path: output/ux-screenshots/*.png
+          if-no-files-found: error
