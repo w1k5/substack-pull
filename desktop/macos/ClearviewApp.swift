@@ -142,6 +142,7 @@ private final class AppModel: ObservableObject {
     @Published var dashboardURL: URL?
     @Published var choices: [[String: String]] = []
     @Published var showManualPublication = false
+    @Published var manualAddress = ""
     private var selectionSession: String?
     weak var activeWebView: WKWebView?
     private var dashboardProcess: Process?
@@ -170,6 +171,7 @@ private final class AppModel: ObservableObject {
     }
 
     func beginSignIn() {
+        manualAddress = ""
         signInGeneration += 1
         pendingSessions.removeAll()
         attemptedSessions.removeAll()
@@ -184,6 +186,7 @@ private final class AppModel: ObservableObject {
 
     func changePublication() {
         guard screen == .dashboard else { return }
+        manualAddress = ""
         signInGeneration += 1
         let generation = signInGeneration
         let account = publication
@@ -484,7 +487,6 @@ private struct DashboardWebView: NSViewRepresentable {
 private struct ContentView: View {
     @ObservedObject var model: AppModel
     @State private var selectedPublication = ""
-    @State private var manualAddress = ""
     // Match the dashboard's sidebar, brand mark, and page background.
     private let forest = Color(red: 18.0 / 255, green: 53.0 / 255, blue: 46.0 / 255)
     private let lime = Color(red: 217.0 / 255, green: 237.0 / 255, blue: 171.0 / 255)
@@ -573,12 +575,12 @@ private struct ContentView: View {
                         }
                         if model.showManualPublication {
                             HStack {
-                                TextField("name.substack.com", text: $manualAddress)
+                                TextField("name.substack.com", text: $model.manualAddress)
                                     .textFieldStyle(.roundedBorder)
                                     .autocorrectionDisabled()
                                     .frame(maxWidth: 270)
-                                Button("Connect") { model.choosePublication(manualAddress) }
-                                    .disabled(model.busy || manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                Button("Connect") { model.choosePublication(model.manualAddress) }
+                                    .disabled(model.busy || model.manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             }
                         }
                     }
@@ -601,9 +603,6 @@ private struct ContentView: View {
         }
         .frame(minWidth: 920, minHeight: 620)
         .preferredColorScheme(.light)
-        .onChange(of: model.screen) { screen in
-            if screen == .signIn { manualAddress = "" }
-        }
         .task { model.load() }
     }
 }
