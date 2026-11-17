@@ -420,10 +420,10 @@ private struct DashboardWebView: NSViewRepresentable {
         config.userContentController.addUserScript(WKUserScript(
             source: """
                 if (document.documentElement) {
-                    document.documentElement.classList.add('mac-desktop', 'desktop-menu');
+                    document.documentElement.classList.add('desktop-menu');
                 } else {
                     document.addEventListener('DOMContentLoaded', () => {
-                        document.documentElement.classList.add('mac-desktop', 'desktop-menu');
+                        document.documentElement.classList.add('desktop-menu');
                     }, { once: true });
                 }
                 """,
@@ -541,8 +541,7 @@ private struct ContentView: View {
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
-                    .padding(.top, 34)
-                    .padding(.bottom, 12)
+                    .padding(.vertical, 12)
                     .background(forest)
                     VStack(spacing: 8) {
                         Text("Your Substack session stays in macOS Keychain.")
@@ -601,18 +600,12 @@ private struct ContentView: View {
             }
         }
         .frame(minWidth: 920, minHeight: 620)
-        .ignoresSafeArea(edges: .top)
         .preferredColorScheme(.light)
         .onChange(of: model.screen) { screen in
             if screen == .signIn { manualAddress = "" }
         }
         .task { model.load() }
     }
-}
-
-private final class FullWindowHostingView<Content: View>: NSHostingView<Content> {
-    override var safeAreaInsets: NSEdgeInsets { NSEdgeInsets() }
-    override var safeAreaRect: NSRect { bounds }
 }
 
 private func installMenus(delegate: ClearviewDelegate) {
@@ -733,16 +726,15 @@ struct ClearviewApp {
         application.delegate = delegate
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Clearview"
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         window.center()
         window.delegate = delegate
-        window.contentView = FullWindowHostingView(rootView: ContentView(model: model))
+        window.contentView = NSHostingView(rootView: ContentView(model: model))
         window.makeKeyAndOrderFront(nil)
         application.activate(ignoringOtherApps: true)
         application.run()
