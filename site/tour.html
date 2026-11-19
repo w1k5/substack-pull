@@ -8,9 +8,10 @@
   <title>Product tour · Clearview</title>
   <link rel="icon" href="./clearview.png" type="image/png">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./tour.css">
   <script type="module" src="./tour.js"></script>
 </head>
-<body>
+<body class="tour-page">
   <header class="wrap top">
     <a class="brand" href="./" aria-label="Clearview home"><img src="./clearview.png" width="36" height="36" alt="">Clearview</a>
     <nav class="site-nav" aria-label="Main navigation">
@@ -19,56 +20,51 @@
     </nav>
   </header>
   <main class="wrap tour">
-    <h1>Inside Clearview</h1>
-    <p class="tour-intro">Click through the dashboard using a fictional publication.</p>
+    <div class="tour-heading"><div><p class="eyebrow">THE PRODUCT TOUR</p><h1>A clearer view of your writing.</h1></div><p class="tour-intro">Explore the dashboard.<br> All examples use fictional data.</p></div>
 
-    <section class="tour-gallery" aria-label="Dashboard screenshots">
-      <div class="tour-controls" hidden>
-        <div class="tour-picker" role="group" aria-label="Choose a screenshot">
-          <button type="button" aria-controls="briefing" aria-pressed="true">Briefing</button>
-          <button type="button" aria-controls="discovery" aria-pressed="false">Discovery</button>
-          <button type="button" aria-controls="post-growth" aria-pressed="false">Post growth</button>
-          <button type="button" aria-controls="notes" aria-pressed="false">Notes</button>
-          <button type="button" aria-controls="planner" aria-pressed="false">Planner</button>
-        </div>
-        <div class="tour-arrows">
-          <button type="button" id="tour-previous" aria-label="Previous screenshot">←</button>
-          <span id="tour-position" role="status"></span>
-          <button type="button" id="tour-next" aria-label="Next screenshot">→</button>
-        </div>
-      </div>
+    <section class="tour-gallery" aria-label="Dashboard screenshots" tabindex="0">
+      <div class="tour-toolbar" hidden><p id="tour-description"></p><div class="tour-arrows"><button type="button" id="tour-previous" aria-label="Previous screenshot">←</button><span id="tour-position" role="status" aria-live="polite"></span><button type="button" id="tour-next" aria-label="Next screenshot">→</button></div></div>
       <figure class="tour-slide" id="briefing">
-        <a class="tour-shot" href="./screenshots/briefing.webp">
+        <a class="tour-shot" aria-label="Enlarge screenshot" href="./screenshots/briefing.webp">
           <img src="./screenshots/briefing.webp" width="1440" height="1320" alt="Briefing with subscriber growth, recent writing, and an activity chart.">
         </a>
         <figcaption><strong>Briefing</strong> · Compare growth with the previous period and see how your latest writing performed.</figcaption>
       </figure>
       <figure class="tour-slide" id="discovery">
-        <a class="tour-shot" href="./screenshots/discovery-overview.webp">
+        <a class="tour-shot" aria-label="Enlarge screenshot" href="./screenshots/discovery-overview.webp">
           <img src="./screenshots/discovery-overview.webp" width="1440" height="1000" loading="lazy" alt="Discovery overview with credited signup sources and a subscriber trend chart.">
         </a>
         <figcaption><strong>Discovery</strong> · See where new subscribers came from and which posts and Notes got credit.</figcaption>
       </figure>
       <figure class="tour-slide" id="post-growth">
-        <a class="tour-shot" href="./screenshots/discovery.webp">
+        <a class="tour-shot" aria-label="Enlarge screenshot" href="./screenshots/discovery.webp">
           <img src="./screenshots/discovery.webp" width="1440" height="1120" loading="lazy" alt="Post growth panel with subscriber totals and signup sources.">
         </a>
         <figcaption><strong>Post growth</strong> · Open a post in Discovery to see signups, paid subscriptions, and unsubscribes.</figcaption>
       </figure>
       <figure class="tour-slide" id="notes">
-        <a class="tour-shot" href="./screenshots/notes.webp">
+        <a class="tour-shot" aria-label="Enlarge screenshot" href="./screenshots/notes.webp">
           <img src="./screenshots/notes.webp" width="1440" height="1600" loading="lazy" alt="Notes comparison chart with two Notes selected and the sortable figures table.">
         </a>
         <figcaption><strong>Notes</strong> · Compare two Notes side by side and sort engagement by totals or per 1,000 impressions.</figcaption>
       </figure>
       <figure class="tour-slide" id="planner">
-        <a class="tour-shot" href="./screenshots/planner.webp">
+        <a class="tour-shot" aria-label="Enlarge screenshot" href="./screenshots/planner.webp">
           <img src="./screenshots/planner.webp" width="1440" height="1840" loading="lazy" alt="Note planner with a calendar of scheduled Notes, open dates, and drafts.">
         </a>
         <figcaption><strong>Note planner</strong> · See what’s scheduled over the next 90 days and where there’s room for a draft.</figcaption>
       </figure>
+      <div class="tour-bottom" hidden><span>Scroll inside the preview to explore.</span><button type="button" id="tour-enlarge">View larger ↗</button></div>
+        <div class="tour-picker" hidden role="group" aria-label="Choose a screenshot">
+          <button type="button" aria-controls="briefing" aria-pressed="true"><img src="./screenshots/briefing.webp" width="144" height="80" alt=""><span>Briefing</span></button>
+          <button type="button" aria-controls="discovery" aria-pressed="false"><img src="./screenshots/discovery-overview.webp" width="144" height="80" alt=""><span>Discovery</span></button>
+          <button type="button" aria-controls="post-growth" aria-pressed="false"><img src="./screenshots/discovery.webp" width="144" height="80" alt=""><span>Post growth</span></button>
+          <button type="button" aria-controls="notes" aria-pressed="false"><img src="./screenshots/notes.webp" width="144" height="80" alt=""><span>Notes</span></button>
+          <button type="button" aria-controls="planner" aria-pressed="false"><img src="./screenshots/planner.webp" width="144" height="80" alt=""><span>Planner</span></button>
+        </div>
     </section>
   </main>
+  <dialog class="tour-lightbox" aria-labelledby="tour-lightbox-title"><div class="tour-lightbox-bar"><strong id="tour-lightbox-title"></strong><button type="button" id="tour-close" autofocus aria-label="Close enlarged screenshot">Close ×</button></div><div class="tour-lightbox-image"><img alt=""></div></dialog>
   <footer class="wrap bottom">
     <span>Clearview · Independent of Substack</span>
     <a href="https://github.com/w1k5/substack-pull/issues">Get help ↗</a>
