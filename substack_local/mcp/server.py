@@ -11,7 +11,7 @@ from .backup_tools import (
     find_post_replies, find_published_notes, note_schedule_runway,
     post_conversation_status, published_notes_status, pull_post_conversation,
     pull_notes, pull_own_posts, pull_public_posts, pull_published_notes,
-    read_note_copy, read_post_copy, read_post_reply, read_post_thread,
+    read_note_conversation, read_note_copy, read_post_copy, read_post_reply, read_post_thread,
     read_published_note, workspace_info,
 )
 from .note_writes import (

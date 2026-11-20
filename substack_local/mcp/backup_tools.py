@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from ..workflows import backups as workflows
-from .registry import LOCAL_BUILD, LOCAL_READ, LOCAL_WRITE, mcp
+from ..pullers import note_conversations
+from .registry import LOCAL_BUILD, LOCAL_READ, LOCAL_WRITE, READ_ONLY, mcp
 
 
 @mcp.tool(annotations=LOCAL_READ)
@@ -74,6 +75,16 @@ def read_post_reply(post: str, reply_id: str) -> dict:
 def read_post_thread(post: str, reply_id: str, limit: int = 100, offset: int = 0) -> dict:
     """Page through the saved thread containing a reply, including its root and descendants."""
     return workflows.read_post_thread(post, reply_id, limit, offset)
+
+
+@mcp.tool(annotations=READ_ONLY)
+def read_note_conversation(note: str) -> dict:
+    """Read a Note or /note/c-ID reply URL, its ancestors, and all visible replies using the saved account session."""
+    private = workflows.private_notes()
+    config = private.load_config(workflows.NOTE_CONFIG)
+    token = private.reusable_session(workflows.NOTE_CONFIG, config)
+    api = private.PrivateApiClient(token, request_delay=0.25)
+    return note_conversations.read_note_conversation(note, api=api)
 
 
 @mcp.tool(annotations=LOCAL_WRITE)
