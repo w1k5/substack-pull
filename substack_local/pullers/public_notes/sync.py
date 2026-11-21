@@ -93,7 +93,7 @@ class SyncEngine:
             raise PullError("Substack returned an unexpected Notes cursor.")
         return items, next_cursor or None
 
-    def sync(self, *, refresh: bool = False) -> dict[str, Any]:
+    def sync(self, *, refresh: bool = False, progress: Callable[..., None] | None = None) -> dict[str, Any]:
         state = self._load_state()
         entries: dict[str, dict[str, Any]] = state["notes"]
         checkpoint = state.get("crawl")
@@ -230,6 +230,9 @@ class SyncEngine:
                     "checkpoint_at": synced_at,
                 }
             atomic_write_json(self.state_path, state)
+            if progress:
+                progress(stage="processing_notes", pages=page_count, authored_notes_seen=authored,
+                         created=created, updated=updated)
 
             if cursor is None:
                 exhausted = True

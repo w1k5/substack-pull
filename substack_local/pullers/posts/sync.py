@@ -211,7 +211,7 @@ class SyncEngine:
         )
         del state["categories"][category][post_id]
 
-    def sync(self, *, refresh_published: bool = False) -> dict[str, Any]:
+    def sync(self, *, refresh_published: bool = False, progress: Callable[..., None] | None = None) -> dict[str, Any]:
         state = self._load_state()
         synced_at = self.now()
         summary: dict[str, Any] = {
@@ -249,7 +249,9 @@ class SyncEngine:
             readable_backfilled = 0
             unchanged = 0
             failures = 0
-            for list_item in items:
+            for processed, list_item in enumerate(items):
+                if progress:
+                    progress(stage="processing_posts", processed=processed, total=len(items))
                 post_id = item_id(list_item)
                 seen.add(post_id)
                 current_fingerprint = fingerprint(list_item)
@@ -367,6 +369,8 @@ class SyncEngine:
                 and entry.get("remote_status") == "missing"
             )
 
+        if progress:
+            progress(stage="saving_archive")
         state["last_sync_at"] = synced_at
         atomic_write_json(self.state_path, state)
         return summary

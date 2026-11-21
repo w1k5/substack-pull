@@ -50,8 +50,9 @@ not run both paths for the same operation.
   re-reads the Note, preserves its body and attachments, refreshes the local
   backup and runway, and verifies the new schedule.
 - Only when the user explicitly requests published Note history, call
-  `pull_published_notes(profile=...)` and then
-  `find_published_notes(profile=..., sort_by=...)`. Search results omit full
+  `pull_published_notes(profile=...)` and poll `public_pull_status(job_id=...)`
+  about every 10 seconds while it reports `running`. Check the final outcome
+  before calling `find_published_notes(profile=..., sort_by=...)`. Search results omit full
   bodies; use `include_preview=true` only when snippets help, and
   `read_published_note(profile=..., note_id=...)` for one complete local copy.
   `published_notes_status(profile=...)` reports its sync and crawl state.
@@ -236,7 +237,7 @@ directory is ignored before pulling.
 ## Published Note history
 
 Only when the user explicitly asks for already-published Notes, call
-`pull_published_notes(profile=...)` and then
+`pull_published_notes(profile=...)` and check its job outcome before calling
 `find_published_notes(profile=..., sort_by=...)`. Call `read_published_note` to
 inspect one Note's full text. Use the CLI fallback when the
 user requests a specific history directory. In that case, prefix the command

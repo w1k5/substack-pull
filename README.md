@@ -223,6 +223,7 @@ A post's Distribution section identifies Notes that explicitly attached that pos
 shows the Note's lifetime link clicks. Those clicks are Note interactions, not
 attributed post views or subscriber conversions. The link comes from the local
 published Notes backup; refresh it with MCP `pull_published_notes(profile="@yourhandle")`.
+Check the returned job ID with `public_pull_status` before relying on the refreshed backup.
 The CLI equivalent is
 `./substack-notes-pull public pull --profile @yourhandle --directory substack/published-notes/yourhandle`.
 Source labels expand Substack's ambiguous terms, including
@@ -397,8 +398,16 @@ Neither operation publishes a Note immediately or edits an existing Note body.
 Backup searches return at most 100 items per call and include `total` and `next_offset`
 for paging. Draft and scheduled Note previews are optional; published Note search omits
 full bodies so `read_published_note` can retrieve just the Note you need.
-`published_notes_status` reports a public profile's local crawl state. Post and public
-Note searches can include locally preserved copies no longer present remotely.
+`pull_public_posts` and `pull_published_notes` return a `job_id` immediately.
+Use `public_pull_status(job_id=...)` for progress and the final outcome:
+`completed`, `partially_completed`, or `failed`. While a job is running,
+requests for the same archive return its existing job ID. To change the refresh
+option, wait for that job to finish before starting a new one. If the MCP server
+stops mid-pull, check the job and start a fresh pull to retry. An interrupted
+full Notes crawl resumes from its saved checkpoint. The status of a specific
+pull is separate from the state of the local Notes archive, which
+`published_notes_status` reports. Post and public Note searches can include
+locally preserved copies no longer present remotely.
 
 See [`mcp.json`](mcp.json) for the stdio launch configuration.
 

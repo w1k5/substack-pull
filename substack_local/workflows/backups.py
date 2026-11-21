@@ -13,7 +13,7 @@ from .modules import (
 )
 
 
-def _public_post_url(value: str) -> str:
+def normalize_publication_url(value: str) -> str:
     parsed = urlparse(value if "://" in value else "https://" + value)
     host = (parsed.hostname or "").lower()
     if parsed.scheme != "https" or not re.fullmatch(r"[a-z0-9-]+\.substack\.com", host):
@@ -22,16 +22,16 @@ def _public_post_url(value: str) -> str:
 
 
 def _public_post_dir(publication_url: str) -> Path:
-    host = urlparse(_public_post_url(publication_url)).hostname
+    host = urlparse(normalize_publication_url(publication_url)).hostname
     return ROOT / "substack" / "public-posts" / str(host)
 
 
-def _profile(value: str) -> str:
+def normalize_note_profile(value: str) -> str:
     return "@" + public_notes().normalize_handle(value)
 
 
 def _public_note_dir(profile: str) -> Path:
-    return ROOT / "substack" / "published-notes" / _profile(profile)[1:]
+    return ROOT / "substack" / "published-notes" / normalize_note_profile(profile)[1:]
 
 
 def _post_conversation_dir() -> Path:
@@ -56,7 +56,7 @@ def _page(items: list[dict], limit: int, offset: int) -> dict:
 
 
 def _published_note_backup(profile: str):
-    profile = _profile(profile)
+    profile = normalize_note_profile(profile)
     public = public_notes()
     config = public.load_config(NOTE_CONFIG, profile)
     directory = public.resolve_output_dir(NOTE_CONFIG, config, str(_public_note_dir(profile)))
@@ -64,7 +64,7 @@ def _published_note_backup(profile: str):
 
 
 def _post_backup(publication_url: str | None):
-    publication_url = _public_post_url(publication_url) if publication_url else None
+    publication_url = normalize_publication_url(publication_url) if publication_url else None
     post = post_puller()
     config = post.load_config(POST_CONFIG, publication_url)
     directory = post.resolve_output_dir(
@@ -140,16 +140,18 @@ def pull_own_posts(refresh_published: bool = False) -> dict:
     return _pull_posts(None, refresh_published)
 
 
-def pull_public_posts(publication_url: str, refresh_published: bool = False) -> dict:
-    return _pull_posts(_public_post_url(publication_url), refresh_published)
+def pull_public_posts(publication_url: str, refresh_published: bool = False, *, progress=None) -> dict:
+    return _pull_posts(normalize_publication_url(publication_url), refresh_published, progress=progress)
 
 
-def _pull_posts(publication_url: str | None, refresh_published: bool) -> dict:
+def _pull_posts(publication_url: str | None, refresh_published: bool, *, progress=None) -> dict:
     post, config, directory = _post_backup(publication_url)
     token = None if publication_url else post.KeychainStore().get(post.host_for(config["publication"]))
     api = post.ApiClient(config["publication"], token)
+    if progress:
+        progress(stage="fetching_index")
     summary = post.SyncEngine(api, directory, public_only=publication_url is not None).sync(
-        refresh_published=refresh_published,
+        refresh_published=refresh_published, progress=progress,
     )
     if summary.get("errors"):
         summary["incomplete"] = True
@@ -318,11 +320,13 @@ def note_schedule_runway(days: int = 90, minimum_spacing: int = 3) -> dict:
     }
 
 
-def pull_published_notes(profile: str, refresh: bool = False) -> dict:
+def pull_published_notes(profile: str, refresh: bool = False, *, progress=None) -> dict:
     public, config, directory = _published_note_backup(profile)
     api = public.ApiClient()
+    if progress:
+        progress(stage="resolving_profile")
     resolved = public.resolve_profile(api, config["profile"])
-    return public.SyncEngine(api, directory, resolved).sync(refresh=refresh)
+    return public.SyncEngine(api, directory, resolved).sync(refresh=refresh, progress=progress)
 
 
 def published_notes_status(profile: str) -> dict:

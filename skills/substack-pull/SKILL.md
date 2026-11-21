@@ -37,8 +37,10 @@ workflow below. Do not run both paths for the same pull.
   the post body is needed. Follow `next_offset` to page through a large backup;
   pass `include_missing=true` only to inspect a preserved copy absent remotely.
   `backup_status` shows the last local sync.
-- Other public publication: call `pull_public_posts(publication_url=...)`, then
-  pass the same URL to `find_post_copies` or `read_post_copy`. This MCP path
+- Other public publication: call `pull_public_posts(publication_url=...)` and poll
+  `public_pull_status(job_id=...)` about every 10 seconds while it reports
+  `running`. Check the final result for errors or incomplete coverage. Pass
+  the same URL to `find_post_copies` or `read_post_copy`. This MCP path
   accepts `*.substack.com` URLs and keeps each publication in a separate
   ignored directory. Use the CLI for a custom public domain or a caller-chosen
   directory. Never send the saved session in public mode.
@@ -148,6 +150,7 @@ from any forecast.
 
 When the user asks for a post, its newest version, or analysis of current
 writing, call `pull_own_posts` or `pull_public_posts` in the matching mode.
+For a public pull, check its job outcome before searching.
 Then call `find_post_copies` by title or ID, and `read_post_copy` for the
 selected body. For the CLI fallback, search the local index with:
 

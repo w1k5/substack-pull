@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from ..workflows import backups as workflows
 from ..pullers import note_conversations
+from .pull_jobs import PullJobs
 from .registry import LOCAL_BUILD, LOCAL_READ, LOCAL_WRITE, READ_ONLY, mcp
+
+public_pull_jobs = PullJobs(workflows.ROOT / "substack" / ".pull-jobs")
 
 
 @mcp.tool(annotations=LOCAL_READ)
@@ -27,8 +30,18 @@ def pull_own_posts(refresh_published: bool = False) -> dict:
 
 @mcp.tool(annotations=LOCAL_WRITE)
 def pull_public_posts(publication_url: str, refresh_published: bool = False) -> dict:
-    """Anonymously back up a public *.substack.com publication, without reading or sending the saved session."""
-    return workflows.pull_public_posts(publication_url, refresh_published)
+    """Start an anonymous public *.substack.com backup. Poll public_pull_status with the returned job_id before relying on the backup."""
+    target = workflows.normalize_publication_url(publication_url)
+    return public_pull_jobs.start(
+        "public_posts", target, refresh_published,
+        lambda progress: workflows.pull_public_posts(target, refresh_published, progress=progress),
+    )
+
+
+@mcp.tool(annotations=LOCAL_READ)
+def public_pull_status(job_id: str) -> dict:
+    """Check a public post or Note pull by job ID. If running, check again in about 10 seconds. Terminal states are completed, partially_completed, and failed."""
+    return public_pull_jobs.status(job_id)
 
 
 @mcp.tool(annotations=LOCAL_READ)
@@ -114,8 +127,12 @@ def note_schedule_runway(days: int = 90, minimum_spacing: int = 3) -> dict:
 
 @mcp.tool(annotations=LOCAL_WRITE)
 def pull_published_notes(profile: str, refresh: bool = False) -> dict:
-    """Only when asked for published Note history: anonymously back up a profile's authored Notes, excluding replies and restacks."""
-    return workflows.pull_published_notes(profile, refresh)
+    """When asked for published Note history, start an anonymous backup of authored Notes. Poll public_pull_status with the returned job_id before relying on the backup."""
+    target = workflows.normalize_note_profile(profile)
+    return public_pull_jobs.start(
+        "published_notes", target, refresh,
+        lambda progress: workflows.pull_published_notes(target, refresh, progress=progress),
+    )
 
 
 @mcp.tool(annotations=LOCAL_READ)
